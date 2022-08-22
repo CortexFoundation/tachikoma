@@ -301,6 +301,8 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
   }
 
   void Convolution(const size_t& nid) {
+    std::cout << "convolution." << std::endl;
+    
     auto node = nodes_[nid];
     auto op_name = nodes_[nid].GetOpName();
 
