@@ -26,9 +26,8 @@
 
 extern "C" {
 #include <dnnl.h>
-}
-
 namespace tachikoma = dnnl;
+}
 
 #include "gemm_common.h"
 
