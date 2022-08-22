@@ -248,8 +248,8 @@ class CodegenTachikoma : public MemoizedExprTranslator<std::vector<Output>>, pub
     const auto* op_node = call->op.as<OpNode>();
     ICHECK(op_node) << "Expect OpNode, but got " << call->op->GetTypeKey();
 
-    std::cout << "generate op" << std::endl;
-    
+    LOG(FATAL) << "generate op" << std::endl;
+
     using ArgFunType = std::function<std::vector<std::string>(const CallNode*)>;
     static const std::map<std::string, std::pair<std::string, ArgFunType>> op_map = {
         {"nn.conv2d", {"tachikoma_conv2d", Conv2d}}, {"nn.dense", {"tachikoma_dense", Dense}},
@@ -279,7 +279,7 @@ class CodegenTachikoma : public MemoizedExprTranslator<std::vector<Output>>, pub
                           Conv2d(conv_call));
     } else if (pattern_name == "tachikoma.conv2d_relu") {
       const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 1, {"nn.conv2d", "nn.relu"});
-      std::cout << "codegen tachikoma.conv2d_relu" << std::endl;
+      LOG(FATAL) << "codegen tachikoma.conv2d_relu" << std::endl;
       return GenerateBody(conv_call, "tachikoma_fused_conv2d_relu", GetArgumentNames(caller),
                           Conv2d(conv_call));
     }
