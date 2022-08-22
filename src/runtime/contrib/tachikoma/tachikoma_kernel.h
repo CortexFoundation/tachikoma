@@ -33,7 +33,7 @@
 
 #include "dnnl.hpp"
 
-namespace tachikoma = dnnl
+namespace tachikoma = dnnl;
 
 namespace tvm {
 namespace runtime {
