@@ -44,7 +44,7 @@ namespace relay {
 namespace contrib {
 
 using dim_t = dnnl_dim_t;
-using dims_t = dnnl_dim_t;
+using dims_t = dnnl_dims_t;
 using tvm::runtime::contrib::dtype_dl2tachikoma;
 
 template <typename T, typename U>
