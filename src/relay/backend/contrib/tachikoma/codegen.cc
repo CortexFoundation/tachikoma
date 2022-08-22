@@ -248,6 +248,8 @@ class CodegenTachikoma : public MemoizedExprTranslator<std::vector<Output>>, pub
     const auto* op_node = call->op.as<OpNode>();
     ICHECK(op_node) << "Expect OpNode, but got " << call->op->GetTypeKey();
 
+    std::cout << "generate op" << std::endl;
+    
     using ArgFunType = std::function<std::vector<std::string>(const CallNode*)>;
     static const std::map<std::string, std::pair<std::string, ArgFunType>> op_map = {
         {"nn.conv2d", {"tachikoma_conv2d", Conv2d}}, {"nn.dense", {"tachikoma_dense", Dense}},
