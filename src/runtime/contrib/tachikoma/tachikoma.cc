@@ -44,7 +44,7 @@ typedef struct {
   void** data;
 } TachikomaPackedArgs;
 
-inline tachikoma::memory::desc GenDNNLMemDescByShape(const tachikoma::memory::dims& shape,
+inline tachikoma::memory::desc GenTachikomaMemDescByShape(const tachikoma::memory::dims& shape,
                                                 memory::data_type dtype) {
   using tag = memory::format_tag;
 
@@ -317,7 +317,7 @@ extern "C" void tachikoma_binary_op(float* data, float* weight, float* out, int 
   engine eng(engine::kind::cpu, 0);
   stream s(eng);
 
-  auto data_md = GenDNNLMemDescByShape(shape, dt::f32);
+  auto data_md = GenTachikomaMemDescByShape(shape, dt::f32);
 
   auto data_memory = memory(data_md, eng, data);
   auto weight_memory = memory(data_md, eng, weight);

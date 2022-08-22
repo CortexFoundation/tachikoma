@@ -345,7 +345,7 @@ def make_dnnl_pattern(op_name, with_bias, with_eltwise):
     """
     pat_name = op_name.replace("nn", "dnnl")
     if "_transpose" in op_name:
-        pat_name = "dnnl.deconv" + op_name.split("_")[0][-2::]
+        pat_name = "tachikoma.deconv" + op_name.split("_")[0][-2::]
     pat_name += "_bias" if with_bias else ""
     pat_name += ("_" + with_eltwise.split(".")[-1]) if with_eltwise else ""
     if "conv" in op_name:
@@ -395,7 +395,7 @@ def make_qnn_conv2d_pattern():
     pat = is_op("add")(pat, dst_zp) | pat  # optional dst_zp, can be dst_zp == 0
     pat = is_op("cast")(pat)
 
-    return "dnnl.qnn.conv2d", pat
+    return "tachikoma.qnn.conv2d", pat
 
 
 def make_qnn_dense_pattern():
@@ -427,7 +427,7 @@ def make_qnn_dense_pattern():
     pat = is_op("add")(pat, dst_zp) | pat  # optional dst_zp, can be dst_zp == 0
     pat = is_op("cast")(pat)
 
-    return "dnnl.qnn.dense", pat
+    return "tachikoma.qnn.dense", pat
 
 
 @register_pattern_table("tachikoma")
@@ -444,14 +444,14 @@ def pattern_table():
     dnnl_patterns.append(make_qnn_dense_pattern())
     dnnl_patterns.append(
         (
-            "dnnl.conv2d_bias_sum_relu",
+            "tachikoma.conv2d_bias_sum_relu",
             make_conv_bias_sum_relu_pattern("nn.conv2d"),
             make_sum_pattren_predicate(add_checker),
         )
     )
     dnnl_patterns.append(
         (
-            "dnnl.conv2d_bias_sum",
+            "tachikoma.conv2d_bias_sum",
             make_conv_bias_sum_relu_pattern("nn.conv2d", False),
             make_sum_pattren_predicate(add_checker),
         )
@@ -643,7 +643,7 @@ def legalize_group_conv(attrs, inputs, types):
 
 
 def alter_conv(attrs, inputs, tinfos, out_type):
-    """The convolution's layout auto-query func for dnnl."""
+    """The convolution's layout auto-query func for Tachikoma."""
 
     data, weight = inputs
     groups = str(attrs.groups)
@@ -680,7 +680,7 @@ def alter_conv(attrs, inputs, tinfos, out_type):
 
 
 def alter_conv_transpose(attrs, inputs, tinfos, out_type):
-    """The transposed convolution's layout auto-query func for dnnl."""
+    """The transposed convolution's layout auto-query func for Tachikoma."""
 
     data, weight = inputs
     weight_shape = ",".join([str(x) for x in get_shape(weight)])
