@@ -75,7 +75,7 @@ def _register_external_op_helper(op_name, supported=True):
         A function that returns if the operator is supported by DNNL.
     """
 
-    @tvm.ir.register_op_attr(op_name, "target.dnnl")
+    @tvm.ir.register_op_attr(op_name, "target.tachikoma")
     def _func_wrapper(expr):
         args = expr.args
         if any([x.checked_type.dtype == "int64" for x in args]):
