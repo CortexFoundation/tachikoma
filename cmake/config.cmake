@@ -173,6 +173,20 @@ set(USE_MKL OFF)
 # - OFF: Disable DNNL
 set(USE_DNNL OFF)
 
+# Whether use Tachikoma library, based on DNNL.
+#
+# Now matmul/dense/conv2d supported by -libs=dnnl,
+# and more OP patterns supported in DNNL codegen(json runtime)
+#
+# choices:
+# - ON: Enable Tachikoma+DNNL in BYOC and -libs=dnnl, 
+#    by default using json runtime in DNNL codegen
+# - JSON: same as above.
+# - C_SRC: use c source runtime in DNNL codegen
+# - path/to/oneDNN：oneDNN root path
+# - OFF: Disable Tachikoma
+set(USE_TACHIKOMA OFF)
+
 # Whether use OpenMP thread pool, choices: gnu, intel
 # Note: "gnu" uses gomp library, "intel" uses iomp5 library
 set(USE_OPENMP none)
