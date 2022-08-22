@@ -327,8 +327,8 @@ def make_dense_pattern(with_bias=True, with_eltwise=None):
     return append_eltwise_ops(dense_out, with_eltwise)
 
 
-def make_dnnl_pattern(op_name, with_bias, with_eltwise):
-    """Create dnnl patterns.
+def make_tachikoma_pattern(op_name, with_bias, with_eltwise):
+    """Create Tachikoma patterns.
 
     Parameters
     ----------
@@ -343,27 +343,27 @@ def make_dnnl_pattern(op_name, with_bias, with_eltwise):
     pattern : Tuple(pattern_name, CallPattern)
         Created pattern name, along with its CallPattern.
     """
-    pat_name = op_name.replace("nn", "dnnl")
+    pat_name = op_name.replace("nn", "tachikoma")
     if "_transpose" in op_name:
         pat_name = "tachikoma.deconv" + op_name.split("_")[0][-2::]
     pat_name += "_bias" if with_bias else ""
     pat_name += ("_" + with_eltwise.split(".")[-1]) if with_eltwise else ""
     if "conv" in op_name:
-        dnnl_pattern = (
+        tachikoma_pattern = (
             pat_name,
             make_conv_pattern(op_name, with_bias, with_eltwise),
             make_bias_add_pattren_predicate(add_checker),
         )
     elif op_name == "nn.dense":
-        dnnl_pattern = (pat_name, make_dense_pattern(with_bias, with_eltwise))
+        tachikoma_pattern = (pat_name, make_dense_pattern(with_bias, with_eltwise))
     else:
         logger.warning(
             "Currently, only conv1d, conv2d, conv2d_transpose, conv3d_transpose, "
             "dense op are supported, but got %s.",
             op_name,
         )
-        dnnl_pattern = ()
-    return dnnl_pattern
+        tachikoma_pattern = ()
+    return tachikoma_pattern
 
 
 def make_qnn_conv2d_pattern():
@@ -432,24 +432,24 @@ def make_qnn_dense_pattern():
 
 @register_pattern_table("tachikoma")
 def pattern_table():
-    """Create dnnl patterns.
+    """Create Tachikoma patterns.
 
     Returns
     -------
-    dnnl_patterns : List[dnnl_pattern]
+    tachikoma_patterns : List[tachikoma_pattern]
         Created patterns.
     """
-    dnnl_patterns = list()
-    dnnl_patterns.append(make_qnn_conv2d_pattern())
-    dnnl_patterns.append(make_qnn_dense_pattern())
-    dnnl_patterns.append(
+    tachikoma_patterns = list()
+    tachikoma_patterns.append(make_qnn_conv2d_pattern())
+    tachikoma_patterns.append(make_qnn_dense_pattern())
+    tachikoma_patterns.append(
         (
             "tachikoma.conv2d_bias_sum_relu",
             make_conv_bias_sum_relu_pattern("nn.conv2d"),
             make_sum_pattren_predicate(add_checker),
         )
     )
-    dnnl_patterns.append(
+    tachikoma_patterns.append(
         (
             "tachikoma.conv2d_bias_sum",
             make_conv_bias_sum_relu_pattern("nn.conv2d", False),
@@ -469,15 +469,15 @@ def pattern_table():
                 "nn.conv2d_transpose",
                 "nn.conv3d_transpose",
             ]:
-                dnnl_patterns.append(make_dnnl_pattern(conv_name, with_bias, elt))
-            dnnl_patterns.append(make_dnnl_pattern("nn.dense", with_bias, elt))
-    return dnnl_patterns
+                tachikoma_patterns.append(make_tachikoma_pattern(conv_name, with_bias, elt))
+            tachikoma_patterns.append(make_tachikoma_pattern("nn.dense", with_bias, elt))
+    return tachikoma_patterns
 
 
 def get_optimal_layout_for_conv(
     data_layout, kernel_layout, weight_shape, out_shape, paddings, strides, dilates, groups, dtype
 ):
-    """Get the optimal layout of dnnl, given shape of conv2d.
+    """Get the optimal layout of Tachikoma, given shape of conv2d.
 
     Parameters
     ----------
@@ -515,7 +515,7 @@ def get_optimal_layout_for_conv_transpose(
     groups,
     dtype,
 ):
-    """Get the optimal layout of dnnl, given shape of tranposed conv2d.
+    """Get the optimal layout of Tachikoma, given shape of tranposed conv2d.
 
     Parameters
     ----------
@@ -761,9 +761,9 @@ def is_valid_subgraph(body):
     return IsComputeIntensiveGraph().is_graph_compute_intensive(body)
 
 
-def prune_dnnl_subgraphs(mod):
+def prune_tachikoma_subgraphs(mod):
     """
-    Removes invalid subgraphs, which does not contain compute intensive dnnl ops.
+    Removes invalid subgraphs, which does not contain compute intensive Tachikoma ops.
     """
 
     class SubgraphRemover(ExprMutator):
@@ -802,7 +802,7 @@ def prune_dnnl_subgraphs(mod):
     # Remove invalid subgraphs
     for subgraph in mod.get_global_vars():
         name = subgraph.name_hint
-        if not mod[name].attrs or mod[name].attrs["Compiler"] != "dnnl":
+        if not mod[name].attrs or mod[name].attrs["Compiler"] != "tachikoma":
             continue
         if not is_valid_subgraph(mod[name].body):
             subgraphs_to_remove.append(name)
@@ -873,7 +873,7 @@ class LayerNormRewrite(DFPatternCallback):
 
 def rewrite_layer_norm(mod):
     """Rewrite the input graph to replace multiple operators with a TVM native layer normalization
-    operator so that we can offload them to dnnl layer normalization byoc part.
+    operator so that we can offload them to Tachikoma layer normalization byoc part.
     """
     mod["main"] = rewrite(LayerNormRewrite(), mod["main"])
     return mod
@@ -1334,7 +1334,7 @@ class LegalizeQnnOpForDnnl(DFPatternCallback):
         raise ValueError("Unexpected bias rank to broadcast. Only 0 and 1 are supported.")
 
 
-def legalize_qnn_for_dnnl(mod):
+def legalize_qnn_for_tachikoma(mod):
     """Transform qnn primitives to DNNL compatible form. Eliminate source zero point and apply
     strict sequence of post ops."""
     mod["main"] = rewrite(LegalizeQnnOpForDnnl(), mod["main"])
