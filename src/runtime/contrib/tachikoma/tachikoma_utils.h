@@ -19,11 +19,11 @@
 
 /*!
  * \file src/runtime/contrib/tachikoma/tachikoma_utils.cc
- * \brief Some DNNL specific utility functions
+ * \brief Some Tachikoma specific utility functions
  */
 
-#ifndef TVM_RUNTIME_CONTRIB_DNNL_DNNL_UTILS_H_
-#define TVM_RUNTIME_CONTRIB_DNNL_DNNL_UTILS_H_
+#ifndef TVM_RUNTIME_CONTRIB_TACHIKOMA_TACHIKOMA_UTILS_H_
+#define TVM_RUNTIME_CONTRIB_TACHIKOMA_TACHIKOMA_UTILS_H_
 
 #include <cstdint>
 #include <ostream>
@@ -43,14 +43,14 @@ namespace runtime {
 namespace contrib {
 
 /*!
- * \brief Convert a DLPack data type to a DNNL data type.
+ * \brief Convert a DLPack data type to a Tachikoma data type.
  * \param dltype The DLPack data type.
- * \return The corresponding DNNL data type.
+ * \return The corresponding Tachikoma data type.
  */
 tachikoma::memory::data_type dtype_dl2tachikoma(DLDataType dltype);
 
 /*!
- * \brief Converter TVM shape to DNNL dims
+ * \brief Converter TVM shape to Tachikoma dims
  * \param shape tvm shape
  * \return dims in terms of tachikoma
  */
@@ -108,25 +108,25 @@ inline std::ostream& operator<<(std::ostream& o, const tachikoma::memory::data_t
 
 /*! \brief Converter data type template arg to runtime object */
 template <typename T>
-inline tachikoma::memory::data_type DnnlDType();
+inline tachikoma::memory::data_type TachikomaDType();
 
 template <>
-inline tachikoma::memory::data_type DnnlDType<int>() {
+inline tachikoma::memory::data_type TachikomaDType<int>() {
   return tachikoma::memory::data_type::s32;
 }
 
 template <>
-inline tachikoma::memory::data_type DnnlDType<float>() {
+inline tachikoma::memory::data_type TachikomaDType<float>() {
   return tachikoma::memory::data_type::f32;
 }
 
 template <>
-inline tachikoma::memory::data_type DnnlDType<uint8_t>() {
+inline tachikoma::memory::data_type TachikomaDType<uint8_t>() {
   return tachikoma::memory::data_type::u8;
 }
 
 template <>
-inline tachikoma::memory::data_type DnnlDType<int8_t>() {
+inline tachikoma::memory::data_type TachikomaDType<int8_t>() {
   return tachikoma::memory::data_type::s8;
 }
 
@@ -135,4 +135,4 @@ inline tachikoma::memory::data_type DnnlDType<int8_t>() {
 }  // namespace runtime
 }  // namespace tvm
 
-#endif  // TVM_RUNTIME_CONTRIB_DNNL_DNNL_UTILS_H_
+#endif  // TVM_RUNTIME_CONTRIB_TACHIKOMA_TACHIKOMA_UTILS_H_
