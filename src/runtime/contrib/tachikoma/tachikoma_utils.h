@@ -34,7 +34,7 @@
 //  -Wzero-as-null-pointer-constant and -Wdocumentation-unknown-command
 #include <dnnl.hpp>
 
-namespace tachikoma = dnnl
+namespace tachikoma = dnnl;
 
 #include "tvm/runtime/data_type.h"
 

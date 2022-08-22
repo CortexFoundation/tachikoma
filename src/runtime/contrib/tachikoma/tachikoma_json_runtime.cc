@@ -37,7 +37,7 @@
 //  -Wzero-as-null-pointer-constant and -Wdocumentation-unknown-command
 #include <dnnl.hpp>
 
-namespace tachikoma = dnnl
+namespace tachikoma = dnnl;
 
 #include "tachikoma_tensor_requisite.h"
 #include "tachikoma_utils.h"

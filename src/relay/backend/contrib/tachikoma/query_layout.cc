@@ -37,14 +37,14 @@
 #include "../../../../runtime/contrib/tachikoma/tachikoma_utils.h"
 #include "../../utils.h"
 #include "dnnl.hpp"
-namespace tachikoma = dnnl
+namespace tachikoma = dnnl;
 
 namespace tvm {
 namespace relay {
 namespace contrib {
 
-using dim_t = tachikoma_dim_t;
-using dims_t = tachikoma_dims_t;
+using dim_t = dnnl_dim_t;
+using dims_t = dnnl_dim_t;
 using tvm::runtime::contrib::dtype_dl2tachikoma;
 
 template <typename T, typename U>
@@ -88,7 +88,7 @@ inline void simultaneous_sort(T* vals, T* vals_2nd_level, U* keys, size_t size, 
 }
 
 void compute_blocks(dims_t blocks, const tachikoma::memory::desc* md) {
-  using format_kind_t = tachikoma_format_kind_t;
+  using format_kind_t = dnnl_format_kind_t;
   const format_kind_t blocked = tachikoma_blocked;
   if (!(md->data.format_kind == blocked)) {
     array_set(blocks, 0, md->data.ndims);
@@ -101,7 +101,7 @@ void compute_blocks(dims_t blocks, const tachikoma::memory::desc* md) {
 }
 
 inline bool has_runtime_strides(const tachikoma::memory::desc* md) {
-  using format_kind_t = tachikoma_format_kind_t;
+  using format_kind_t = dnnl_format_kind_t;
   const format_kind_t blocked = tachikoma_blocked;
   if (!(md->data.format_kind == blocked)) return false;
   for (int d = 0; d < md->data.ndims; ++d)
@@ -115,7 +115,7 @@ std::string md2fmt_tag_str(const tachikoma::memory::desc* md) {
   dims_t blocks = {0};
   compute_blocks(blocks, md);
 
-  char dim_chars[TACHIKOMA_MAX_NDIMS + 1];
+  char dim_chars[DNNL_MAX_NDIMS + 1];
 
   dims_t ou_blocks = {0};
   array_copy(ou_blocks, md->data.padded_dims, md->data.ndims);
