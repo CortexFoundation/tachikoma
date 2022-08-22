@@ -277,6 +277,7 @@ class CodegenTachikoma : public MemoizedExprTranslator<std::vector<Output>>, pub
                           Conv2d(conv_call));
     } else if (pattern_name == "tachikoma.conv2d_relu") {
       const auto* conv_call = GetRootCall(callee->body.as<CallNode>(), 1, {"nn.conv2d", "nn.relu"});
+      std::coud << "codegen tachikoma.conv2d_relu" << std::endl;
       return GenerateBody(conv_call, "tachikoma_fused_conv2d_relu", GetArgumentNames(caller),
                           Conv2d(conv_call));
     }
