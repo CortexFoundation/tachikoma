@@ -191,6 +191,7 @@ extern "C" void tachikoma_fused_conv2d_relu(float* data, float* weights, float* 
                                        int p_Pw0_, int p_Ph1_, int p_Pw1_, int p_Kh_, int p_Kw_,
                                        int p_Sh_, int p_Sw_) {
   std::vector<float> bias(p_O_, 0);
+  std::cout << "tachikoma_fused_conv2d_relu\n";
   return tachikoma_conv2d_common(data, weights, bias.data(), out, p_N_, p_C_, p_H_, p_W_, p_O_, p_G_,
                             p_Ph0_, p_Pw0_, p_Ph1_, p_Pw1_, p_Kh_, p_Kw_, p_Sh_, p_Sw_,
                             create_attr_with_relu_post_op(), false, true, true);
