@@ -59,7 +59,7 @@ using namespace utils;
  * Allow to specify original source tensor and future actions which should be applied to it.
  * Can be treated as sequence of reordering or reinterpretation of original source tensor.
  * Finally TR can be solved as proper interpretation of source memory buffer, or sequence of
- * dnnl::reorder operators which will provide desired data.
+ * tachikoma::reorder operators which will provide desired data.
  *
  * \note Empty TR object allow any manipulation. Empty TR will be returned.
  *
@@ -67,7 +67,7 @@ using namespace utils;
  *
  * Example:
  * \code
- *   dnnl::memory src_mem = ...;  // 5D tensor, shape {5, 2, 128, 128, 8}
+ *   tachikoma::memory src_mem = ...;  // 5D tensor, shape {5, 2, 128, 128, 8}
  *
  *   // Construct TR
  *   auto tr = TensorRequisite.AsIs(src_mem, eid);  // 5D
@@ -82,7 +82,7 @@ using namespace utils;
  *   TensorRegistry t_reg;
  *   auto t_id = t_reg.register(tr);
  *
- *   // Get final dnnl::memory object
+ *   // Get final tachikoma::memory object
  *   auto solver = t_reg.MakeSolver(ext_tensor_provider);
  *   auto mem = solver(t_id);
  * \endcode
@@ -97,25 +97,25 @@ class TensorRequisite {
   TensorRequisite() {}
 
   /*! \brief Construct TR on top of existing memory object */
-  static TensorRequisite AsIs(const dnnl::memory& mem, Tid id = kUndefinedTid) {
+  static TensorRequisite AsIs(const tachikoma::memory& mem, Tid id = kUndefinedTid) {
     auto res = AsIs(mem.get_desc(), id);
     if (mem.get_data_handle() != nullptr) res.mem_ = mem;
     return res;
   }
 
   /*! \brief Construct TR on top of existing memory descriptor object */
-  static TensorRequisite AsIs(const dnnl::memory::desc& desc, Tid id = kUndefinedTid) {
+  static TensorRequisite AsIs(const tachikoma::memory::desc& desc, Tid id = kUndefinedTid) {
     return {desc, {}, false, {}, id, false};
   }
 
   /*! \brief return logical shape of tensor */
-  dnnl::memory::dims dims() const { return t_desc_.dims(); }
+  tachikoma::memory::dims dims() const { return t_desc_.dims(); }
 
   /*! \brief return data type of tensor */
-  dnnl::memory::data_type data_type() const { return t_desc_.data_type(); }
+  tachikoma::memory::data_type data_type() const { return t_desc_.data_type(); }
 
   /*! \brief return tensor desc */
-  dnnl::memory::desc desc() const { return t_desc_; }
+  tachikoma::memory::desc desc() const { return t_desc_; }
 
   Tid eid() const {
     auto res = kUndefinedTid;
@@ -152,7 +152,7 @@ class TensorRequisite {
   }
 
   /*! \brief Produce TR with reinterpret data of original tr */
-  TensorRequisite Reshape(const dnnl::memory::dims& shape) const {
+  TensorRequisite Reshape(const tachikoma::memory::dims& shape) const {
     if (!defined()) return *this;  // nothing for empty TR
     if (t_desc_.dims() == shape) return *this;
 
@@ -163,7 +163,7 @@ class TensorRequisite {
   }
 
   /*! \brief Produce TR with broadcasted values */
-  TensorRequisite Broadcast(const dnnl::memory::dims& shape) const {
+  TensorRequisite Broadcast(const tachikoma::memory::dims& shape) const {
     if (!defined()) return *this;  // nothing for empty TR
     if (t_desc_.dims() == shape) return *this;
     ICHECK(!reverse_data_flow_);
@@ -172,7 +172,7 @@ class TensorRequisite {
 
     // numpy like broadcast
     auto extended_dims = t_desc_.dims();
-    auto one_filled = dnnl::memory::dims(shape.size() - extended_dims.size(), 1);
+    auto one_filled = tachikoma::memory::dims(shape.size() - extended_dims.size(), 1);
     extended_dims.insert(extended_dims.begin(), one_filled.begin(), one_filled.end());
     auto desc = t_desc_.reshape(extended_dims);
     for (size_t i = 0; i < extended_dims.size(); i++) {
@@ -190,7 +190,7 @@ class TensorRequisite {
   }
 
   /*! \brief Produce TR with sub memory view (ROI) */
-  TensorRequisite Crop(const dnnl::memory::dims& shape, const dnnl::memory::dims& offset) const {
+  TensorRequisite Crop(const tachikoma::memory::dims& shape, const tachikoma::memory::dims& offset) const {
     if (!defined()) return *this;  // nothing for empty TR
 
     ICHECK_EQ(shape.size(), t_desc_.dims().size());
@@ -205,7 +205,7 @@ class TensorRequisite {
       bool offset_is_zero =
           std::all_of(offset.begin(), offset.end(), [](auto el) { return el == 0; });
 
-      dnnl::memory::dims block_sizes(t_desc_.dims().size(), 1);
+      tachikoma::memory::dims block_sizes(t_desc_.dims().size(), 1);
       for (int i = 0; i < t_desc_.data.format_desc.blocking.inner_nblks; i++)
         block_sizes[t_desc_.data.format_desc.blocking.inner_idxs[i]] *=
             t_desc_.data.format_desc.blocking.inner_blks[i];
@@ -228,10 +228,10 @@ class TensorRequisite {
   }
 
   /*! \brief Produce TR with squeeze shape */
-  TensorRequisite Squeeze(const dnnl::memory::dims& dims_to_squeeze = {}) const {
+  TensorRequisite Squeeze(const tachikoma::memory::dims& dims_to_squeeze = {}) const {
     if (!defined()) return *this;  // nothing for empty TR
 
-    dnnl::memory::dims squeezed_dims;
+    tachikoma::memory::dims squeezed_dims;
     if (dims_to_squeeze.empty()) {
       for (auto d : t_desc_.dims())
         if (d != 1) squeezed_dims.push_back(d);
@@ -250,7 +250,7 @@ class TensorRequisite {
   }
 
   /*! \brief Produce TR with specified layout descriptor */
-  TensorRequisite RequestLayout(dnnl::memory::desc desc) const {
+  TensorRequisite RequestLayout(tachikoma::memory::desc desc) const {
     if (!defined()) return *this;  // nothing for empty TR
 
     // If it's the same desc just return self
@@ -332,7 +332,7 @@ class TensorRequisite {
       dim_position_by_tag[std::toupper(desired_logic_layout[i])] = i;
 
     // Construct resulting desc by modifying original one
-    dnnl::memory::desc res_desc = t_desc_;
+    tachikoma::memory::desc res_desc = t_desc_;
 
     memset(&res_desc.data.format_desc.blocking, 0, sizeof(res_desc.data.format_desc.blocking));
     std::fill(res_desc.data.dims, res_desc.data.dims + DNNL_MAX_NDIMS, 0);
@@ -389,7 +389,7 @@ class TensorRequisite {
   TensorRequisite LayoutAny() const {
     auto orig = std::make_shared<TensorRequisite>(*this);
     // Recreate tensor desc with layout 'any'
-    dnnl::memory::desc any_desc{t_desc_.dims(), t_desc_.data_type(), dnnl::memory::format_tag::any};
+    tachikoma::memory::desc any_desc{t_desc_.dims(), t_desc_.data_type(), tachikoma::memory::format_tag::any};
     return {any_desc, orig, false, {}, kUndefinedTid, reverse_data_flow_};
   }
 
@@ -403,7 +403,7 @@ class TensorRequisite {
   bool IsScalar() const { return t_desc_.dims().size() == 1 && t_desc_.dims()[0] == 1; }
 
   /*! \brief Return const data memory if available. */
-  dnnl::memory GetConstData() const {
+  tachikoma::memory GetConstData() const {
     if (mem_) return mem_;
     if (!orig_) return {};
 
@@ -412,8 +412,8 @@ class TensorRequisite {
         return {t_desc_, orig_const_data.get_engine(), orig_const_data.get_data_handle()};
       } else {
         auto eng = orig_const_data.get_engine();
-        auto res = dnnl::memory{t_desc_, eng};
-        dnnl::reorder(orig_const_data, res).execute(dnnl::stream(eng), orig_const_data, res);
+        auto res = tachikoma::memory{t_desc_, eng};
+        tachikoma::reorder(orig_const_data, res).execute(tachikoma::stream(eng), orig_const_data, res);
         return res;
       }
     }
@@ -423,7 +423,7 @@ class TensorRequisite {
   /*!
    * \brief Return const data memory in form of vector.
    *
-   * Same as GetConstData but use std::vector instead of dnnl::memory. Works only for 1D tensor
+   * Same as GetConstData but use std::vector instead of tachikoma::memory. Works only for 1D tensor
    * and scalar TRs. Useful for specification of 1D DNNL attributes like zero_point or
    * per_channel_scale
    */
@@ -431,7 +431,7 @@ class TensorRequisite {
   std::vector<T> GetConstDataLikeVec() const {
     auto const_data = GetConstData();
     auto desc = const_data.get_desc();
-    ICHECK(desc.data_type() == utils::DnnlDType<T>());
+    ICHECK(desc.data_type() == utils::TachikomaDType<T>());
     ICHECK(desc.dims().size() == 1);
 
     auto size = desc.get_size() / sizeof(T);
@@ -447,7 +447,7 @@ class TensorRequisite {
     ICHECK(IsScalar());
     auto const_data = GetConstData();
     auto desc = const_data.get_desc();
-    ICHECK(desc.data_type() == utils::DnnlDType<T>());
+    ICHECK(desc.data_type() == utils::TachikomaDType<T>());
 
     auto ptr = static_cast<T*>(const_data.get_data_handle());
     return *ptr;
@@ -466,8 +466,8 @@ class TensorRequisite {
   bool IsReversed() const { return reverse_data_flow_; }
 
  private:
-  TensorRequisite(const dnnl::memory::desc& t_desc, const std::shared_ptr<TensorRequisite>& orig,
-                  bool reinterpret, const dnnl::memory& const_mem, uint32_t eid,
+  TensorRequisite(const tachikoma::memory::desc& t_desc, const std::shared_ptr<TensorRequisite>& orig,
+                  bool reinterpret, const tachikoma::memory& const_mem, uint32_t eid,
                   bool reverse_data_flow)
       : t_desc_(t_desc),
         orig_(orig),
@@ -480,13 +480,13 @@ class TensorRequisite {
   }
 
   /* Descriptor of particular tensor  */
-  dnnl::memory::desc t_desc_ = {};
+  tachikoma::memory::desc t_desc_ = {};
   /* Parent TR object which is referred from this TR */
   std::shared_ptr<TensorRequisite> orig_ = {};
   /* Flag to specify which action should be done with orig TR, reordering or reinterpretation */
   bool reinterpret_ = false;
   /* Const memory object if available */
-  dnnl::memory mem_ = {};
+  tachikoma::memory mem_ = {};
   /* Entry ID of tensor if available */
   uint32_t eid_ = kUndefinedTid;
 
@@ -519,13 +519,13 @@ class TensorRegistry {
     uint32_t idx_;
   };
 
-  using Action = std::tuple<dnnl::primitive, std::unordered_map<int, ArgId>>;
+  using Action = std::tuple<tachikoma::primitive, std::unordered_map<int, ArgId>>;
   using ActionQue = std::vector<Action>;
   using DLTensorProvider = std::function<const DLTensor*(uint32_t)>;
-  using MemSolver = std::function<const dnnl::memory(ArgId)>;
+  using MemSolver = std::function<const tachikoma::memory(ArgId)>;
 
   TensorRegistry() = default;
-  TensorRegistry(const dnnl::engine& eng, const std::set<uint32_t>& ext_io_eid)
+  TensorRegistry(const tachikoma::engine& eng, const std::set<uint32_t>& ext_io_eid)
       : tmp_mem_collection_(1), ext_io_eid_(ext_io_eid), eng_(eng), stream_(eng) {}
 
   /*!
@@ -590,8 +590,8 @@ class TensorRegistry {
     auto glob_scratchpad_size = tmp_mem_collection_[0].get_size();
     if (scratchpad_size > glob_scratchpad_size) {
       tmp_mem_collection_[0] =
-          dnnl::memory::desc({static_cast<dnnl::memory::dim>(scratchpad_size)},
-                             dnnl::memory::data_type::u8, dnnl::memory::format_tag::a);
+          tachikoma::memory::desc({static_cast<tachikoma::memory::dim>(scratchpad_size)},
+                             tachikoma::memory::data_type::u8, tachikoma::memory::format_tag::a);
     }
     return MakeArgReq(TMP_STORAGE, static_cast<uint32_t>(idx));
   }
@@ -599,7 +599,7 @@ class TensorRegistry {
   /*!
    * \brief Construct memory solver for all registered TRs.
    * \param ext_provider callback to resolve external IO buffers
-   * \return memory solver object to match ArgId to dnnl::memory objects
+   * \return memory solver object to match ArgId to tachikoma::memory objects
    */
   MemSolver MakeSolver(const DLTensorProvider& ext_provider) const {
     return MemSolverImpl(eng_, ext_provider, const_mem_collection_, ext_mem_collection_,
@@ -615,7 +615,7 @@ class TensorRegistry {
   }
 
  private:
-  ArgId RegisterReinterpret(ArgId src_ar, const dnnl::memory::desc& desc) {
+  ArgId RegisterReinterpret(ArgId src_ar, const tachikoma::memory::desc& desc) {
     switch (src_ar.flag_) {
       case TMP_STORAGE: {
         auto idx = tmp_mem_collection_.size();
@@ -635,7 +635,7 @@ class TensorRegistry {
     return {};
   }
 
-  ArgId RegisterReorder(ArgId src_ar, const dnnl::memory::desc& desc, bool reverse_data_flow,
+  ArgId RegisterReorder(ArgId src_ar, const tachikoma::memory::desc& desc, bool reverse_data_flow,
                         ActionQue* action) {
     ICHECK(src_ar.flag_ == TMP_STORAGE || src_ar.flag_ == EXT_EID);
 
@@ -647,23 +647,23 @@ class TensorRegistry {
 
     // reorder action submit
     if (reverse_data_flow) {
-      auto reorder_pd = dnnl::reorder::primitive_desc(eng_, desc, eng_, src_desc);
+      auto reorder_pd = tachikoma::reorder::primitive_desc(eng_, desc, eng_, src_desc);
       action->insert(action->begin(),
-                     {dnnl::reorder(reorder_pd), {{DNNL_ARG_FROM, dst_ar}, {DNNL_ARG_TO, src_ar}}});
+                     {tachikoma::reorder(reorder_pd), {{DNNL_ARG_FROM, dst_ar}, {DNNL_ARG_TO, src_ar}}});
     } else {
-      auto reorder_pd = dnnl::reorder::primitive_desc(eng_, src_desc, eng_, desc);
+      auto reorder_pd = tachikoma::reorder::primitive_desc(eng_, src_desc, eng_, desc);
       action->push_back(
-          {dnnl::reorder(reorder_pd), {{DNNL_ARG_FROM, src_ar}, {DNNL_ARG_TO, dst_ar}}});
+          {tachikoma::reorder(reorder_pd), {{DNNL_ARG_FROM, src_ar}, {DNNL_ARG_TO, dst_ar}}});
     }
     return dst_ar;
   }
   /*! \brief Implementation of memory solver */
   class MemSolverImpl {
    public:
-    MemSolverImpl(const dnnl::engine& eng, const DLTensorProvider& ext_data_provider,
-                  const std::vector<dnnl::memory>& const_mems,
-                  const std::vector<std::pair<uint32_t, dnnl::memory::desc>>& ext_mems,
-                  const std::vector<dnnl::memory::desc>& tmp_mem_descs,
+    MemSolverImpl(const tachikoma::engine& eng, const DLTensorProvider& ext_data_provider,
+                  const std::vector<tachikoma::memory>& const_mems,
+                  const std::vector<std::pair<uint32_t, tachikoma::memory::desc>>& ext_mems,
+                  const std::vector<tachikoma::memory::desc>& tmp_mem_descs,
                   const std::map<size_t, size_t>& tmp_mem_mapping)
         : eng_(eng),
           ext_data_provider_(ext_data_provider),
@@ -677,15 +677,15 @@ class TensorRegistry {
 
         if (found != tmp_mem_mapping.end()) {
           auto reuse_hdl = tmp_mems_[found->second].get_data_handle();
-          tmp_mems_[i] = dnnl::memory(tmp_mem_descs[i], eng_, reuse_hdl);
+          tmp_mems_[i] = tachikoma::memory(tmp_mem_descs[i], eng_, reuse_hdl);
         } else {
-          tmp_mems_[i] = dnnl::memory(tmp_mem_descs[i], eng_);
+          tmp_mems_[i] = tachikoma::memory(tmp_mem_descs[i], eng_);
         }
       }
     }
 
     /*! \brief Find memory object associated with provided ArgId */
-    dnnl::memory operator()(const ArgId& ar) const {
+    tachikoma::memory operator()(const ArgId& ar) const {
       switch (ar.flag_) {
         case CONST:
           return const_mems_.at(ar.idx_);
@@ -698,27 +698,27 @@ class TensorRegistry {
 
           auto ext_dl_tensor = ext_data_provider_(eid);
           ICHECK(ext_dl_tensor->data);
-          return dnnl::memory{desc, eng_, ext_dl_tensor->data};
+          return tachikoma::memory{desc, eng_, ext_dl_tensor->data};
         }
       }
       return {};
     }
 
    private:
-    const dnnl::engine& eng_;
+    const tachikoma::engine& eng_;
     const DLTensorProvider& ext_data_provider_;
-    const std::vector<dnnl::memory>& const_mems_;
-    const std::vector<std::pair<uint32_t, dnnl::memory::desc>>& ext_mems_;
-    std::vector<dnnl::memory> tmp_mems_;
+    const std::vector<tachikoma::memory>& const_mems_;
+    const std::vector<std::pair<uint32_t, tachikoma::memory::desc>>& ext_mems_;
+    std::vector<tachikoma::memory> tmp_mems_;
   };
 
   ArgId MakeArgReq(ArgReqFlag flag, uint32_t idx) { return {flag, idx}; }
 
   /* Collection of const memory objects. */
-  std::vector<dnnl::memory> const_mem_collection_;
+  std::vector<tachikoma::memory> const_mem_collection_;
 
   /* Collection of intermediate memory descriptors. Zero position is reserved for scratchpads. */
-  std::vector<dnnl::memory::desc> tmp_mem_collection_;
+  std::vector<tachikoma::memory::desc> tmp_mem_collection_;
 
   /* Mapping of some temp buffer on previously registered. */
   std::map<size_t, size_t> tmp_mem_mapping_;
@@ -726,7 +726,7 @@ class TensorRegistry {
   /* Collection of external_intermediate memory objects.
    *  first  - eid of external buffer to ask
    *  second - t_desc describes how to treat external buffer */
-  std::vector<std::pair<uint32_t, dnnl::memory::desc>> ext_mem_collection_;
+  std::vector<std::pair<uint32_t, tachikoma::memory::desc>> ext_mem_collection_;
 
   /* Map of eid to index of temp buffer in tmp_mem_collection_ */
   std::unordered_map<uint32_t, size_t> eid2idx_tmp_;
@@ -735,10 +735,10 @@ class TensorRegistry {
   std::set<uint32_t> ext_io_eid_;
 
   /* Engine of all tensors existing in this registry */
-  dnnl::engine eng_;
+  tachikoma::engine eng_;
 
   /* Execution stream use to reorder const data */
-  dnnl::stream stream_;
+  tachikoma::stream stream_;
 };
 
 }  // namespace contrib
