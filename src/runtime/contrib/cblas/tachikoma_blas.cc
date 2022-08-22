@@ -40,7 +40,7 @@ struct TachikomaSgemmOp {
   typedef float TDatatype;
   void operator()(bool ta, bool tb, int M, int N, int K, float alpha, float* A, int lda, float* B,
                   int ldb, float beta, float* C, int ldc) {
-    tachikoma_sgemm(TachikomaBooleanToTransposeChar(tb), TachikomaBooleanToTransposeChar(ta), N, M, K, alpha, B,
+    dnnl_sgemm(TachikomaBooleanToTransposeChar(tb), TachikomaBooleanToTransposeChar(ta), N, M, K, alpha, B,
                ldb, A, lda, beta, C, ldc);
   }
 };
