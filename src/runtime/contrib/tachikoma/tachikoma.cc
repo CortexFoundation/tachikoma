@@ -87,6 +87,8 @@ void tachikoma_conv2d_common(float* data, float* weights, float* bias, float* ou
   engine eng(engine::kind::cpu, 0);
   stream s(eng);
 
+  std::cout << "tachikoma_conv2d_common\n";
+  
   memory::dims conv2d_src_tz = {p_N_, p_C_, p_H_, p_W_};
   memory::dims conv2d_weights_tz = {p_O_, p_C_, p_Kh_, p_Kw_};
   if (p_G_ > 1) conv2d_weights_tz = {p_G_, 1, p_C_ / p_G_, p_Kh_, p_Kw_};
