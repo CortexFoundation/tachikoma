@@ -22,8 +22,8 @@
  * \brief Helper TR wrapper to simplify tensors processing
  */
 
-#ifndef TVM_RUNTIME_CONTRIB_DNNL_DNNL_TENSOR_REQUISITE_H_
-#define TVM_RUNTIME_CONTRIB_DNNL_DNNL_TENSOR_REQUISITE_H_
+#ifndef TVM_RUNTIME_CONTRIB_TACHIKOMA_TACHIKOMA_TENSOR_REQUISITE_H_
+#define TVM_RUNTIME_CONTRIB_TACHIKOMA_TACHIKOMA_TENSOR_REQUISITE_H_
 
 #include <dlpack/dlpack.h>
 
@@ -314,7 +314,7 @@ class TensorRequisite {
     while (it != layout_tokens.end() && it->first == -1) it++;
     int rank = std::distance(layout_tokens.begin(), it);
     while (it != layout_tokens.end()) {
-      ICHECK_NE(it->first, -1) << "DNNL limitation. Blocking dims should be innermost. "
+      ICHECK_NE(it->first, -1) << "Tachikoma limitation. Blocking dims should be innermost. "
                                << "But received layout is " << layout;
       it++;
     }
@@ -745,4 +745,4 @@ class TensorRegistry {
 }  // namespace runtime
 }  // namespace tvm
 
-#endif  // TVM_RUNTIME_CONTRIB_DNNL_DNNL_TENSOR_REQUISITE_H_
+#endif  // TVM_RUNTIME_CONTRIB_TACHIKOMA_TACHIKOMA_TENSOR_REQUISITE_H_
