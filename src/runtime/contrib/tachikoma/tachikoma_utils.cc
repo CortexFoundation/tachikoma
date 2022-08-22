@@ -23,6 +23,8 @@
 
 #include "tachikoma_utils.h"
 
+namespace tachikoma = dnnl;
+
 #include "tvm/runtime/logging.h"
 
 namespace tvm {
