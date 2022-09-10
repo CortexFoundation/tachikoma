@@ -82,6 +82,8 @@ void tachikoma_conv2d_common(float* data, float* weights, float* bias, float* ou
                         int p_H_, int p_W_, int p_O_, int p_G_, int p_Ph0_, int p_Pw0_, int p_Ph1_,
                         int p_Pw1_, int p_Kh_, int p_Kw_, int p_Sh_, int p_Sw_, primitive_attr attr,
                         bool channel_last, bool pre_cast, bool post_cast) {
+  std::cout << "conv2d." << std::endl;
+
   using tag = memory::format_tag;
   using dt = memory::data_type;
   engine eng(engine::kind::cpu, 0);
