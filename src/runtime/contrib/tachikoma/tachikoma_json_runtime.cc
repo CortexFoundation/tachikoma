@@ -301,7 +301,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
   }
 
   void Convolution(const size_t& nid) {
-    std::cerr << "convolution." << std::endl;
+    std::cerr << "Reaching convolution in JSON Runtime." << std::endl;
     
     auto node = nodes_[nid];
     auto op_name = nodes_[nid].GetOpName();
@@ -373,6 +373,17 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
         tachikoma::prop_kind::forward_inference, tachikoma::algorithm::convolution_direct,
         src_tr.LayoutAny().desc(), wgh_tr.LayoutAny().desc(), bias_tr.LayoutAny().desc(),
         dst_tr.LayoutAny().desc(), strides, dilates, padding_l, padding_r);
+
+    std::cerr << "Trace:\n-----" << std::endl;
+    std::cerr << src_tr.LayoutAny().desc() << std::endl;
+    std::cerr << wgh_tr.LayoutAny().desc() << std::endl;
+    std::cerr << bias_tr.LayoutAny().desc() << std::endl;
+    std::cerr << dst_tr.LayoutAny().desc() << std::endl;
+    std::cerr << strides << std::endl;
+    std::cerr << dilates << std::endl;
+    std::cerr << padding_l << std::endl;
+    std::cerr << padding_r << std::endl;
+    std::cerr << "-----" << std::endl;
 
     // Enable elementwise post-ops.
     auto conv_prim_desc = tachikoma::convolution_forward::primitive_desc(conv_desc, attr, engine_);
