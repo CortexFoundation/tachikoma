@@ -120,6 +120,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
 
   /* Override GetFunction to reimplement Run method */
   PackedFunc GetFunction(const std::string& name, const ObjectPtr<Object>& sptr_to_self) override {
+    std::cerr << "GetFunction called on " << name << std:endl;
     if (this->symbol_name_ == name) {
       return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
         ICHECK(this->initialized_) << "The module has not been initialized";
