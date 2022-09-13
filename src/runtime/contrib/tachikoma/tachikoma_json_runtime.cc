@@ -115,16 +115,8 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
 
         std::cerr << data_entry_.size() << " vectors in total." << std::endl;
 
-        int vector_id = 0;
-        for (const auto& entry : data_entry_) {
-          if (entry != nullptr)  {
-            NDArray tensor = NDArray();
-            tensor.CopyFrom(entry);
-            //tensor.Save();
-          } else {
-            std::cerr << vector_id << " ";
-          }
-          vector_id++;
+        for (int vector_id = 0; vector_id < data_entry_.size; vector_id++) {
+          std::cerr << (void*) data_entry_[vector_id] << " ";
         }
         std::cerr << std::endl;
         std::cerr << "Run complete." << std::endl;
