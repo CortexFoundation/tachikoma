@@ -99,23 +99,6 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
 
       prim.execute(stream_, mem_args);
     }
-
-    std::cerr << data_entry_.size() << " vectors in total." << std::endl;
-
-    int vector_id = 0;
-    for (const auto& entry : data_entry_) {
-      if (entry != nullptr)  {
-        NDArray tensor = NDArray();
-        tensor.CopyFrom(entry);
-        //tensor.Save();
-      } else {
-        std::cerr << vector_id << " ";
-      }
-      vector_id++;
-    }
-    std::cerr << std::endl;
-    std::cerr << "Run complete." << std::endl;
-
   }
 
   /* Override GetFunction to reimplement Run method */
@@ -129,6 +112,22 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
             << "Found mismatch in the number of provided data entries and required.";
 
         Run(args);
+
+        std::cerr << data_entry_.size() << " vectors in total." << std::endl;
+
+        int vector_id = 0;
+        for (const auto& entry : data_entry_) {
+          if (entry != nullptr)  {
+            NDArray tensor = NDArray();
+            tensor.CopyFrom(entry);
+            //tensor.Save();
+          } else {
+            std::cerr << vector_id << " ";
+          }
+          vector_id++;
+        }
+        std::cerr << std::endl;
+        std::cerr << "Run complete." << std::endl;
       });
     } else {
       return JSONRuntimeBase::GetFunction(name, sptr_to_self);
