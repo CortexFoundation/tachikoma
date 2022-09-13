@@ -69,22 +69,6 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     // Setup constants entries for weights.
     SetupConstants(consts);
     BuildEngine();
-
-    std::cerr << data_entry_.size() << " vectors in total." << std::endl;
-
-    int vector_id = 0;
-    for (const auto& entry : data_entry_) {
-      if (entry != nullptr)  {
-        NDArray tensor = NDArray();
-        tensor.CopyFrom(entry);
-        //tensor.Save();
-      } else {
-        std::cerr << vector_id << " ";
-      }
-      vector_id++;
-    }
-    std::cerr << std::endl;
-    std::cerr << "Run complete." << std::endl;
   }
 
   /* Unused stub implementation */
@@ -116,15 +100,31 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
       prim.execute(stream_, mem_args);
     }
 
+    std::cerr << data_entry_.size() << " vectors in total." << std::endl;
+
+    int vector_id = 0;
+    for (const auto& entry : data_entry_) {
+      if (entry != nullptr)  {
+        NDArray tensor = NDArray();
+        tensor.CopyFrom(entry);
+        //tensor.Save();
+      } else {
+        std::cerr << vector_id << " ";
+      }
+      vector_id++;
+    }
+    std::cerr << std::endl;
+    std::cerr << "Run complete." << std::endl;
+
   }
 
   /* Override GetFunction to reimplement Run method */
   PackedFunc GetFunction(const std::string& name, const ObjectPtr<Object>& sptr_to_self) override {
-    std::cerr << "GetFunction called on " << name << "|" << this->symbol_name_ << std::endl;
+    std::cerr << "GetFunction built on " << name << "|" << this->symbol_name_ << std::endl;
     if (this->symbol_name_ == name) {
       return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
         ICHECK(this->initialized_) << "The module has not been initialized";
-
+        std::cerr << "PackedFunc called." << std::endl;
         ICHECK_EQ(args.size(), input_var_eid_.size() + outputs_.size())
             << "Found mismatch in the number of provided data entries and required.";
 
