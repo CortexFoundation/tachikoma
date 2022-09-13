@@ -24,6 +24,7 @@
 
 #include <tvm/runtime/ndarray.h>
 #include <tvm/runtime/registry.h>
+#include <tvm/runtime/serializer.h>
 
 #include <cstddef>
 #include <regex>
@@ -98,6 +99,8 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
 
       prim.execute(stream_, mem_args);
     }
+
+    std::cerr << "Run complete." << std::endl;
   }
 
   /* Override GetFunction to reimplement Run method */
@@ -301,7 +304,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
   }
 
   void Convolution(const size_t& nid) {
-    std::cerr << "Reaching convolution in JSON Runtime." << std::endl;
+    std::cerr << "Reaching convolution[" << nid << "] in JSON Runtime." << std::endl;
     
     auto node = nodes_[nid];
     auto op_name = nodes_[nid].GetOpName();
