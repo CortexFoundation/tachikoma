@@ -376,9 +376,9 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
 
     std::cerr << "Trace:\n-----" << std::endl;
     std::cerr << (int)(src_tr.get_data_handle()) << std::endl;
-    std::cerr << wgh_tr << std::endl;
-    std::cerr << bias_tr << std::endl;
-    std::cerr << dst_tr << std::endl;
+    std::cerr << wgh_tr.LayoutAny().desc().dims << std::endl;
+    std::cerr << bias_tr.LayoutAny().desc().dims << std::endl;
+    std::cerr << dst_tr.LayoutAny().desc().dims << std::endl;
     std::cerr << strides << std::endl;
     std::cerr << dilates << std::endl;
     std::cerr << padding_l << std::endl;
