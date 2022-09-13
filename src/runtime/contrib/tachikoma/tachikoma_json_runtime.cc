@@ -102,9 +102,13 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
 
     int vector_id = 0;
     for (const auto& entry : data_entry_) {
-      NDArray tensor = NDArray();
-      tensor.CopyFrom(entry);
-      //tensor.Save();
+      if (entry != nullptr)  {
+        NDArray tensor = NDArray();
+        tensor.CopyFrom(entry);
+        //tensor.Save();
+      } else {
+        std::cerr << vector_id << " " << std::endl;
+      }
       vector_id++;
     }
     std::cerr << "Run complete." << std::endl;
