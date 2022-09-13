@@ -102,7 +102,8 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
 
     int vector_id = 0;
     for (const auto& entry : data_entry_) {
-      tvm::runtime::NDArray tensor = tvm::runtime::NDArray::CopyFrom(entry);
+      NDArray tensor = NDArray();
+      tensor.CopyFrom(entry);
       //tensor.Save();
       vector_id++;
     }
