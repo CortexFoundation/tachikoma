@@ -34,7 +34,7 @@
 #include "../json/json_node.h"
 #include "../json/json_runtime.h"
 
-// TODO(@apeskov): Have to mute warning from tachikoma headers.
+// TODO(@liaopeiyuan): Have to mute warning from tachikoma headers.
 //  -Wzero-as-null-pointer-constant and -Wdocumentation-unknown-command
 #include <dnnl.hpp>
 
@@ -69,6 +69,22 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     // Setup constants entries for weights.
     SetupConstants(consts);
     BuildEngine();
+
+    std::cerr << data_entry_.size() << " vectors in total." << std::endl;
+
+    int vector_id = 0;
+    for (const auto& entry : data_entry_) {
+      if (entry != nullptr)  {
+        NDArray tensor = NDArray();
+        tensor.CopyFrom(entry);
+        //tensor.Save();
+      } else {
+        std::cerr << vector_id << " ";
+      }
+      vector_id++;
+    }
+    std::cerr << std::endl;
+    std::cerr << "Run complete." << std::endl;
   }
 
   /* Unused stub implementation */
@@ -100,20 +116,6 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
       prim.execute(stream_, mem_args);
     }
 
-    std::cerr << data_entry_.size() << "vectors in total." << std::endl;
-
-    int vector_id = 0;
-    for (const auto& entry : data_entry_) {
-      if (entry != nullptr)  {
-        NDArray tensor = NDArray();
-        tensor.CopyFrom(entry);
-        //tensor.Save();
-      } else {
-        std::cerr << vector_id << " " << std::endl;
-      }
-      vector_id++;
-    }
-    std::cerr << "Run complete." << std::endl;
   }
 
   /* Override GetFunction to reimplement Run method */
