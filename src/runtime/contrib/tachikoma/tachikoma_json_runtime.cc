@@ -379,7 +379,6 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
 
     std::cerr << "Trace:\n-----" << std::endl;
     std::cerr << src_tr.LayoutAny().desc().dims() << std::endl;
-    std::cerr << src_tr.LayoutAny().data_type_size(tachikoma::memory::data_type::u8) << std::endl;
     std::cerr << wgh_tr.LayoutAny().desc().dims() << std::endl;
     std::cerr << bias_tr.LayoutAny().desc().dims() << std::endl;
     std::cerr << dst_tr.LayoutAny().desc().dims() << std::endl;
