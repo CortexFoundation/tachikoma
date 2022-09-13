@@ -112,6 +112,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
             << "Found mismatch in the number of provided data entries and required.";
 
         Run(args);
+        stream_.wait();
 
         std::cerr << data_entry_.size() << " vectors in total." << std::endl;
 
