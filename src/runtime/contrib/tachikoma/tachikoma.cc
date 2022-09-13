@@ -18,7 +18,7 @@
  */
 
 /*!
- * \file src/runtime/contrib/tachikoma/dntachikomanl.cc
+ * \file src/runtime/contrib/tachikoma/tachikoma.cc
  * \brief TVM compatible wrappers for tachikoma kernels.
  */
 
