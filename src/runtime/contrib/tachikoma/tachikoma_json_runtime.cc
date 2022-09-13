@@ -100,6 +100,8 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
       prim.execute(stream_, mem_args);
     }
 
+    std::cerr << data_entry_.size() << "vectors in total." << std::endl;
+
     int vector_id = 0;
     for (const auto& entry : data_entry_) {
       if (entry != nullptr)  {
