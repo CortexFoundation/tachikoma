@@ -112,7 +112,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
           std::string data;
           dmlc::MemoryStringStream writer(&data);
           dmlc::SeekStream* strm = &writer;
-          std::string file_name = "/data/tachikoma_results/serialized.ndarray";
+          std::string file_name = args[0];
           if (tensor != nullptr) {
             SaveDLTensor(strm, tensor);
             std::ofstream fs(file_name, std::ios::out | std::ios::binary);
@@ -506,10 +506,10 @@ runtime::Module TachikomaJSONRuntimeCreate(String symbol_name, String graph_json
   return runtime::Module(n);
 }
 
-void TachikomaExportModule(runtime::Module mod) {
+void TachikomaExportModule(runtime::Module mod, const std::string& file_name) {
   tvm::runtime::PackedFunc exportEntries = mod.GetFunction("export_data_entries", false);
   if (exportEntries != nullptr) {
-    exportEntries();
+    exportEntries(file_name);
   }
   bool isnull = exportEntries != nullptr;
   std::cerr << "Exporting module successful? " << isnull << std::endl;
