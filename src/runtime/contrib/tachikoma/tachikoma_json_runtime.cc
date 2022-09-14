@@ -112,7 +112,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
           std::string data;
           dmlc::MemoryStringStream writer(&data);
           dmlc::SeekStream* strm = &writer;
-          std::string file_name = args[0] 
+          std::string file_name = args[0];
           file_name = file_name + "_" + std::to_string(vector_id);
           if (tensor != nullptr) {
             SaveDLTensor(strm, tensor);
