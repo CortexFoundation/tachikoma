@@ -471,10 +471,16 @@ runtime::Module TachikomaJSONRuntimeCreate(String symbol_name, String graph_json
   return runtime::Module(n);
 }
 
+void TachikomaExportModule(TachikomaJSONRuntime x) {
+  std:cerr << "Exporting module ..." << std::end;
+}
+
 TVM_REGISTER_GLOBAL("runtime.TachikomaJSONRuntimeCreate").set_body_typed(TachikomaJSONRuntimeCreate);
 
 TVM_REGISTER_GLOBAL("runtime.module.loadbinary_tachikoma_json")
     .set_body_typed(JSONRuntimeBase::LoadFromBinary<TachikomaJSONRuntime>);
+
+TVM_REGISTER_GLOBAL("runtime.TachikomaExportModule").set_body_typed(TachikomaExportModule);
 
 }  // namespace contrib
 }  // namespace runtime
