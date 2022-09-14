@@ -104,25 +104,26 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
       return PackedFunc(
           [sptr_to_self, this](TVMArgs args, TVMRetValue* rv) { *rv = this->const_names_; });
     } else if (name == "export_data_entries") {
-      return PackedFunc(
-          [sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
-          std::cerr << data_entry_.size() << " vectors in total." << std::endl;
-          for (size_t vector_id = 0; vector_id < data_entry_.size(); vector_id++) {
-            const DLTensor* tensor = data_entry_[vector_id];
-            std::string data;
-            dmlc::MemoryStringStream writer(&data);
-            dmlc::SeekStream* strm = &writer;
-            std::string file_name = "/data/tachikoma_results/serialized.ndarray";
-            if (tensor != nullptr) {
-              SaveDLTensor(strm, tensor);
-              std::ofstream fs(file_name, std::ios::out | std::ios::binary);
-              ICHECK(!fs.fail()) << "Cannot open " << file_name;
-              fs.write(&data[0], data.length());
-            }
-            std::cerr << (void*) data_entry_[vector_id] << " ";
+      return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
+        std::cerr << data_entry_.size() << " vectors in total." << std::endl;
+        for (size_t vector_id = 0; vector_id < data_entry_.size(); vector_id++) {
+          const DLTensor* tensor = data_entry_[vector_id];
+          std::string data;
+          dmlc::MemoryStringStream writer(&data);
+          dmlc::SeekStream* strm = &writer;
+          std::string file_name = "/data/tachikoma_results/serialized.ndarray";
+          if (tensor != nullptr) {
+            SaveDLTensor(strm, tensor);
+            std::ofstream fs(file_name, std::ios::out | std::ios::binary);
+            ICHECK(!fs.fail()) << "Cannot open " << file_name;
+            fs.write(&data[0], data.length());
           }
-          std::cerr << std::endl;
+          std::cerr << (void*) data_entry_[vector_id] << " ";
+        }
+        std::cerr << std::endl;
+        std::cerr << "Run complete." << std::endl;
           std::cerr << "Run complete." << std::endl;        
+        std::cerr << "Run complete." << std::endl;
       });
     } else if (this->symbol_name_ == name) {
       return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
@@ -507,7 +508,7 @@ runtime::Module TachikomaJSONRuntimeCreate(String symbol_name, String graph_json
 }
 
 void TachikomaExportModule(runtime::Module mod) {
-  tvm::runtime::PackedFunc exportEntries = mod->mod.GetFunction("export_data_entries");
+  tvm::runtime::PackedFunc exportEntries = mod.GetFunction("export_data_entries");
   exportEntries();
   std::cerr << "Exporting module ..." << std::endl;
 }
