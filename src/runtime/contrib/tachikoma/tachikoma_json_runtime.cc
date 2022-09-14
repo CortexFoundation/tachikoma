@@ -25,6 +25,7 @@
 #include <tvm/runtime/ndarray.h>
 #include <tvm/runtime/registry.h>
 #include <dmlc/io.h>
+#include "<tvm/support/base64.h>"
 
 #include <cstddef>
 #include <string>
@@ -97,10 +98,10 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     
     for (size_t vector_id = 0; vector_id < data_entry_.size(); vector_id++) {
       const DLTensor* tensor = data_entry_[vector_id];
+      std::string blob;
+      dmlc::MemoryStringStream mstrm(&blob);
+      support::Base64OutStream b64strm(&mstrm);
       if (tensor != nullptr) {
-        std::string blob;
-        dmlc::MemoryStringStream mstrm(&blob);
-        support::Base64OutStream b64strm(&mstrm);
         SaveDLTensor(&b64strm, tensor);
       }
       std::cerr << (void*) data_entry_[vector_id] << " ";
