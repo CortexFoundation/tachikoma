@@ -60,7 +60,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
   void Init(const Array<NDArray>& consts) override {
     BuildEngine();
 
-    CHECK_EQ(consts.size(), const_idx_.size())
+    ICHECK_EQ(consts.size(), const_idx_.size())
         << "The number of input constants must match the number of required.";
 
     // Setup constants entries for weights.
@@ -112,7 +112,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     for (size_t nid = 0; nid < nodes_.size(); ++nid) {
       const auto& node = nodes_[nid];
       if (node.GetOpType() == "kernel") {
-        CHECK_EQ(node.GetOpType(), "kernel");
+        ICHECK_EQ(node.GetOpType(), "kernel");
         auto op_name = node.GetOpName();
         if ("nn.conv2d" == op_name) {
           Conv2d(nid);
@@ -151,12 +151,12 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     auto eid = EntryID(entry);
     // Since the Tachikoma memory has been created before calling this function, we assume the entry
     // has not yet been bound to the other Tachikoma memory; otherwise it may have memory leak.
-    CHECK_EQ(entry_out_mem_.count(eid), 0);
+    ICHECK_EQ(entry_out_mem_.count(eid), 0);
 
     // TODO(@comanic): Support other data types (i.e., int8).
     auto data_node = nodes_[entry.id_];
     auto dltype = data_node.GetOpDataType()[entry.index_];
-    CHECK_EQ(dltype.bits, 32);
+    ICHECK_EQ(dltype.bits, 32);
 
     entry_out_mem_[eid] = {mem, offset};
     return entry_out_mem_[eid].first;
@@ -228,11 +228,11 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     net_.push_back(conv);
 
     // Data memory.
-    CHECK_EQ(node.GetAttr<std::vector<std::string>>("data_layout")[0], "NCHW");
+    ICHECK_EQ(node.GetAttr<std::vector<std::string>>("data_layout")[0], "NCHW");
     auto conv2d_src_memory = BindTachikomaMemory(data_entry, {src_dims, dt::f32, tag::nchw});
 
     // Weight memory.
-    CHECK_EQ(node.GetAttr<std::vector<std::string>>("kernel_layout")[0], "OIHW");
+    ICHECK_EQ(node.GetAttr<std::vector<std::string>>("kernel_layout")[0], "OIHW");
     auto conv2d_weights_memory = BindTachikomaMemory(
         weight_entry, {weights_dims, dt::f32, (groups > 1) ? tag::goihw : tag::oihw});
 
@@ -357,7 +357,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     auto relu_desc = tachikoma::eltwise_forward::desc(tachikoma::prop_kind::forward_inference,
                                                  tachikoma::algorithm::eltwise_relu, data_md, 0);
     auto relu_prim_desc = tachikoma::eltwise_forward::primitive_desc(relu_desc, engine_);
-    CHECK(data_md == relu_prim_desc.dst_desc());
+    ICHECK(data_md == relu_prim_desc.dst_desc());
 
     auto relu = tachikoma::eltwise_forward(relu_prim_desc);
     net_.push_back(relu);
@@ -378,7 +378,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     std::vector<tachikoma::memory::desc> data_mds;
     std::vector<tachikoma::memory> data_memories;
 
-    CHECK_EQ(node.GetInputs().size(), 2U);
+    ICHECK_EQ(node.GetInputs().size(), 2U);
     for (auto entry : node.GetInputs()) {
       auto data_shape = nodes_[entry.id_].GetOpShape()[entry.index_];
       tachikoma::memory::desc data_md = GenTachikomaMemDescByShape(data_shape, dt::f32);
@@ -387,7 +387,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
       data_mds.push_back(data_md);
       data_memories.push_back(BindTachikomaMemory(entry, data_md));
     }
-    CHECK(data_dims[0] == data_dims[1]);
+    ICHECK(data_dims[0] == data_dims[1]);
     auto out_md = data_mds[0];
     JSONGraphNodeEntry out_entry(nid, 0);
     auto out_memory = BindTachikomaMemory(out_entry, out_md);
