@@ -509,7 +509,7 @@ runtime::Module TachikomaJSONRuntimeCreate(String symbol_name, String graph_json
 
 void TachikomaExportModule(runtime::Module mod) {
   std::vector<const DLTensor*> entries;
-  tvm::runtime::PackedFunc getEntries = runtime_module->mod.GetFunction("get_data_entries");
+  tvm::runtime::PackedFunc getEntries = mod->mod.GetFunction("get_data_entries");
   // getEntries(entries);
   std::cerr << "Exporting module ..." << std::endl;
 }
