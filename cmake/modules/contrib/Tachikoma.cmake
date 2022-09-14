@@ -16,7 +16,7 @@
 # under the License.
 
 if(IS_DIRECTORY ${USE_TACHIKOMA})
-  find_library(EXTERN_LIBRARY_DNNL NAMES Tachikoma dnnl ${USE_TACHIKOMA}/lib/)
+  find_library(EXTERN_LIBRARY_DNNL NAMES dnnl ${USE_TACHIKOMA}/lib/)
   if (EXTERN_LIBRARY_DNNL STREQUAL "EXTERN_LIBRARY_DNNL-NOTFOUND")
     message(WARNING "Cannot find DNNL library at ${USE_TACHIKOMA}.")
   else()
@@ -37,7 +37,7 @@ elseif((USE_TACHIKOMA STREQUAL "ON") OR (USE_TACHIKOMA STREQUAL "JSON"))
   tvm_file_glob(GLOB TACHIKOMA_RELAY_CONTRIB_SRC src/relay/backend/contrib/tachikoma/*.cc)
   list(APPEND COMPILER_SRCS ${TACHIKOMA_RELAY_CONTRIB_SRC})
 
-  find_library(EXTERN_LIBRARY_DNNL Tachikoma)
+  find_library(EXTERN_LIBRARY_DNNL dnnl)
   list(APPEND TVM_RUNTIME_LINKER_LIBS ${EXTERN_LIBRARY_DNNL})
   tvm_file_glob(GLOB TACHIKOMA_CONTRIB_SRC src/runtime/contrib/tachikoma/tachikoma_json_runtime.cc
                                       src/runtime/contrib/tachikoma/tachikoma_utils.cc
@@ -49,7 +49,7 @@ elseif(USE_TACHIKOMA STREQUAL "C_SRC")
   tvm_file_glob(GLOB TACHIKOMA_RELAY_CONTRIB_SRC src/relay/backend/contrib/tachikoma/*.cc)
   list(APPEND COMPILER_SRCS ${TACHIKOMA_RELAY_CONTRIB_SRC})
 
-  find_library(EXTERN_LIBRARY_DNNL Tachikoma)
+  find_library(EXTERN_LIBRARY_DNNL dnnl)
   list(APPEND TVM_RUNTIME_LINKER_LIBS ${EXTERN_LIBRARY_DNNL})
   tvm_file_glob(GLOB TACHIKOMA_CONTRIB_SRC src/runtime/contrib/tachikoma/tachikoma.cc
                                       src/runtime/contrib/cblas/tachikoma_blas.cc)
