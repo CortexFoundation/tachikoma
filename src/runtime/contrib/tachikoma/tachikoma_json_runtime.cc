@@ -471,8 +471,8 @@ runtime::Module TachikomaJSONRuntimeCreate(String symbol_name, String graph_json
   return runtime::Module(n);
 }
 
-void TachikomaExportModule(TachikomaJSONRuntime x) {
-  std:cerr << "Exporting module ..." << std::end;
+void TachikomaExportModule(runtime::Module x) {
+  std::cerr << "Exporting module ..." << std::end;
 }
 
 TVM_REGISTER_GLOBAL("runtime.TachikomaJSONRuntimeCreate").set_body_typed(TachikomaJSONRuntimeCreate);
