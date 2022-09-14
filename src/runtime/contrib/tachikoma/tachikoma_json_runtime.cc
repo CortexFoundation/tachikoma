@@ -850,6 +850,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     auto desc = MakePlainDesc(shape, dtype);
 
     TensorRequisite res;
+    std::cerr << "const_dl_tensor: " << const_dl_tensor << std::endl;
     if (const_dl_tensor) {
       ICHECK(const_dl_tensor->data);
       ICHECK(const_dl_tensor->strides == nullptr);
