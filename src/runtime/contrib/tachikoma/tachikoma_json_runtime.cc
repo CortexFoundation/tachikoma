@@ -101,7 +101,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
         std::ostringstream loc;
         loc << "file:///data/tachikoma_results/" << vector_id << ".ndarray";
         std::string location = loc.str();
-        SaveDLTensor(Stream::Create(location.c_str(), "w"), tensor);
+        SaveDLTensor(dmlc::Stream::Create(location.c_str(), "w"), tensor);
       }
       std::cerr << (void*) data_entry_[vector_id] << " ";
     }
