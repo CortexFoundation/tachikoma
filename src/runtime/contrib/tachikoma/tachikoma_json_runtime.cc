@@ -491,7 +491,7 @@ runtime::Module TachikomaJSONRuntimeCreate(String symbol_name, String graph_json
 }
 
 void TachikomaExportModule(runtime::Module mod) {
-  tvm::runtime::PackedFunc exportEntries = mod.GetFunction("export_data_entries", false);
+  tvm::runtime::PackedFunc exportEntries = mod.GetFunction("export_data_entries", nullptr);
   // exportEntries();
   bool isnull = exportEntries != nullptr;
   std::cerr << "Exporting module successful? " << isnull << std::endl;
