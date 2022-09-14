@@ -25,7 +25,7 @@
 #include <tvm/runtime/ndarray.h>
 #include <tvm/runtime/registry.h>
 #include <dmlc/io.h>
-#include "<tvm/support/base64.h>"
+#include <tvm/support/base64.h>
 
 #include <cstddef>
 #include <string>
