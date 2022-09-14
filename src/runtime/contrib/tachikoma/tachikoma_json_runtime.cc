@@ -101,7 +101,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
         auto array = NDArray();
         array.CopyFrom(tensor);
         array.Save(dmlc::Stream::Create(
-            std::sprintf("file:///data/tachikoma_results/%zu.ndarray", vector_id), "w", false));
+            std::format("file:///data/tachikoma_results/{}.ndarray", vector_id), "w", false));
       }
       std::cerr << (void*) data_entry_[vector_id] << " ";
     }
