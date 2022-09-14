@@ -105,10 +105,11 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
           [sptr_to_self, this](TVMArgs args, TVMRetValue* rv) { *rv = this->const_names_; });
     } else if (name == "export_data_entries") {
       return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
-        auto data_entry = this->data_entry_;
-        std::cerr << data_entry.size() << " vectors in total." << std::endl;
-        for (size_t vector_id = 0; vector_id < data_entry.size(); vector_id++) {
-          const DLTensor* tensor = data_entry[vector_id];
+        /*
+        auto d = this->data_entry_;
+        std::cerr << d.size() << " vectors in total." << std::endl;
+        for (size_t vector_id = 0; vector_id < d.size(); vector_id++) {
+          const DLTensor* tensor = d[vector_id];
           std::string data;
           dmlc::MemoryStringStream writer(&data);
           dmlc::SeekStream* strm = &writer;
@@ -119,9 +120,10 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
             ICHECK(!fs.fail()) << "Cannot open " << file_name;
             fs.write(&data[0], data.length());
           }
-          std::cerr << (void*) data_entry[vector_id] << " ";
+          std::cerr << (void*) d[vector_id] << " ";
         }
         std::cerr << std::endl;
+        */
         std::cerr << "Run complete." << std::endl;
       });
     } else if (this->symbol_name_ == name) {
