@@ -125,7 +125,6 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     } else if (name == "get_data_entries") {
       return PackedFunc(
           [sptr_to_self, this](TVMArgs args, TVMRetValue* rv) { *rv = this->data_entry_; });
-    }
     } else if (this->symbol_name_ == name) {
       return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
         ICHECK(this->initialized_) << "The module has not been initialized";
@@ -511,7 +510,7 @@ runtime::Module TachikomaJSONRuntimeCreate(String symbol_name, String graph_json
 void TachikomaExportModule(runtime::Module mod) {
   std::vector<const DLTensor*> entries;
   tvm::runtime::PackedFunc getEntries = runtime_module->mod.GetFunction("get_data_entries");
-  getEntries(entries);
+  // getEntries(entries);
   std::cerr << "Exporting module ..." << std::endl;
 }
 
