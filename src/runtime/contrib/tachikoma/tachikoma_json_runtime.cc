@@ -24,7 +24,7 @@
 
 #include <tvm/runtime/ndarray.h>
 #include <tvm/runtime/registry.h>
-#include <tvm/runtime/serializer.h>
+#include <dmlc/io.h>
 
 #include <cstddef>
 #include <string>
@@ -101,7 +101,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
         std::ostringstream loc;
         loc << "file:///data/tachikoma_results/" << vector_id << ".ndarray";
         std::string location = loc.str();
-        SaveDLTensor(Stream::Create(location.c_str(), "w", false), tensor);
+        SaveDLTensor(Stream::Create(location.c_str(), "w"), tensor);
       }
       std::cerr << (void*) data_entry_[vector_id] << " ";
     }
