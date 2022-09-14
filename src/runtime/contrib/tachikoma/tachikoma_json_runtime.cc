@@ -98,13 +98,15 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     
     for (size_t vector_id = 0; vector_id < data_entry_.size(); vector_id++) {
       const DLTensor* tensor = data_entry_[vector_id];
-      std::string blob;
-      dmlc::MemoryStringStream mstrm(&blob);
-      support::Base64OutStream b64strm(&mstrm);
-      dmlc::Stream *fs = dmlc::Stream::Create("file://data/tachikoma_results/serialized.ndarray", "w");
+      std::string data;
+      dmlc::MemoryStringStream writer(&data);
+      dmlc::SeekStream* strm = &writer;
+      std::string file_name = "/data/tachikoma_results/serialized.ndarray";
       if (tensor != nullptr) {
-        SaveDLTensor(&b64strm, tensor);
-        SaveDLTensor(fs, tensor);
+        SaveDLTensor(strm, tensor);
+        std::ofstream fs(file_name, std::ios::out | std::ios::binary);
+        ICHECK(!fs.fail()) << "Cannot open " << file_name;
+        fs.write(&data[0], data.length());
       }
       std::cerr << (void*) data_entry_[vector_id] << " ";
     }
