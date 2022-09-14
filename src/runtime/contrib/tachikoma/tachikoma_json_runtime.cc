@@ -114,6 +114,43 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     std::cerr << "Run complete." << std::endl;
   }
 
+  /* Override GetFunction to reimplement Run method */
+  PackedFunc GetFunction(const std::string& name, const ObjectPtr<Object>& sptr_to_self) override {
+    if (name == "get_symbol") {
+      return PackedFunc(
+          [sptr_to_self, this](TVMArgs args, TVMRetValue* rv) { *rv = this->symbol_name_; });
+    } else if (name == "get_const_vars") {
+      return PackedFunc(
+          [sptr_to_self, this](TVMArgs args, TVMRetValue* rv) { *rv = this->const_names_; });
+    } else if (name == "get_data_entries") {
+      return PackedFunc(
+          [sptr_to_self, this](TVMArgs args, TVMRetValue* rv) { *rv = this->data_entry_; });
+    }
+    } else if (this->symbol_name_ == name) {
+      return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
+        ICHECK(this->initialized_) << "The module has not been initialized";
+
+        // Bind argument tensors to data entries.
+        this->SetInputOutputBuffers(args);
+        // Execute the subgraph.
+        this->Run();
+      });
+    } else if ("__init_" + this->symbol_name_ == name) {
+      // The function to initialize constant tensors.
+      return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
+        ICHECK_EQ(args.size(), 1U);
+        std::lock_guard<std::mutex> guard(this->initialize_mutex_);
+        if (!this->initialized_) {
+          this->Init(args[0]);
+          this->initialized_ = true;
+        }
+        *rv = 0;
+      });
+    } else {
+      return PackedFunc(nullptr);
+    }
+  }
+
  private:
   // Build up the engine based on the input graph.
   void BuildEngine() {
@@ -471,7 +508,10 @@ runtime::Module TachikomaJSONRuntimeCreate(String symbol_name, String graph_json
   return runtime::Module(n);
 }
 
-void TachikomaExportModule(runtime::Module x) {
+void TachikomaExportModule(runtime::Module mod) {
+  std::vector<const DLTensor*> entries;
+  tvm::runtime::PackedFunc getEntries = runtime_module->mod.GetFunction("get_data_entries");
+  getEntries(entries);
   std::cerr << "Exporting module ..." << std::endl;
 }
 
