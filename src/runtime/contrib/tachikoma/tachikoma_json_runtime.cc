@@ -25,7 +25,6 @@
 #include <tvm/runtime/ndarray.h>
 #include <tvm/runtime/registry.h>
 #include <dmlc/io.h>
-#include <tvm/support/base64.h>
 
 #include <cstddef>
 #include <string>
@@ -33,6 +32,7 @@
 
 #include "../json/json_node.h"
 #include "../json/json_runtime.h"
+#include "../../../support/base64.h"
 
 // TODO(@liaopeiyuan): Have to mute warning from tachikoma headers.
 //  -Wzero-as-null-pointer-constant and -Wdocumentation-unknown-command
