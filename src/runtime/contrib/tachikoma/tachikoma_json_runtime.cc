@@ -105,9 +105,10 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
           [sptr_to_self, this](TVMArgs args, TVMRetValue* rv) { *rv = this->const_names_; });
     } else if (name == "export_data_entries") {
       return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
-        std::cerr << data_entry_.size() << " vectors in total." << std::endl;
-        for (size_t vector_id = 0; vector_id < data_entry_.size(); vector_id++) {
-          const DLTensor* tensor = data_entry_[vector_id];
+        auto data_entry = this->data_entry_;
+        std::cerr << data_entry.size() << " vectors in total." << std::endl;
+        for (size_t vector_id = 0; vector_id < data_entry.size(); vector_id++) {
+          const DLTensor* tensor = data_entry[vector_id];
           std::string data;
           dmlc::MemoryStringStream writer(&data);
           dmlc::SeekStream* strm = &writer;
@@ -118,11 +119,9 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
             ICHECK(!fs.fail()) << "Cannot open " << file_name;
             fs.write(&data[0], data.length());
           }
-          std::cerr << (void*) data_entry_[vector_id] << " ";
+          std::cerr << (void*) data_entry[vector_id] << " ";
         }
         std::cerr << std::endl;
-        std::cerr << "Run complete." << std::endl;
-          std::cerr << "Run complete." << std::endl;        
         std::cerr << "Run complete." << std::endl;
       });
     } else if (this->symbol_name_ == name) {
@@ -510,7 +509,7 @@ runtime::Module TachikomaJSONRuntimeCreate(String symbol_name, String graph_json
 void TachikomaExportModule(runtime::Module mod) {
   tvm::runtime::PackedFunc exportEntries = mod.GetFunction("export_data_entries");
   //exportEntries();
-  std::cerr << "Exporting module ... " << (void*) exportEntries << << std::endl;
+  std::cerr << "Exporting module ... " << std::endl;
 }
 
 TVM_REGISTER_GLOBAL("runtime.TachikomaJSONRuntimeCreate").set_body_typed(TachikomaJSONRuntimeCreate);
