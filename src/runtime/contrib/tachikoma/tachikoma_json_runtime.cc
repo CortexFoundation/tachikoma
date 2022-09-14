@@ -105,25 +105,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
           [sptr_to_self, this](TVMArgs args, TVMRetValue* rv) { *rv = this->const_names_; });
     } else if (name == "export_data_entries") {
       return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
-        /*
-        auto d = this->data_entry_;
-        std::cerr << d.size() << " vectors in total." << std::endl;
-        for (size_t vector_id = 0; vector_id < d.size(); vector_id++) {
-          const DLTensor* tensor = d[vector_id];
-          std::string data;
-          dmlc::MemoryStringStream writer(&data);
-          dmlc::SeekStream* strm = &writer;
-          std::string file_name = "/data/tachikoma_results/serialized.ndarray";
-          if (tensor != nullptr) {
-            SaveDLTensor(strm, tensor);
-            std::ofstream fs(file_name, std::ios::out | std::ios::binary);
-            ICHECK(!fs.fail()) << "Cannot open " << file_name;
-            fs.write(&data[0], data.length());
-          }
-          std::cerr << (void*) d[vector_id] << " ";
-        }
-        std::cerr << std::endl;
-        */
+        *rv = 1;
         std::cerr << "Run complete." << std::endl;
       });
     } else if (this->symbol_name_ == name) {
