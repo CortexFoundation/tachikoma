@@ -449,12 +449,6 @@ class TachikomaJSONSerializer : public backend::contrib::JSONSerializer {
       ICHECK(comp.defined()) << "Tachikoma JSON runtime only supports composite functions.";
       name = comp.value();
 
-      if (name.find("tachikoma.conv2d_bias_relu") != std::string::npos) {
-        call = GetRootCall(fn->body.as<CallNode>(), 2, {"nn.conv2d", "add", "nn.relu"});
-      } else if (name.find("tachikoma.conv2d_relu") != std::string::npos) {
-        call = GetRootCall(fn->body.as<CallNode>(), 1, {"nn.conv2d", "nn.relu"});
-        ICHECK(call->op.as<OpNode>()) << "Not op node";
-      } 
       /*
       if (name.find("tachikoma.deconv2d") != std::string::npos) {
         call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.conv2d_transpose");
@@ -465,10 +459,11 @@ class TachikomaJSONSerializer : public backend::contrib::JSONSerializer {
       } else if (name.find("tachikoma.conv1d") != std::string::npos) {
         call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.conv1d");
         ICHECK(call->op.as<OpNode>()) << "Not op node";
-      } else if (name.find("tachikoma.conv2d") != std::string::npos) {
+      } else */ 
+      if (name.find("tachikoma.conv2d") != std::string::npos) {
         call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.conv2d");
         ICHECK(call->op.as<OpNode>()) << "Not op node";
-      } else if (name.find("tachikoma.conv3d") != std::string::npos) {
+      } /* else if (name.find("tachikoma.conv3d") != std::string::npos) {
         call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.conv3d");
         ICHECK(call->op.as<OpNode>()) << "Not op node";
       } else if (name.find("tachikoma.dense") != std::string::npos) {
