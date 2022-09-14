@@ -101,8 +101,10 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
       std::string blob;
       dmlc::MemoryStringStream mstrm(&blob);
       support::Base64OutStream b64strm(&mstrm);
+      dmlc::Stream *fs = dmlc::Stream::Create("file://data/tachikoma_results/serialized.ndarray", "w");
       if (tensor != nullptr) {
         SaveDLTensor(&b64strm, tensor);
+        SaveDLTensor(fs, tensor);
       }
       std::cerr << (void*) data_entry_[vector_id] << " ";
     }
