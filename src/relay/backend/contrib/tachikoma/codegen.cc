@@ -508,49 +508,6 @@ class TachikomaJSONSerializer : public backend::contrib::JSONSerializer {
   }
 };
 
-class TachikomaJSONSerializer : public backend::contrib::JSONSerializer {
-  using JSONGraphNode = tvm::runtime::json::JSONGraphNode;
-  using JSONGraphNodeEntry = tvm::runtime::json::JSONGraphNodeEntry;
-
- public:
-  TachikomaJSONSerializer(const std::string& symbol, const Expr& expr) : JSONSerializer(symbol, expr) {}
-
-  std::vector<JSONGraphNodeEntry> VisitExpr_(const CallNode* cn) override {
-    Expr expr = GetRef<Expr>(cn);
-    std::string name;
-    const CallNode* call = cn;
-    if (const auto* op_node = cn->op.as<OpNode>()) {
-      name = op_node->name;
-    } else if (const auto* fn = cn->op.as<FunctionNode>()) {
-      auto comp = fn->GetAttr<String>(attr::kComposite);
-      ICHECK(comp.defined()) << "Tachikoma JSON runtime only supports composite functions.";
-      name = comp.value();
-
-      if (name == "tachikoma.conv2d_bias_relu") {
-        call = GetRootCall(fn->body.as<CallNode>(), 2, {"nn.conv2d", "add", "nn.relu"});
-      } else if (name == "tachikoma.conv2d_relu") {
-        call = GetRootCall(fn->body.as<CallNode>(), 1, {"nn.conv2d", "nn.relu"});
-        ICHECK(call->op.as<OpNode>()) << "Not op node";
-      } else {
-        LOG(FATAL) << "Unrecognized Tachikoma pattern: " << name;
-      }
-    } else {
-      LOG(FATAL) << "Tachikoma JSON runtime does not support calls to " << cn->op->GetTypeKey();
-    }
-
-    std::vector<JSONGraphNodeEntry> inputs;
-    for (const auto& arg : cn->args) {
-      auto res = VisitExpr(arg);
-      inputs.insert(inputs.end(), res.begin(), res.end());
-    }
-    auto node = std::make_shared<JSONGraphNode>(name,     /* name_ */
-                                                "kernel", /* op_type_ */
-                                                inputs, 1 /* num_outputs_ */);
-    SetCallNodeAttribute(node, call);
-    return AddNode(node, GetRef<Expr>(cn));
-  }
-};
-
 /*!
  * \brief Get the external symbol of the Relay function name.
  *
