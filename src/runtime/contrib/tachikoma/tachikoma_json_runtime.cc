@@ -103,8 +103,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
         std::ostringstream loc;
         loc << "file:///data/tachikoma_results/" << vector_id << ".ndarray";
         std::string location = loc.str();
-        array.Save(dmlc::Stream::Create(
-            std::format(location, "w", false));
+        array.Save(dmlc::Stream::Create(location, "w", false));
       }
       std::cerr << (void*) data_entry_[vector_id] << " ";
     }
