@@ -437,6 +437,29 @@ class TachikomaModuleCodegen : public CSourceModuleCodegenBase {
 };
 
 #else  // Tachikoma JSON runtime
+/*!
+ * \brief Replace var expr which bind with args of call node
+ *
+ * \param args vector of expression (contains vars or constant nodes)
+ * \param cn call node which describe mapping of internal body vars with args
+ * \return updated vector of expressions
+ */
+static tvm::Array<Expr> BindToCallNodeArgs(const std::vector<Expr>& args, const CallNode* cn) {
+  tvm::Array<Expr> res;
+  for (const auto& arg : args) {
+    if (arg->IsInstance<ConstantNode>()) {
+      res.push_back(arg);
+    } else {
+      auto body_params = cn->op.as<FunctionNode>()->params;
+      auto found = std::find(body_params.begin(), body_params.end(), arg);
+      ICHECK(found != body_params.end());
+      auto idx = std::distance(body_params.begin(), found);
+      res.push_back(cn->args[idx]);
+    }
+  }
+  return res;
+}
+
 class TachikomaJSONSerializer : public backend::contrib::JSONSerializer {
   using JSONGraphNode = tvm::runtime::json::JSONGraphNode;
   using JSONGraphNodeEntry = tvm::runtime::json::JSONGraphNodeEntry;
