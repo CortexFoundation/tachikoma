@@ -79,9 +79,10 @@ def run_and_verify(mod, input, params, target, run_module):
                 processed_mod = tachikoma.partition_for_tachikoma(processed_mod, params)
                 check_tachikoma_used(processed_mod)
             with tvm.transform.PassContext(opt_level=3):
-                _ = relay.create_executor(
+                rt_mod = relay.create_executor(
                     mode, mod=processed_mod, device=dev, target=target
                 )
+                print(rt_mod)
             #if run_module:
             #    if isinstance(input, dict):
             #        result_dict[result_key] = func(**input, **params)
