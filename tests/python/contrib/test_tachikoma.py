@@ -50,23 +50,38 @@ def assert_result_dict_holds(result_dict):
         for r1, r2 in zip(res1, res2):
             tvm.testing.assert_allclose(r1, r2, rtol=1e-3, atol=1e-3)
 
-
-def run_and_verify(mod, input, params, target, run_module):
-    def check_tachikoma_used(mod):
-        num_tachikoma_subgraphs = sum(
-            [1 if "tachikoma" in gv.name_hint else 0 for gv in mod.get_global_vars()]
-        )
+def check_tachikoma_used(mod, subgraph_num=None):
+    num_tachikoma_subgraphs = sum([1 if "tachikoma" in gv.name_hint else 0 for gv in mod.get_global_vars()])
+    if subgraph_num:
+        assert num_tachikoma_subgraphs == subgraph_num
+    else:
         assert num_tachikoma_subgraphs >= 1
 
+def run_and_verify(mod, input, params, target, run_module):
     dev = tvm.cpu()
     result_dict = dict()
     for mode in ["graph", "vm"]:
-        for use_tachikoma in [False, True]:
-            result_key = mode + ("_tachikoma" if use_tachikoma else "")
+        configs = [
+            (False, False, False),
+            (True, False, False),
+            (True, True, False),
+        ]
+
+        for use_tachikoma, alter_layout, use_bf16 in configs:
+            result_key = (
+                mode
+                + ("_tachikoma" if use_tachikoma else "")
+                + ("_layout" if alter_layout else "")
+                + ("_bf16" if use_bf16 else "_fp32")
+            )
+            processed_mod = mod
             if use_tachikoma:
-                mod = tachikoma.partition_for_tachikoma(mod, params)
+                processed_mod = tachikoma.partition_for_tachikoma(processed_mod, params)
+                check_tachikoma_used(processed_mod)
             with tvm.transform.PassContext(opt_level=3):
-                func = relay.create_executor(mode, mod=mod, device=dev, target=target).evaluate()
+                func = relay.create_executor(
+                    mode, mod=processed_mod, device=dev, target=target
+                ).evaluate()
             if run_module:
                 if isinstance(input, dict):
                     result_dict[result_key] = func(**input, **params)
