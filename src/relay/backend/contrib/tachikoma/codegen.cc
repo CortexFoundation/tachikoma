@@ -435,7 +435,6 @@ class TachikomaModuleCodegen : public CSourceModuleCodegenBase {
 };
 
 #else  // Tachikoma JSON runtime
-/*! \brief Serializer to Tachikoma JSON runtime module */
 class TachikomaJSONSerializer : public backend::contrib::JSONSerializer {
   using JSONGraphNode = tvm::runtime::json::JSONGraphNode;
   using JSONGraphNodeEntry = tvm::runtime::json::JSONGraphNodeEntry;
@@ -477,7 +476,7 @@ class TachikomaJSONSerializer : public backend::contrib::JSONSerializer {
       } else if (name.find("tachikoma.dense") != std::string::npos) {
         call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.dense");
         ICHECK(call->op.as<OpNode>()) << "Not op node";
-      else {
+      } else {
         LOG(FATAL) << "Unrecognized Tachikoma pattern: " << name;
       }
 
