@@ -60,7 +60,7 @@ def check_tachikoma_used(mod, subgraph_num=None):
 def run_and_verify(mod, input, params, target, run_module):
     dev = tvm.cpu()
     result_dict = dict()
-    for mode in ["graph", "vm"]:
+    for mode in ["graph"]:
         configs = [
             (False, False, False),
             (True, False, False),
@@ -242,7 +242,7 @@ def test_tachikoma_not_compatible(run_module, target="llvm", dtype="float32"):
     mod = tvm.IRModule()
     mod["main"] = f
     mod = tachikoma.partition_for_tachikoma(mod)
-    for mode in ["graph", "vm"]:
+    for mode in ["graph"]:
         with tvm.transform.PassContext(opt_level=3):
             func = relay.create_executor(mode, mod=mod, device=tvm.cpu(0), target=target).evaluate()
             if run_module:
