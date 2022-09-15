@@ -95,6 +95,61 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     }
   }
 
+  /* Override GetFunction to reimplement Run method */
+  PackedFunc GetFunction(const std::string& name, const ObjectPtr<Object>& sptr_to_self) override {
+    if (name == "get_symbol") {
+      return PackedFunc(
+          [sptr_to_self, this](TVMArgs args, TVMRetValue* rv) { *rv = this->symbol_name_; });
+    } else if (name == "get_const_vars") {
+      return PackedFunc(
+          [sptr_to_self, this](TVMArgs args, TVMRetValue* rv) { *rv = this->const_names_; });
+    } else if (name == "export_data_entries") {
+      return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
+        auto d = this->data_entry_;
+        std::cerr << d.size() << " vectors in total." << std::endl;
+        for (size_t vector_id = 0; vector_id < d.size(); vector_id++) {
+          const DLTensor* tensor = d[vector_id];
+          std::string data;
+          dmlc::MemoryStringStream writer(&data);
+          dmlc::SeekStream* strm = &writer;
+          std::string file_name = args[0];
+          file_name = file_name + "_" + std::to_string(vector_id);
+          if (tensor != nullptr) {
+            SaveDLTensor(strm, tensor);
+            std::ofstream fs(file_name, std::ios::out | std::ios::binary);
+            ICHECK(!fs.fail()) << "Cannot open " << file_name;
+            fs.write(&data[0], data.length());
+          }
+          std::cerr << (void*) d[vector_id] << " ";
+        }
+        std::cerr << std::endl;
+        std::cerr << "Export complete." << std::endl;
+      });
+    } else if (this->symbol_name_ == name) {
+      return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
+        ICHECK(this->initialized_) << "The module has not been initialized";
+
+        // Bind argument tensors to data entries.
+        this->SetInputOutputBuffers(args);
+        // Execute the subgraph.
+        this->Run();
+      });
+    } else if ("__init_" + this->symbol_name_ == name) {
+      // The function to initialize constant tensors.
+      return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
+        ICHECK_EQ(args.size(), 1U);
+        std::lock_guard<std::mutex> guard(this->initialize_mutex_);
+        if (!this->initialized_) {
+          this->Init(args[0]);
+          this->initialized_ = true;
+        }
+        *rv = 0;
+      });
+    } else {
+      return PackedFunc(nullptr);
+    }
+  }
+  
  private:
   // Build up the engine based on the input graph.
   void BuildEngine() {
