@@ -62,9 +62,9 @@ def run_and_verify(mod, input, params, target, run_module):
     result_dict = dict()
     for mode in ["graph", "vm"]:
         configs = [
-            (False, False, False),
+            #(False, False, False),
             (True, False, False),
-            (True, True, False),
+            #(True, True, False),
         ]
 
         for use_tachikoma, alter_layout, use_bf16 in configs:
