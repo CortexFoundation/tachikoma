@@ -82,12 +82,12 @@ def run_and_verify(mod, input, params, target, run_module):
                 rt_mod = relay.create_executor(
                     mode, mod=processed_mod, device=dev, target=target
                 )
-                print(rt_mod)
-            #if run_module:
-            #    if isinstance(input, dict):
-            #        result_dict[result_key] = func(**input, **params)
-            #    else:
-            #        result_dict[result_key] = func(input, **params)
+                func = rt_mod.evaluate()
+            if run_module:
+                if isinstance(input, dict):
+                    result_dict[result_key] = func(**input, **params)
+                else:
+                    result_dict[result_key] = func(input, **params)
 
     if run_module:
         assert_result_dict_holds(result_dict)
