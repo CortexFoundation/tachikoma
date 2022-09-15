@@ -544,6 +544,73 @@ def test_extern_dnnl():
         mod, {"data": i_data, "weight1": w1_data}, (1, 32, 14, 14), ref_res.numpy(), tol=1e-5
     )
 
+def test_extern_tachikoma():
+    if not tvm.get_global_func("relay.ext.tachikoma", True):
+        print("skip because Tachikoma codegen is not available")
+        return
+
+    dtype = "float32"
+    ishape = (1, 32, 14, 14)
+    w1shape = (32, 1, 3, 3)
+
+    def expected():
+        data0 = relay.var("data", shape=(ishape), dtype=dtype)
+        input0 = relay.var("input", shape=(w1shape), dtype=dtype)
+        depthwise_conv2d_1 = relay.nn.conv2d(
+            data0, input0, kernel_size=(3, 3), padding=(1, 1), groups=32
+        )
+        depthwise_conv2d_2 = relay.nn.conv2d(
+            depthwise_conv2d_1, input0, kernel_size=(3, 3), padding=(1, 1), groups=32
+        )
+        out = relay.add(depthwise_conv2d_1, depthwise_conv2d_2)
+
+        func = relay.Function([data0, input0], out)
+        func = set_func_attr(func, "tachikoma", "tvmgen_default_tachikoma_main_0")
+        glb_var = relay.GlobalVar("tvmgen_default_tachikoma_main_0")
+        mod = tvm.IRModule()
+        mod[glb_var] = func
+        mod = transform.InferType()(mod)
+
+        data = relay.var("data", shape=(ishape), dtype=dtype)
+        weight = relay.var("input", shape=(w1shape), dtype=dtype)
+        main_f = relay.Function([data, weight], glb_var(data, weight))
+        mod["main"] = main_f
+        mod = transform.InferType()(mod)
+
+        return mod
+
+    def get_func():
+        data = relay.var("data", shape=(ishape), dtype=dtype)
+        weight1 = relay.var("weight1", shape=(w1shape), dtype=dtype)
+        depthwise_conv2d_1 = relay.nn.conv2d(
+            data, weight1, kernel_size=(3, 3), padding=(1, 1), groups=32
+        )
+        depthwise_conv2d_2 = relay.nn.conv2d(
+            depthwise_conv2d_1, weight1, kernel_size=(3, 3), padding=(1, 1), groups=32
+        )
+        out = relay.add(depthwise_conv2d_1, depthwise_conv2d_2)
+
+        return relay.Function([data, weight1], out)
+
+    mod = tvm.IRModule()
+    mod["main"] = WholeGraphAnnotator("tachikoma").visit(get_func())
+    mod = transform.PartitionGraph()(mod)
+    mod = transform.InferType()(mod)
+
+    assert tvm.ir.structural_equal(mod, expected(), map_free_vars=True)
+
+    ref_mod = tvm.IRModule()
+    ref_mod["main"] = get_func()
+
+    i_data = np.random.uniform(0, 1, ishape).astype(dtype)
+    w1_data = np.random.uniform(0, 1, w1shape).astype(dtype)
+
+    ref_res = relay.create_executor("graph", mod=ref_mod, device=tvm.cpu()).evaluate()(
+        i_data, w1_data
+    )
+    check_result(
+        mod, {"data": i_data, "weight1": w1_data}, (1, 32, 14, 14), ref_res.numpy(), tol=1e-5
+    )
 
 def test_extern_dnnl_mobilenet():
     if not tvm.get_global_func("relay.ext.dnnl", True):
@@ -554,6 +621,27 @@ def test_extern_dnnl_mobilenet():
     ishape = (1, 3, 224, 224)
     ref_mod, params = relay.testing.mobilenet.get_workload(batch_size=1, dtype="float32")
     mod = transform.AnnotateTarget(["dnnl"])(ref_mod)
+    mod = transform.MergeCompilerRegions()(mod)
+    mod = transform.PartitionGraph()(mod)
+    i_data = np.random.uniform(0, 1, ishape).astype(dtype)
+
+    ref_res = relay.create_executor("graph", mod=ref_mod, device=tvm.cpu(0)).evaluate()(
+        i_data, **params
+    )
+    te_compiler.get().clear()
+
+    check_result(mod, {"data": i_data}, (1, 1000), ref_res.numpy(), tol=1e-5, params=params)
+
+
+def test_extern_tachikoma_mobilenet():
+    if not tvm.get_global_func("relay.ext.tachikoma", True):
+        print("skip because Tachikoma codegen is not available")
+        return
+
+    dtype = "float32"
+    ishape = (1, 3, 224, 224)
+    ref_mod, params = relay.testing.mobilenet.get_workload(batch_size=1, dtype="float32")
+    mod = transform.AnnotateTarget(["tachikoma"])(ref_mod)
     mod = transform.MergeCompilerRegions()(mod)
     mod = transform.PartitionGraph()(mod)
     i_data = np.random.uniform(0, 1, ishape).astype(dtype)
@@ -1122,6 +1210,211 @@ def test_dnnl_fuse():
     ref_mod, ref_params = relay.testing.mobilenet.get_workload()
     test_exec(mod, params, ref_mod, ref_params, (1, 1000))
 
+def test_tachikoma_fuse():
+    tachikoma_patterns = get_pattern_table("tachikoma")
+    for pattern in tachikoma_patterns:
+        if pattern[0] == "tachikoma.conv2d_bias_relu":
+            conv2d_bias_relu_pat = pattern
+        elif pattern[0] == "tachikoma.conv2d_bias_sigmoid":
+            conv2d_bias_sigmoid_pat = pattern
+        elif pattern[0] == "tachikoma.conv2d_bias":
+            conv2d_bias_pat = pattern
+        elif pattern[0] == "tachikoma.conv2d_relu":
+            conv2d_relu_pat = pattern
+        elif pattern[0] == "tachikoma.conv2d_sigmoid":
+            conv2d_sigmoid_pat = pattern
+        elif pattern[0] == "tachikoma.conv2d_bias_sum":
+            conv2d_bias_sum_pat = pattern
+        elif pattern[0] == "tachikoma.conv2d_bias_sum_relu":
+            conv2d_bias_sum_relu_pat = pattern
+
+    def get_blocks(
+        prefix,
+        data,
+        in_channel,
+        out_channel,
+        include_bias_add=True,
+        include_bn=True,
+        include_sigmoid=False,
+    ):
+        weight = relay.var(prefix + "weight")
+        bias = relay.var(prefix + "bias")
+        bn_gamma = relay.var(prefix + "bn_gamma")
+        bn_beta = relay.var(prefix + "bn_beta")
+        bn_mmean = relay.var(prefix + "bn_mean")
+        bn_mvar = relay.var(prefix + "bn_var")
+
+        layer = relay.nn.conv2d(
+            data=data, weight=weight, kernel_size=(3, 3), channels=out_channel, padding=(1, 1)
+        )
+        if include_bias_add:
+            layer = relay.nn.bias_add(layer, bias)
+        if include_bn:
+            bn_output = relay.nn.batch_norm(layer, bn_gamma, bn_beta, bn_mmean, bn_mvar)
+            layer = bn_output[0]
+        if include_sigmoid:
+            # dummy layer to prevent pattern detection
+            layer = relay.sigmoid(layer)
+        layer = relay.nn.relu(layer)
+        return layer
+
+    def get_net(include_bias_add=True, include_bn=True, include_sigmoid=False):
+        data = relay.var("data", relay.TensorType((1, 3, 224, 224), "float32"))
+        block1 = get_blocks("block1_", data, 3, 8, include_bias_add, include_bn, include_sigmoid)
+        # The second block is always conv + relu, to make it more interesting
+        block2 = get_blocks("block2_", block1, 8, 8, False, False, include_sigmoid)
+        return relay.Function(relay.analysis.free_vars(block2), block2)
+
+    def get_partitoned_mod(mod, params, pattern_table):
+        # This is required for constant folding
+        mod["main"] = bind_params_by_name(mod["main"], params)
+
+        remove_bn_pass = tvm.transform.Sequential(
+            [
+                transform.InferType(),
+                transform.SimplifyInference(),
+                transform.FoldConstant(),
+                transform.FoldScaleAxis(),
+            ]
+        )
+        # fold consecutive add ops to simplify pattern `conv2d-bias_add-bn-relu`
+        remove_linear_pass = tvm.transform.Sequential(
+            [
+                transform.SimplifyExpr(),
+                transform.FoldConstant(),
+            ]
+        )
+        composite_partition = tvm.transform.Sequential(
+            [
+                transform.CanonicalizeOps(),
+                remove_bn_pass,
+                remove_linear_pass,
+                transform.MergeComposite(pattern_table),
+                transform.AnnotateTarget("tachikoma"),
+                transform.PartitionGraph(),
+            ]
+        )
+
+        with tvm.transform.PassContext(opt_level=3, disabled_pass=["AlterOpLayout"]):
+            return composite_partition(mod)
+
+    def test_detect_pattern(
+        pattern_table, include_bias_add, include_bn, include_sigmoid, num_expected_partition
+    ):
+        net = get_net(include_bias_add, include_bn, include_sigmoid)
+        mod, params = tvm.relay.testing.create_workload(net)
+        mod = get_partitoned_mod(mod, params, pattern_table)
+        assert len(mod.functions) - 1 == num_expected_partition  # -1 for main
+
+    def test_sum_pattern(pattern_table, num_expected_partition):
+        def get_conv2d_bn_sum_relu(
+            x_shape=(1, 32, 8, 8),
+            k_shape=(16, 32, 3, 3),
+            sum_shape=(1, 16, 6, 6),
+            dtype="float32",
+        ):
+            x = relay.var("x", shape=(x_shape), dtype=dtype)
+            kernel = relay.const(np.random.randint(0, 1, k_shape).astype(dtype))
+            bias = relay.var("bias", shape=(k_shape[0],), dtype=dtype)
+            beta = relay.const(np.zeros(k_shape[0]).astype(dtype))
+            gamma = relay.const(np.ones(k_shape[0]).astype(dtype))
+            moving_mean = relay.const(np.zeros(k_shape[0]).astype(dtype))
+            moving_var = relay.const(np.ones(k_shape[0]).astype(dtype))
+            sum_data = relay.var("data1", shape=sum_shape, dtype=dtype)
+
+            dic = {"x": x_shape, "bias": (k_shape[0],), "sum_data": sum_shape}
+            param_lst = ["bias", "sum_data"]
+
+            conv = relay.nn.conv2d(
+                x,
+                kernel,
+                channels=k_shape[0],
+                kernel_size=k_shape[2:4],
+            )
+            conv_bias = relay.nn.bias_add(conv, bias)
+            conv_bias_bn, _, _ = relay.nn.batch_norm(
+                conv_bias,
+                gamma=gamma,
+                beta=beta,
+                moving_mean=moving_mean,
+                moving_var=moving_var,
+                axis=1,
+                center=True,
+                scale=True,
+                epsilon=1e-5,
+            )
+            conv_bias_bn_sum = relay.add(conv_bias_bn, sum_data)
+            return relay.nn.relu(conv_bias_bn_sum), dic, param_lst
+
+        net, dic, param_lst = get_conv2d_bn_sum_relu()
+        net = tvm.IRModule.from_expr(net)
+        params = {x: np.random.uniform(-1, 1, dic[x]).astype("float32") for x in param_lst}
+        mod = get_partitoned_mod(net, params, pattern_table)
+        assert len(mod.functions) - 1 == num_expected_partition  # -1 for main
+
+    def test_partition():
+        # conv + bn + relu, conv + relu -> fused conv_bias_relu, conv, and relu
+        test_detect_pattern([conv2d_bias_relu_pat], False, True, False, 3)
+        # conv + bn + relu, conv + relu -> conv, bias, relu, and fused conv_relu
+        test_detect_pattern([conv2d_relu_pat], False, True, False, 4)
+        # conv + bn + relu, conv + relu -> fused conv_bias_relu, and fused conv_relu
+        test_detect_pattern([conv2d_bias_relu_pat, conv2d_relu_pat], False, True, False, 2)
+        # conv + bias_add + bn + relu, conv + relu -> fused conv_bias_relu, and fused conv_relu
+        test_detect_pattern([conv2d_bias_relu_pat, conv2d_relu_pat], True, True, False, 2)
+        # conv + relu, conv + relu -> two fused conv_relu
+        test_detect_pattern([conv2d_relu_pat], False, False, False, 2)
+        # conv + relu, conv + relu -> no fusion, 4 partition each with a single op
+        test_detect_pattern([conv2d_bias_relu_pat], False, False, False, 4)
+        # conv + bn + sigmoid + relu, conv + sigmoid + relu -> no fusion
+        test_detect_pattern([conv2d_bias_relu_pat, conv2d_relu_pat], False, True, True, 7)
+        # conv + bias_add + bn + sigmoid + relu, conv + sigmoid + relu -> fused conv_bias
+        # and single op sigmoid, relu, conv, sigmoid, relu
+        test_detect_pattern([conv2d_bias_pat, conv2d_relu_pat], True, True, True, 6)
+        # conv + bias_add + bn + sigmoid + relu, conv + sigmoid + relu -> fused conv_bias_sigmoid
+        # and single op relu, conv, sigmoid, relu
+        test_detect_pattern([conv2d_bias_sigmoid_pat, conv2d_relu_pat], True, True, True, 5)
+        # conv + bias_add + bn + sigmoid + relu, conv + sigmoid + relu -> fused conv_bias_sigmoid,
+        # fused conv_sigmoid and single op relu, relu
+        test_detect_pattern([conv2d_bias_sigmoid_pat, conv2d_sigmoid_pat], True, True, True, 4)
+        # conv + bias_add + bn + add + relu -> fused conv_bias_sum, relu
+        test_sum_pattern([conv2d_bias_sum_pat], 2)
+        # conv + bias_add + bn + add + relu -> fused conv_bias_sum_relu,
+        test_sum_pattern([conv2d_bias_sum_relu_pat], 1)
+
+    def test_partition_mobilenet():
+        mod, params = relay.testing.mobilenet.get_workload()
+        mod = get_partitoned_mod(mod, params, tachikoma_patterns)
+        # 27 fused conv + bn + relu, one dense, one softmax and one global_avg_pooling
+        assert len(mod.functions) - 1 == 30  # -1 for main
+
+    def test_exec(mod, params, ref_mod, ref_params, out_shape):
+        ishape = (1, 3, 224, 224)
+        i_data = np.random.randn(*ishape).astype(np.float32)
+        ref_res = relay.create_executor("graph", mod=ref_mod, device=tvm.cpu(0)).evaluate()(
+            i_data, **ref_params
+        )
+        te_compiler.get().clear()
+
+        mod = get_partitoned_mod(mod, params, tachikoma_patterns)
+
+        check_result(mod, {"data": i_data}, out_shape, ref_res.numpy(), tol=1e-5, params=params)
+
+    test_partition()
+    test_partition_mobilenet()
+
+    if not tvm.get_global_func("relay.ext.tachikoma", True):
+        print("skip because tachikoma codegen is not available")
+        return
+
+    net = get_net()
+    mod, params = tvm.relay.testing.create_workload(net)
+    ref_mod, ref_params = tvm.relay.testing.create_workload(net)
+    test_exec(mod, params, ref_mod, ref_params, (1, 8, 224, 224))
+
+    mod, params = relay.testing.mobilenet.get_workload()
+    ref_mod, ref_params = relay.testing.mobilenet.get_workload()
+    test_exec(mod, params, ref_mod, ref_params, (1, 1000))
+
 
 def test_multiple_use_of_an_output():
     def expected_same_output_region():
@@ -1615,6 +1908,53 @@ def test_not_bind_constant():
     mod = get_partitoned_mod(mod, params, get_pattern_table("dnnl"), bind_constants=False)
     len(mod["main"].body.args) == 3
 
+def test_not_bind_constant_tachikoma():
+    def get_net(prefix, data, out_channel):
+        weight = relay.var(prefix + "weight")
+        bn_gamma = relay.var(prefix + "bn_gamma")
+        bn_beta = relay.var(prefix + "bn_beta")
+        bn_mmean = relay.var(prefix + "bn_mean")
+        bn_mvar = relay.var(prefix + "bn_var")
+
+        layer = relay.nn.conv2d(
+            data=data, weight=weight, kernel_size=(3, 3), channels=out_channel, padding=(1, 1)
+        )
+        bn_output = relay.nn.batch_norm(layer, bn_gamma, bn_beta, bn_mmean, bn_mvar)
+        out = relay.nn.relu(bn_output[0])
+        return relay.Function(relay.analysis.free_vars(out), out)
+
+    def get_partitoned_mod(mod, params, pattern_table, bind_constants):
+        mod["main"] = bind_params_by_name(mod["main"], params)
+        remove_bn_pass = tvm.transform.Sequential(
+            [
+                transform.InferType(),
+                transform.SimplifyInference(),
+                transform.FoldConstant(),
+                transform.FoldScaleAxis(),
+            ]
+        )
+        composite_partition = tvm.transform.Sequential(
+            [
+                remove_bn_pass,
+                transform.MergeComposite(pattern_table),
+                transform.AnnotateTarget("tachikoma"),
+                transform.PartitionGraph(bind_constants=bind_constants),
+            ]
+        )
+
+        with tvm.transform.PassContext(opt_level=3, disabled_pass=["AlterOpLayout"]):
+            return composite_partition(mod)
+
+    data = relay.var("data", relay.TensorType((1, 3, 224, 224), "float32"))
+    net = get_net("block_", data, 8)
+    mod, params = tvm.relay.testing.create_workload(net)
+
+    mod = get_partitoned_mod(mod, params, get_pattern_table("tachikoma"), bind_constants=True)
+    len(mod["main"].body.args) == 1
+
+    mod = get_partitoned_mod(mod, params, get_pattern_table("tachikoma"), bind_constants=False)
+    len(mod["main"].body.args) == 3
+
 
 if __name__ == "__main__":
     test_multi_node_compiler()
@@ -1623,13 +1963,16 @@ if __name__ == "__main__":
     test_extern_ccompiler_multiple_functions()
     test_extern_ccompiler()
     test_extern_dnnl()
+    test_extern_tachikoma()
     test_extern_dnnl_mobilenet()
+    test_extern_tachikoma_mobilenet()
     test_function_lifting()
     test_function_lifting_inline()
     test_constant_propagation()
     test_multiple_outputs()
     test_mixed_single_multiple_outputs()
     test_dnnl_fuse()
+    test_tachikoma_fuse()
     test_multiple_use_of_an_output()
     test_duplicate_outputs()
     test_duplicate_merge_and_tuplegetitem()
@@ -1638,3 +1981,4 @@ if __name__ == "__main__":
     test_tuple_output_exec()
     test_extern_opt()
     test_not_bind_constant()
+    test_not_bind_constant_tachikoma()

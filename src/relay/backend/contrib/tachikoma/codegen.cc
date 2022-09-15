@@ -54,6 +54,15 @@ inline size_t GetShape1DSize(const Type& type) {
   return std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<int>());
 }
 
+inline std::string GetShapeString(std::vector<int> shape) {
+  std::string v = "std::vector<long int>{";
+  for (auto s : shape) {
+    v += std::to_string(s) + ",";
+  }
+  v += "}";
+  return v;
+}
+
 std::vector<std::string> Conv2d(const CallNode* call) {
   std::vector<std::string> args;
   const auto* conv2d_attr = call->attrs.as<Conv2DAttrs>();
@@ -67,11 +76,13 @@ std::vector<std::string> Conv2d(const CallNode* call) {
     args.push_back(std::to_string(s));
   }
 
-  // Args: O, G, Ph, Pw, Kh, Kw, Sh, Sw
+  // Args: O, G, Ph0, Pw0, Ph1, Pw1, Kh, Kw, Sh, Sw
   args.push_back(std::to_string(wshape[0]));
   args.push_back(std::to_string(conv2d_attr->groups));
   args.push_back(std::to_string(conv2d_attr->padding[0].as<IntImmNode>()->value));
   args.push_back(std::to_string(conv2d_attr->padding[1].as<IntImmNode>()->value));
+  args.push_back(std::to_string(conv2d_attr->padding[2].as<IntImmNode>()->value));
+  args.push_back(std::to_string(conv2d_attr->padding[3].as<IntImmNode>()->value));
   args.push_back(std::to_string(wshape[2]));
   args.push_back(std::to_string(wshape[3]));
   args.push_back(std::to_string(conv2d_attr->strides[0].as<IntImmNode>()->value));
@@ -96,12 +107,8 @@ std::vector<std::string> Dense(const CallNode* call) {
 std::vector<std::string> Relu(const CallNode* call) {
   std::vector<std::string> args;
   auto ishape = GetShape(call->args[0]->checked_type());
-
   // Args: N, C, H, W
-  for (auto s : ishape) {
-    args.push_back(std::to_string(s));
-  }
-
+  args.push_back(GetShapeString(ishape));
   return args;
 }
 
@@ -121,15 +128,25 @@ std::vector<std::string> BatchNorm(const CallNode* call) {
   return args;
 }
 
+// should comply with src/runtime/contrib/tachikoma/tachikoma.cc
+#define DNNL_BINARY_ADD 0
+#define DNNL_BINARY_MUL 1
+
 std::vector<std::string> Add(const CallNode* call) {
   std::vector<std::string> args;
   auto ishape = GetShape(call->args[0]->checked_type());
-
+  args.push_back(std::to_string(DNNL_BINARY_ADD));
   // Args: H, W
-  for (auto s : ishape) {
-    args.push_back(std::to_string(s));
-  }
+  args.push_back(GetShapeString(ishape));
+  return args;
+}
 
+std::vector<std::string> Multiply(const CallNode* call) {
+  std::vector<std::string> args;
+  auto ishape = GetShape(call->args[0]->checked_type());
+  args.push_back(std::to_string(DNNL_BINARY_MUL));
+  // Args: H, W
+  args.push_back(GetShapeString(ishape));
   return args;
 }
 
@@ -214,12 +231,6 @@ class CodegenTachikoma : public MemoizedExprTranslator<std::vector<Output>>, pub
   }
 
  private:
-  struct GenerateBodyOutput {
-    std::string decl;
-    std::vector<std::string> buffers;
-    std::vector<Output> outputs;
-  };
-
   std::vector<std::string> GetArgumentNames(const CallNode* call) {
     std::vector<std::string> arg_names;
     for (size_t i = 0; i < call->args.size(); ++i) {
@@ -237,11 +248,9 @@ class CodegenTachikoma : public MemoizedExprTranslator<std::vector<Output>>, pub
 
     using ArgFunType = std::function<std::vector<std::string>(const CallNode*)>;
     static const std::map<std::string, std::pair<std::string, ArgFunType>> op_map = {
-        {"nn.conv2d", {"tachikoma_conv2d", Conv2d}},
-        {"nn.dense", {"tachikoma_dense", Dense}},
-        {"nn.relu", {"tachikoma_relu", Relu}},
-        {"nn.batch_norm", {"tachikoma_bn", BatchNorm}},
-        {"add", {"tachikoma_add", Add}},
+        {"nn.conv2d", {"tachikoma_conv2d", Conv2d}}, {"nn.dense", {"tachikoma_dense", Dense}},
+        {"nn.relu", {"tachikoma_relu", Relu}},       {"nn.batch_norm", {"tachikoma_bn", BatchNorm}},
+        {"add", {"tachikoma_binary_op", Add}},       {"multiply", {"tachikoma_binary_op", Multiply}},
     };
 
     const auto op_name = GetRef<Op>(op_node)->name;
@@ -378,7 +387,7 @@ class TachikomaModuleCodegen : public CSourceModuleCodegenBase {
   /*!
    * \brief The overridden function that will create a CSourceModule. In order
    * to compile the generated C source code, users need to specify the paths to
-   * some libraries, including some TVM required and dnnl specific ones. To make
+   * some libraries, including some TVM required and tachikoma specific ones. To make
    * linking simpiler, the Tachikoma kernels are wrapped in a TVM compatible manner
    * and live under tvm/src/runtime/contrib/tachikoma folder.
    *
@@ -413,7 +422,8 @@ class TachikomaModuleCodegen : public CSourceModuleCodegenBase {
     // Create a CSource module
     const auto* pf = runtime::Registry::Get("runtime.CSourceModuleCreate");
     ICHECK(pf != nullptr) << "Cannot find csource module to create the external runtime module";
-    return (*pf)(code, "c", sym, variables);
+    // TODO(@liaopeiyuan): pass the function names to enable system-lib creation
+    return (*pf)(code, "c", Array<String>{sym}, variables);
   }
 
  private:
@@ -437,52 +447,46 @@ class TachikomaJSONSerializer : public backend::contrib::JSONSerializer {
   std::vector<JSONGraphNodeEntry> VisitExpr_(const CallNode* cn) override {
     Expr expr = GetRef<Expr>(cn);
     std::string name;
-    tvm::Array<Expr> args;
-    std::unordered_map<std::string, dmlc::any> extra_attrs;
-
     const CallNode* call = cn;
     if (const auto* op_node = cn->op.as<OpNode>()) {
       name = op_node->name;
-      args = cn->args;
     } else if (const auto* fn = cn->op.as<FunctionNode>()) {
       auto comp = fn->GetAttr<String>(attr::kComposite);
       ICHECK(comp.defined()) << "Tachikoma JSON runtime only supports composite functions.";
       name = comp.value();
 
-      /*
-      if (name.find("tachikoma.deconv2d") != std::string::npos) {
-        call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.conv2d_transpose");
+      if (name == "tachikoma.conv2d_bias_relu") {
+        call = GetRootCall(fn->body.as<CallNode>(), 2, {"nn.conv2d", "add", "nn.relu"});
+      } else if (name == "tachikoma.conv2d_bias_tanh") {
+        call = GetRootCall(fn->body.as<CallNode>(), 2, {"nn.conv2d", "add", "tanh"});
         ICHECK(call->op.as<OpNode>()) << "Not op node";
-      } else if (name.find("tachikoma.deconv3d") != std::string::npos) {
-        call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.conv3d_transpose");
+      } else if (name == "tachikoma.conv2d_bias_sigmoid") {
+        call = GetRootCall(fn->body.as<CallNode>(), 2, {"nn.conv2d", "add", "sigmoid"});
         ICHECK(call->op.as<OpNode>()) << "Not op node";
-      } else if (name.find("tachikoma.conv1d") != std::string::npos) {
-        call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.conv1d");
+      } else if (name == "tachikoma.conv2d_bias") {
+        call = GetRootCall(fn->body.as<CallNode>(), 1, {"nn.conv2d", "add"});
         ICHECK(call->op.as<OpNode>()) << "Not op node";
-      } else */ 
-      if (name.find("tachikoma.conv2d") != std::string::npos) {
-        call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.conv2d");
+      } else if (name == "tachikoma.conv2d_relu") {
+        call = GetRootCall(fn->body.as<CallNode>(), 1, {"nn.conv2d", "nn.relu"});
         ICHECK(call->op.as<OpNode>()) << "Not op node";
-      } /* else if (name.find("tachikoma.conv3d") != std::string::npos) {
-        call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.conv3d");
+      } else if (name == "tachikoma.conv2d_tanh") {
+        call = GetRootCall(fn->body.as<CallNode>(), 1, {"nn.conv2d", "tanh"});
         ICHECK(call->op.as<OpNode>()) << "Not op node";
-      } else if (name.find("tachikoma.dense") != std::string::npos) {
-        call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.dense");
+      } else if (name == "tachikoma.conv2d_sigmoid") {
+        call = GetRootCall(fn->body.as<CallNode>(), 1, {"nn.conv2d", "sigmoid"});
         ICHECK(call->op.as<OpNode>()) << "Not op node";
-      */
-      else {
+      } else if (name == "tachikoma.dense_bias") {
+        call = GetRootCall(fn->body.as<CallNode>(), 1, {"nn.dense", "add"});
+        ICHECK(call->op.as<OpNode>()) << "Not op node";
+      } else {
         LOG(FATAL) << "Unrecognized Tachikoma pattern: " << name;
-      }
-
-      if (args.empty()) {
-        args = cn->args;
       }
     } else {
       LOG(FATAL) << "Tachikoma JSON runtime does not support calls to " << cn->op->GetTypeKey();
     }
 
     std::vector<JSONGraphNodeEntry> inputs;
-    for (const auto& arg : args) {
+    for (const auto& arg : cn->args) {
       auto res = VisitExpr(arg);
       inputs.insert(inputs.end(), res.begin(), res.end());
     }
@@ -490,31 +494,9 @@ class TachikomaJSONSerializer : public backend::contrib::JSONSerializer {
                                                 "kernel", /* op_type_ */
                                                 inputs, 1 /* num_outputs_ */);
     SetCallNodeAttribute(node, call);
-    // If has post-op `clip`. Assume the last op is clip, add clip's attrs to the pattern attrs.
-    if (name.find("_clip") != std::string::npos) {
-      auto clip_call = cn->op.as<FunctionNode>()->body.as<CallNode>();
-      ICHECK(IsOp(clip_call, "clip"));
-      SetCallNodeAttribute(node, clip_call);
-    }
-    // For QNN.
-    for (const auto& kvp : extra_attrs) node->SetAttr(kvp.first, kvp.second);
-
     return AddNode(node, GetRef<Expr>(cn));
   }
 };
-
-/*!
- * \brief Get the external symbol of the Relay function name.
- *
- * \param func The provided function.
- *
- * \return An external symbol.
- */
-std::string GetExtSymbol(const Function& func) {
-  const auto name_node = func->GetAttr<String>(tvm::attr::kGlobalSymbol);
-  ICHECK(name_node.defined()) << "Fail to retrieve external symbol.";
-  return std::string(name_node.value());
-}
 #endif
 
 /*!
