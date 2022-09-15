@@ -326,7 +326,6 @@ def test_conv2d_pattern(run_module, dtype="float32"):
     config = conv2d_bias_bn_relu, dic, param_lst
     run_and_verify_func(config, run_module=run_module, dtype=dtype)
 
-"""
 def test_dense(run_module, dtype="float32"):
     x_shape = (1, 16)
     k_shape = (32, 16)
@@ -354,7 +353,7 @@ def test_dense_pattern(run_module, dtype="float32"):
     dense_bias = tvm.IRModule.from_expr(dense_bias)
     config = dense_bias, dic, param_lst
     run_and_verify_func(config, run_module=run_module, dtype=dtype)
-"""
+
 
 if __name__ == "__main__":
     import sys
