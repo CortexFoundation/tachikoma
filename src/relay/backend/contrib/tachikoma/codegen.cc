@@ -447,46 +447,50 @@ class TachikomaJSONSerializer : public backend::contrib::JSONSerializer {
   std::vector<JSONGraphNodeEntry> VisitExpr_(const CallNode* cn) override {
     Expr expr = GetRef<Expr>(cn);
     std::string name;
+    tvm::Array<Expr> args;
+    std::unordered_map<std::string, dmlc::any> extra_attrs;
+
     const CallNode* call = cn;
     if (const auto* op_node = cn->op.as<OpNode>()) {
       name = op_node->name;
+      args = cn->args;
     } else if (const auto* fn = cn->op.as<FunctionNode>()) {
       auto comp = fn->GetAttr<String>(attr::kComposite);
       ICHECK(comp.defined()) << "Tachikoma JSON runtime only supports composite functions.";
       name = comp.value();
 
-      if (name == "tachikoma.conv2d_bias_relu") {
-        call = GetRootCall(fn->body.as<CallNode>(), 2, {"nn.conv2d", "add", "nn.relu"});
-      } else if (name == "tachikoma.conv2d_bias_tanh") {
-        call = GetRootCall(fn->body.as<CallNode>(), 2, {"nn.conv2d", "add", "tanh"});
+      if (name.find("tachikoma.deconv2d") != std::string::npos) {
+        call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.conv2d_transpose");
         ICHECK(call->op.as<OpNode>()) << "Not op node";
-      } else if (name == "tachikoma.conv2d_bias_sigmoid") {
-        call = GetRootCall(fn->body.as<CallNode>(), 2, {"nn.conv2d", "add", "sigmoid"});
+      } else if (name.find("tachikoma.deconv3d") != std::string::npos) {
+        call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.conv3d_transpose");
         ICHECK(call->op.as<OpNode>()) << "Not op node";
-      } else if (name == "tachikoma.conv2d_bias") {
-        call = GetRootCall(fn->body.as<CallNode>(), 1, {"nn.conv2d", "add"});
+      } else if (name.find("tachikoma.conv1d") != std::string::npos) {
+        call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.conv1d");
         ICHECK(call->op.as<OpNode>()) << "Not op node";
-      } else if (name == "tachikoma.conv2d_relu") {
-        call = GetRootCall(fn->body.as<CallNode>(), 1, {"nn.conv2d", "nn.relu"});
+      } else */ 
+      if (name.find("tachikoma.conv2d") != std::string::npos) {
+        call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.conv2d");
         ICHECK(call->op.as<OpNode>()) << "Not op node";
-      } else if (name == "tachikoma.conv2d_tanh") {
-        call = GetRootCall(fn->body.as<CallNode>(), 1, {"nn.conv2d", "tanh"});
+      } else if (name.find("tachikoma.conv3d") != std::string::npos) {
+        call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.conv3d");
         ICHECK(call->op.as<OpNode>()) << "Not op node";
-      } else if (name == "tachikoma.conv2d_sigmoid") {
-        call = GetRootCall(fn->body.as<CallNode>(), 1, {"nn.conv2d", "sigmoid"});
+      } else if (name.find("tachikoma.dense") != std::string::npos) {
+        call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.dense");
         ICHECK(call->op.as<OpNode>()) << "Not op node";
-      } else if (name == "tachikoma.dense_bias") {
-        call = GetRootCall(fn->body.as<CallNode>(), 1, {"nn.dense", "add"});
-        ICHECK(call->op.as<OpNode>()) << "Not op node";
-      } else {
+      else {
         LOG(FATAL) << "Unrecognized Tachikoma pattern: " << name;
+      }
+
+      if (args.empty()) {
+        args = cn->args;
       }
     } else {
       LOG(FATAL) << "Tachikoma JSON runtime does not support calls to " << cn->op->GetTypeKey();
     }
 
     std::vector<JSONGraphNodeEntry> inputs;
-    for (const auto& arg : cn->args) {
+    for (const auto& arg : args) {
       auto res = VisitExpr(arg);
       inputs.insert(inputs.end(), res.begin(), res.end());
     }
@@ -494,6 +498,15 @@ class TachikomaJSONSerializer : public backend::contrib::JSONSerializer {
                                                 "kernel", /* op_type_ */
                                                 inputs, 1 /* num_outputs_ */);
     SetCallNodeAttribute(node, call);
+    // If has post-op `clip`. Assume the last op is clip, add clip's attrs to the pattern attrs.
+    if (name.find("_clip") != std::string::npos) {
+      auto clip_call = cn->op.as<FunctionNode>()->body.as<CallNode>();
+      ICHECK(IsOp(clip_call, "clip"));
+      SetCallNodeAttribute(node, clip_call);
+    }
+    // For QNN.
+    for (const auto& kvp : extra_attrs) node->SetAttr(kvp.first, kvp.second);
+
     return AddNode(node, GetRef<Expr>(cn));
   }
 };
