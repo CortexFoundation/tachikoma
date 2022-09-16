@@ -464,6 +464,23 @@ class TachikomaJSONSerializer : public backend::contrib::JSONSerializer {
   using JSONGraphNode = tvm::runtime::json::JSONGraphNode;
   using JSONGraphNodeEntry = tvm::runtime::json::JSONGraphNodeEntry;
 
+  std::map<std::string, std::string> op_map{
+      {"bias", "add"},
+      {"relu", "nn.relu"},
+      {"tanh", "tanh"},
+      {"sigmoid", "sigmoid"},
+  };
+
+  std::vector<std::string> ParsingOpList(std::string op, std::string pattern_name) {
+    std::vector<std::string> op_list = {"nn." + op};
+    for (auto& t : op_map) {
+      if (pattern_name.find(t.first) != std::string::npos) {
+        op_list.push_back(t.second);
+      }
+    }
+    return op_list;
+  }
+  
  public:
   TachikomaJSONSerializer(const std::string& symbol, const Expr& expr)
       : JSONSerializer("tachikoma_" + symbol, expr) {}
