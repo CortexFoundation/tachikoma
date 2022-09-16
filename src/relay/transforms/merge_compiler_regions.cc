@@ -166,8 +166,8 @@ Expr MergeCompilerRegions(const Expr& expr) {
   AnnotatedRegionSet regions = AnnotatedRegionSet::Create(expr, CompilerBeginOp(), CompilerEndOp());
 
   // Analyze the graph to explore the opportunities of merging regions.
-  RegionMerger merger(regions);
-  merger.VisitExpr(expr);
+  // RegionMerger merger(regions);
+  // merger.VisitExpr(expr);
 
   // Remove annotations that are not in the region boundaries.
   MergeAnnotations merge_anno(regions);
