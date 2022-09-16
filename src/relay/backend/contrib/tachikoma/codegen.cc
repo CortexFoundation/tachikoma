@@ -483,26 +483,32 @@ class TachikomaJSONSerializer : public backend::contrib::JSONSerializer {
       ICHECK(comp.defined()) << "Tachikoma JSON runtime only supports composite functions.";
       name = comp.value();
 
-      if (name.find("tachikoma.deconv2d") != std::string::npos) {
-        call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.conv2d_transpose");
+      if (name.find("dnnl.conv2d_transpose") != std::string::npos) {
+        std::vector<std::string> op_list = ParsingOpList("conv2d_transpose", name);
+        call = GetRootCall(fn->body.as<CallNode>(), op_list.size() - 1, op_list);
         ICHECK(call->op.as<OpNode>()) << "Not op node";
-      } else if (name.find("tachikoma.deconv3d") != std::string::npos) {
-        call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.conv3d_transpose");
+      } else if (name.find("dnnl.conv3d_transpose") != std::string::npos) {
+        std::vector<std::string> op_list = ParsingOpList("conv3d_transpose", name);
+        call = GetRootCall(fn->body.as<CallNode>(), op_list.size() - 1, op_list);
         ICHECK(call->op.as<OpNode>()) << "Not op node";
-      } else if (name.find("tachikoma.conv1d") != std::string::npos) {
-        call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.conv1d");
+      } else if (name.find("dnnl.conv1d") != std::string::npos) {
+        std::vector<std::string> op_list = ParsingOpList("conv1d", name);
+        call = GetRootCall(fn->body.as<CallNode>(), op_list.size() - 1, op_list);
         ICHECK(call->op.as<OpNode>()) << "Not op node";
-      } else if (name.find("tachikoma.conv2d") != std::string::npos) {
-        call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.conv2d");
+      } else if (name.find("dnnl.conv2d") != std::string::npos) {
+        std::vector<std::string> op_list = ParsingOpList("conv2d", name);
+        call = GetRootCall(fn->body.as<CallNode>(), op_list.size() - 1, op_list);
         ICHECK(call->op.as<OpNode>()) << "Not op node";
-      } else if (name.find("tachikoma.conv3d") != std::string::npos) {
-        call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.conv3d");
+      } else if (name.find("dnnl.conv3d") != std::string::npos) {
+        std::vector<std::string> op_list = ParsingOpList("conv3d", name);
+        call = GetRootCall(fn->body.as<CallNode>(), op_list.size() - 1, op_list);
         ICHECK(call->op.as<OpNode>()) << "Not op node";
-      } else if (name.find("tachikoma.dense") != std::string::npos) {
-        call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.dense");
+      } else if (name.find("dnnl.dense") != std::string::npos) {
+        std::vector<std::string> op_list = ParsingOpList("dense", name);
+        call = GetRootCall(fn->body.as<CallNode>(), op_list.size() - 1, op_list);
         ICHECK(call->op.as<OpNode>()) << "Not op node";
       } else {
-        LOG(FATAL) << "Unrecognized Tachikoma pattern: " << name;
+        LOG(FATAL) << "Unrecognized DNNL pattern: " << name;
       }
 
       if (args.empty()) {
