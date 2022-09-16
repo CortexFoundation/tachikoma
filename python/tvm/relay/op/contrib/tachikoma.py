@@ -233,6 +233,6 @@ def partition_for_tachikoma(mod, params=None):
             transform.PartitionGraph(),
         ]
     )
-    with tvm.transform.PassContext(opt_level=3):
+    with tvm.transform.PassContext(opt_level=1):
         mod = seq(mod)
     return mod
