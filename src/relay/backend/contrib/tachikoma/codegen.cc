@@ -520,7 +520,7 @@ class TachikomaJSONSerializer : public backend::contrib::JSONSerializer {
       SetCallNodeAttribute(node, clip_call);
     }
     // For QNN.
-    for (const auto& kvp : extra_attrs) node->SetAttr(kvp.first, kvp.second);
+    // for (const auto& kvp : extra_attrs) node->SetAttr(kvp.first, kvp.second);
 
     return AddNode(node, GetRef<Expr>(cn));
   }
