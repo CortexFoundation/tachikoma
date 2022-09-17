@@ -26,6 +26,7 @@
 #include <tvm/runtime/registry.h>
 #include <dmlc/io.h>
 #include <fstream>
+#include <filesystem>
 
 #include <cstddef>
 #include <regex>
@@ -96,20 +97,18 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     }
 
     auto d = data_entry_;
-    auto n = net_args_;
-    auto em = entry_out_mem_;
-    std::cerr << "[writing to " << export_path_ << " ...]" << std::endl;
+    std::string path_name = this->export_path_ + "_" + std::itos((int) (void*) this, 0, 16) + "_" + this->symbol_name_ + "/";
+    std::cerr << "[writing to " << path_name << " ...]" << std::endl;
     std::cerr << (void*) this << " " << this->symbol_name_ << std::endl;
     std::cerr << d.size() << " vectors in total." << std::endl;
-    std::cerr << n.size() << " net_args in total." << std::endl;
-    std::cerr << em.size() << " entry_out_mem in total." << std::endl;
+    fs::create_directories(pathname);
     for (size_t vector_id = 0; vector_id < d.size(); vector_id++) {
           const DLTensor* tensor = d[vector_id];
           std::string data;
           dmlc::MemoryStringStream writer(&data);
           dmlc::SeekStream* strm = &writer;
-          std::string file_name = export_path_;
-          file_name = file_name + "_" + std::to_string(vector_id);
+          std::string file_name = path_name;
+          file_name = file_name + std::to_string(vector_id) + ".bin";
           if (tensor != nullptr) {
             SaveDLTensor(strm, tensor);
             std::ofstream fs(file_name, std::ios::out | std::ios::binary);
@@ -792,7 +791,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     return data_md;
   }
 
-  std::string export_path_ = "/tmp/tachikoma_serialized.bin";
+  std::string export_path_ = "/tmp/tachikoma_serialized/";
   /* The DNNL engine. */
   tachikoma::engine engine_;
   /* The DNNL stream. */
