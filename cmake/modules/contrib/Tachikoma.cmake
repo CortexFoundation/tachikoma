@@ -44,6 +44,7 @@ elseif((USE_TACHIKOMA STREQUAL "ON") OR (USE_TACHIKOMA STREQUAL "JSON"))
                                       src/runtime/contrib/tachikoma/tachikoma.cc
                                       src/runtime/contrib/cblas/tachikoma_blas.cc)
   list(APPEND RUNTIME_SRCS ${TACHIKOMA_CONTRIB_SRC})
+  target_compile_features(${TACHIKOMA_CONTRIB_SRC} PRIVATE cxx_std_17)
   message(STATUS "Build with Tachikoma JSON runtime: " ${EXTERN_LIBRARY_DNNL})
 elseif(USE_TACHIKOMA STREQUAL "C_SRC")
   tvm_file_glob(GLOB TACHIKOMA_RELAY_CONTRIB_SRC src/relay/backend/contrib/tachikoma/*.cc)
