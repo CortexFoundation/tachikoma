@@ -818,10 +818,10 @@ void TachikomaSetExportPath(runtime::Module mod, const std::string& file_name) {
     if (setExportPath != nullptr) {
       setExportPath(file_name);
     } else {
-      std::cerr << "Warning: module is not a Tachikoma module, hence unable to set path." << std::endl;
+      std::cerr << "Warning: module set_export_path not found, may not be a Tachikoma module." << std::endl;
     }
   } else {
-    std::cerr << "Warning: module is not a Tachikoma module, hence unable to set path." << std::endl;
+    std::cerr << "Warning: module get_module not found, may not be a Tachikoma module." << std::endl;
   }
 }
 
