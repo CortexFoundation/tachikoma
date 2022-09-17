@@ -100,9 +100,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     std::stringstream sstream;
     sstream << this->export_path_ << std::hex << (long)(void*) this << "_" << this->symbol_name_ << "/";
     std::string path_name = sstream.str();
-    std::cerr << "[writing to " << path_name << " ...]" << std::endl;
-    std::cerr << (void*) this << " " << this->symbol_name_ << std::endl;
-    std::cerr << d.size() << " vectors in total." << std::endl;
+    std::cerr << "/* Serializing to " << path_name << "(" << d.size() << ") ...*/" << std::endl;
     boost::filesystem::create_directories(path_name);
     for (size_t vector_id = 0; vector_id < d.size(); vector_id++) {
         const DLTensor* tensor = d[vector_id];
@@ -118,7 +116,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
           fs.write(&data[0], data.length());
         }
     }
-    std::cerr << "[finished.]" << std::endl;
+    std::cerr << "/* Finished. */" << std::endl;
   }
 
   /* Override GetFunction to reimplement Run method */
