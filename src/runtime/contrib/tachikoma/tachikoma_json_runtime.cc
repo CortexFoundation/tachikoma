@@ -94,6 +94,14 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
       read_from_tachikoma_memory(data_entry_[eid]->data, entry_out_mem_[eid].first, buffer_size,
                             offset_in_bytes);
     }
+
+    auto d = data_entry_;
+    auto n = net_args_;
+    auto em = entry_out_mem_;
+    std::cerr << "running ..." << std::end;
+    std::cerr << d.size() << " vectors in total." << std::endl;
+    std::cerr << n.size() << " net_args in total." << std::endl;
+    std::cerr << em.size() << " entry_out_mem in total." << std::endl;
   }
 
   /* Override GetFunction to reimplement Run method */
