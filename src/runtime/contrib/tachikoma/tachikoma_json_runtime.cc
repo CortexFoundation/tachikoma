@@ -96,11 +96,13 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     }
 
     auto d = data_entry_;
-    std::string path_name = this->export_path_ + "_" + std::itos((int) (void*) this, 0, 16) + "_" + this->symbol_name_ + "/";
+    std::stringstream sstream;
+    sstream << this->export_path_ << "_" << std::hex << (int) (void*) this << "_" << this->symbol_name_ << "/";
+    std::string path_name = sstream.str();
     std::cerr << "[writing to " << path_name << " ...]" << std::endl;
     std::cerr << (void*) this << " " << this->symbol_name_ << std::endl;
     std::cerr << d.size() << " vectors in total." << std::endl;
-    std::filesystem::create_directories(pathname);
+    // std::filesystem::create_directories(path_name);
     for (size_t vector_id = 0; vector_id < d.size(); vector_id++) {
           const DLTensor* tensor = d[vector_id];
           std::string data;
