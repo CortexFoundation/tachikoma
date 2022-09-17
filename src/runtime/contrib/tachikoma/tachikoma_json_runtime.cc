@@ -98,7 +98,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     auto d = data_entry_;
     auto n = net_args_;
     auto em = entry_out_mem_;
-    std::cerr << "running ..." << std::end;
+    std::cerr << "running ..." << std::endl;
     std::cerr << d.size() << " vectors in total." << std::endl;
     std::cerr << n.size() << " net_args in total." << std::endl;
     std::cerr << em.size() << " entry_out_mem in total." << std::endl;
