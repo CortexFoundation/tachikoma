@@ -404,7 +404,7 @@ def build(
         else:
             assert False, "Executor " + executor + " not supported"
 
-        return executor_factory
+        return executor_factory, bld_mod
 
 
 def optimize(mod, target=None, params=None):
