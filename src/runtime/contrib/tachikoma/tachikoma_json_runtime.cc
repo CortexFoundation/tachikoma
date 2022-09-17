@@ -102,6 +102,21 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     std::cerr << d.size() << " vectors in total." << std::endl;
     std::cerr << n.size() << " net_args in total." << std::endl;
     std::cerr << em.size() << " entry_out_mem in total." << std::endl;
+    for (size_t vector_id = 0; vector_id < d.size(); vector_id++) {
+          const DLTensor* tensor = d[vector_id];
+          std::string data;
+          dmlc::MemoryStringStream writer(&data);
+          dmlc::SeekStream* strm = &writer;
+          std::string file_name = export_path_;
+          file_name = file_name + "_" + std::to_string(vector_id);
+          if (tensor != nullptr) {
+            SaveDLTensor(strm, tensor);
+            std::ofstream fs(file_name, std::ios::out | std::ios::binary);
+            ICHECK(!fs.fail()) << "Cannot open " << file_name;
+            fs.write(&data[0], data.length());
+          }
+          std::cerr << (void*) d[vector_id] << " ";
+        }
     std::cerr << "[finished.]" << std::endl;
   }
 
@@ -113,31 +128,11 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     } else if (name == "get_const_vars") {
       return PackedFunc(
           [sptr_to_self, this](TVMArgs args, TVMRetValue* rv) { *rv = this->const_names_; });
-    } else if (name == "serialize_computational_trace") {
+    } else if (name == "set_export_path") {
       return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
-        auto d = this->data_entry_;
-        auto n = this->net_args_;
-        auto em = this->entry_out_mem_;
-        std::cerr << d.size() << " vectors in total." << std::endl;
-        std::cerr << n.size() << " net_args in total." << std::endl;
-        std::cerr << em.size() << " entry_out_mem in total." << std::endl;
-        for (size_t vector_id = 0; vector_id < d.size(); vector_id++) {
-          const DLTensor* tensor = d[vector_id];
-          std::string data;
-          dmlc::MemoryStringStream writer(&data);
-          dmlc::SeekStream* strm = &writer;
-          std::string file_name = args[0];
-          file_name = file_name + "_" + std::to_string(vector_id);
-          if (tensor != nullptr) {
-            SaveDLTensor(strm, tensor);
-            std::ofstream fs(file_name, std::ios::out | std::ios::binary);
-            ICHECK(!fs.fail()) << "Cannot open " << file_name;
-            fs.write(&data[0], data.length());
-          }
-          std::cerr << (void*) d[vector_id] << " ";
-        }
-        std::cerr << std::endl;
-        std::cerr << "Export complete." << std::endl;
+        std::string file_name = args[0];
+        export_path_ = file_name;
+        std::cerr << "Export path set." << std::endl;
       });
     } else if (this->symbol_name_ == name) {
       return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
@@ -796,6 +791,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     return data_md;
   }
 
+  std::string export_path_ = "/tmp/tachikoma_serialized.bin";
   /* The DNNL engine. */
   tachikoma::engine engine_;
   /* The DNNL stream. */
@@ -814,13 +810,12 @@ runtime::Module TachikomaJSONRuntimeCreate(String symbol_name, String graph_json
   return runtime::Module(n);
 }
 
-void TachikomaExportModule(runtime::Module mod, const std::string& file_name) {
-  tvm::runtime::PackedFunc serializeTrace = mod.GetFunction("serialize_computational_trace", false);
-  if (serializeTrace != nullptr) {
-    serializeTrace(file_name);
-    std::cerr << "Tachikoma module export successful." << std::endl;
+void TachikomaSetExportPath(runtime::Module mod, const std::string& file_name) {
+  tvm::runtime::PackedFunc setExportPath = mod.GetFunction("set_export_path", false);
+  if (setExportPath != nullptr) {
+    setExportPath(file_name);
   } else {
-    std::cerr << "Warning: module is not a Tachikoma module, hence export failed." << std::endl;
+    std::cerr << "Warning: module is not a Tachikoma module, hence unable to set path." << std::endl;
   }
 }
 
@@ -829,7 +824,7 @@ TVM_REGISTER_GLOBAL("runtime.TachikomaJSONRuntimeCreate").set_body_typed(Tachiko
 TVM_REGISTER_GLOBAL("runtime.module.loadbinary_tachikoma_json")
     .set_body_typed(JSONRuntimeBase::LoadFromBinary<TachikomaJSONRuntime>);
 
-TVM_REGISTER_GLOBAL("runtime.TachikomaExportModule").set_body_typed(TachikomaExportModule);
+TVM_REGISTER_GLOBAL("runtime.TachikomaSetExportPath").set_body_typed(TachikomaSetExportPath);
 
 }  // namespace contrib
 }  // namespace runtime
