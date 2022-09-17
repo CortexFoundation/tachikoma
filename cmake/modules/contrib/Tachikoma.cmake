@@ -16,7 +16,7 @@
 # under the License.
 
 if(IS_DIRECTORY ${USE_TACHIKOMA})
-  set(CMAKE_CXX_STANDARD 17)
+  target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
   find_library(EXTERN_LIBRARY_DNNL NAMES dnnl ${USE_TACHIKOMA}/lib/)
   if (EXTERN_LIBRARY_DNNL STREQUAL "EXTERN_LIBRARY_DNNL-NOTFOUND")
     message(WARNING "Cannot find DNNL library at ${USE_TACHIKOMA}.")
@@ -34,7 +34,7 @@ if(IS_DIRECTORY ${USE_TACHIKOMA})
     message(STATUS "Build with Tachikoma JSON runtime: " ${EXTERN_LIBRARY_DNNL})
   endif()
 elseif((USE_TACHIKOMA STREQUAL "ON") OR (USE_TACHIKOMA STREQUAL "JSON"))
-  set(CMAKE_CXX_STANDARD 17)
+  target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
   add_definitions(-DUSE_JSON_RUNTIME=1)
   tvm_file_glob(GLOB TACHIKOMA_RELAY_CONTRIB_SRC src/relay/backend/contrib/tachikoma/*.cc)
   list(APPEND COMPILER_SRCS ${TACHIKOMA_RELAY_CONTRIB_SRC})
