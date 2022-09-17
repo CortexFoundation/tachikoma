@@ -104,10 +104,12 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     } else if (name == "get_const_vars") {
       return PackedFunc(
           [sptr_to_self, this](TVMArgs args, TVMRetValue* rv) { *rv = this->const_names_; });
-    } else if (name == "export_data_entries") {
+    } else if (name == "serialize_computational_trace") {
       return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
         auto d = this->data_entry_;
+        auto n = this->net_args_;
         std::cerr << d.size() << " vectors in total." << std::endl;
+        std::cerr << n.size() << " net_args in total." << std::endl;
         for (size_t vector_id = 0; vector_id < d.size(); vector_id++) {
           const DLTensor* tensor = d[vector_id];
           std::string data;
@@ -800,12 +802,13 @@ runtime::Module TachikomaJSONRuntimeCreate(String symbol_name, String graph_json
 }
 
 void TachikomaExportModule(runtime::Module mod, const std::string& file_name) {
-  tvm::runtime::PackedFunc exportEntries = mod.GetFunction("export_data_entries", false);
-  if (exportEntries != nullptr) {
-    exportEntries(file_name);
+  tvm::runtime::PackedFunc serializeTrace = mod.GetFunction("serialize_computational_trace", false);
+  if (serializeTrace != nullptr) {
+    serializeTrace(file_name);
+    std::cerr << "Tachikoma module export successful." << std::endl;
+  } else {
+    std::cerr << "Warning: module is not a Tachikoma module, hence export failed." << std::endl;
   }
-  bool isnull = exportEntries != nullptr;
-  std::cerr << "Exporting module successful? " << isnull << std::endl;
 }
 
 TVM_REGISTER_GLOBAL("runtime.TachikomaJSONRuntimeCreate").set_body_typed(TachikomaJSONRuntimeCreate);

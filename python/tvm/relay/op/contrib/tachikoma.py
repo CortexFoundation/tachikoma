@@ -229,7 +229,7 @@ def partition_for_tachikoma(mod, params=None):
             transform.FoldConstant(),
             transform.MergeComposite(pattern_table()),
             transform.AnnotateTarget("tachikoma"),
-            # transform.MergeCompilerRegions(),
+            transform.MergeCompilerRegions(),
             transform.PartitionGraph(),
         ]
     )
