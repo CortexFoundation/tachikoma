@@ -30,7 +30,7 @@ if(IS_DIRECTORY ${USE_TACHIKOMA})
     list(APPEND COMPILER_SRCS ${TACHIKOMA_RELAY_CONTRIB_SRC})
 
     list(APPEND TVM_RUNTIME_LINKER_LIBS ${EXTERN_LIBRARY_DNNL})
-    list(APPEND TVM_RUNTIME_LINKER_LIBS Boost)
+    list(APPEND TVM_RUNTIME_LINKER_LIBS ${Boost_LIBRARIES})
     tvm_file_glob(GLOB TACHIKOMA_CONTRIB_SRC src/runtime/contrib/tachikoma/tachikoma_json_runtime.cc
                                         src/runtime/contrib/tachikoma/tachikoma_utils.cc
                                         src/runtime/contrib/tachikoma/tachikoma.cc
@@ -47,10 +47,10 @@ elseif((USE_TACHIKOMA STREQUAL "ON") OR (USE_TACHIKOMA STREQUAL "JSON"))
   set(Boost_USE_MULTITHREADED ON)  
   set(Boost_USE_STATIC_RUNTIME OFF) 
   find_package(Boost COMPONENTS filesystem) 
-  
+
   find_library(EXTERN_LIBRARY_DNNL dnnl)
   list(APPEND TVM_RUNTIME_LINKER_LIBS ${EXTERN_LIBRARY_DNNL})
-  list(APPEND TVM_RUNTIME_LINKER_LIBS Boost)
+  list(APPEND TVM_RUNTIME_LINKER_LIBS ${Boost_LIBRARIES})
   tvm_file_glob(GLOB TACHIKOMA_CONTRIB_SRC src/runtime/contrib/tachikoma/tachikoma_json_runtime.cc
                                       src/runtime/contrib/tachikoma/tachikoma_utils.cc
                                       src/runtime/contrib/tachikoma/tachikoma.cc
