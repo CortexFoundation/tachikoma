@@ -265,7 +265,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
   tachikoma::memory BindTachikomaMemory(const JSONGraphNodeEntry& entry, tachikoma::memory::desc mem_desc,
                               size_t offset = 0) {
     auto eid = EntryID(entry);
-    std::cerr << "entry id: " << eid << " node idx: " << entry.index_ << " id: " << entry.id_ << std::endl;
+    // std::cerr << "entry id: " << eid << " node idx: " << entry.index_ << " id: " << entry.id_ << std::endl;
     if (entry_out_mem_.count(eid) == 0) {
       return BindTachikomaMemory(entry, tachikoma::memory(mem_desc, engine_), offset);
     }
@@ -276,7 +276,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
   tachikoma::memory BindTachikomaMemory(const JSONGraphNodeEntry& entry, tachikoma::memory mem,
                               size_t offset = 0) {
     auto eid = EntryID(entry);
-    std::cerr << "entry id: " << eid << " node idx: " << entry.index_ << " id: " << entry.id_ << std::endl;
+    // std::cerr << "entry id: " << eid << " node idx: " << entry.index_ << " id: " << entry.id_ << std::endl;
     // Since the Tachikoma memory has been created before calling this function, we assume the entry
     // has not yet been bound to the other Tachikoma memory; otherwise it may have memory leak.
     ICHECK_EQ(entry_out_mem_.count(eid), 0);
