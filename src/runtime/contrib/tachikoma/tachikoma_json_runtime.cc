@@ -811,9 +811,15 @@ runtime::Module TachikomaJSONRuntimeCreate(String symbol_name, String graph_json
 }
 
 void TachikomaSetExportPath(runtime::Module mod, const std::string& file_name) {
-  tvm::runtime::PackedFunc setExportPath = mod.GetFunction("set_export_path", false);
-  if (setExportPath != nullptr) {
-    setExportPath(file_name);
+  tvm::runtime::PackedFunc getModule = mod.GetFunction("get_module", false);
+  if (getModule != nullptr) {
+    auto rt_mod = getModule();
+    tvm::runtime::PackedFunc setExportPath = rt_mod.GetFunction("set_export_path", false);
+    if (setExportPath != nullptr) {
+      setExportPath(file_name);
+    } else {
+      std::cerr << "Warning: module is not a Tachikoma module, hence unable to set path." << std::endl;
+    }
   } else {
     std::cerr << "Warning: module is not a Tachikoma module, hence unable to set path." << std::endl;
   }
