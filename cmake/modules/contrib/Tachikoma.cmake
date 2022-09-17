@@ -16,7 +16,11 @@
 # under the License.
 
 if(IS_DIRECTORY ${USE_TACHIKOMA})
-  target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
+  set(Boost_USE_STATIC_LIBS OFF) 
+  set(Boost_USE_MULTITHREADED ON)  
+  set(Boost_USE_STATIC_RUNTIME OFF) 
+  find_package(Boost COMPONENTS filesystem) 
+
   find_library(EXTERN_LIBRARY_DNNL NAMES dnnl ${USE_TACHIKOMA}/lib/)
   if (EXTERN_LIBRARY_DNNL STREQUAL "EXTERN_LIBRARY_DNNL-NOTFOUND")
     message(WARNING "Cannot find DNNL library at ${USE_TACHIKOMA}.")
@@ -26,6 +30,7 @@ if(IS_DIRECTORY ${USE_TACHIKOMA})
     list(APPEND COMPILER_SRCS ${TACHIKOMA_RELAY_CONTRIB_SRC})
 
     list(APPEND TVM_RUNTIME_LINKER_LIBS ${EXTERN_LIBRARY_DNNL})
+    list(APPEND TVM_RUNTIME_LINKER_LIBS Boost)
     tvm_file_glob(GLOB TACHIKOMA_CONTRIB_SRC src/runtime/contrib/tachikoma/tachikoma_json_runtime.cc
                                         src/runtime/contrib/tachikoma/tachikoma_utils.cc
                                         src/runtime/contrib/tachikoma/tachikoma.cc
@@ -34,13 +39,18 @@ if(IS_DIRECTORY ${USE_TACHIKOMA})
     message(STATUS "Build with Tachikoma JSON runtime: " ${EXTERN_LIBRARY_DNNL})
   endif()
 elseif((USE_TACHIKOMA STREQUAL "ON") OR (USE_TACHIKOMA STREQUAL "JSON"))
-  target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
   add_definitions(-DUSE_JSON_RUNTIME=1)
   tvm_file_glob(GLOB TACHIKOMA_RELAY_CONTRIB_SRC src/relay/backend/contrib/tachikoma/*.cc)
   list(APPEND COMPILER_SRCS ${TACHIKOMA_RELAY_CONTRIB_SRC})
 
+  set(Boost_USE_STATIC_LIBS OFF) 
+  set(Boost_USE_MULTITHREADED ON)  
+  set(Boost_USE_STATIC_RUNTIME OFF) 
+  find_package(Boost COMPONENTS filesystem) 
+  
   find_library(EXTERN_LIBRARY_DNNL dnnl)
   list(APPEND TVM_RUNTIME_LINKER_LIBS ${EXTERN_LIBRARY_DNNL})
+  list(APPEND TVM_RUNTIME_LINKER_LIBS Boost)
   tvm_file_glob(GLOB TACHIKOMA_CONTRIB_SRC src/runtime/contrib/tachikoma/tachikoma_json_runtime.cc
                                       src/runtime/contrib/tachikoma/tachikoma_utils.cc
                                       src/runtime/contrib/tachikoma/tachikoma.cc
