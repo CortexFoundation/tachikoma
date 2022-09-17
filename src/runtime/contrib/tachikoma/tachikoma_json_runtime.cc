@@ -100,7 +100,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     std::stringstream sstream;
     sstream << this->export_path_ << std::hex << (long)(void*) this << "_" << this->symbol_name_ << "/";
     std::string path_name = sstream.str();
-    std::cerr << "/* Serializing to " << path_name << "(" << d.size() << ") ...*/" << std::endl;
+    std::cerr << "/* Serializing to " << path_name << "(" << d.size() << ") ... */" << std::endl;
     boost::filesystem::create_directories(path_name);
     for (size_t vector_id = 0; vector_id < d.size(); vector_id++) {
         const DLTensor* tensor = d[vector_id];
@@ -283,7 +283,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     // TODO(@liaopeiyuan): Support other data types (i.e., int8).
     auto data_node = nodes_[entry.id_];
     auto dltype = data_node.GetOpDataType()[entry.index_];
-    ICHECK_EQ(dltype.bits, 32);
+    // ICHECK_EQ(dltype.bits, 32);
 
     entry_out_mem_[eid] = {mem, offset};
     return entry_out_mem_[eid].first;
