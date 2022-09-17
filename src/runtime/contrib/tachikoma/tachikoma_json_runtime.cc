@@ -111,7 +111,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
         auto em = this->entry_out_mem_;
         std::cerr << d.size() << " vectors in total." << std::endl;
         std::cerr << n.size() << " net_args in total." << std::endl;
-        std::cerr << e.size() << " entry_out_mem in total." << std::endl;
+        std::cerr << em.size() << " entry_out_mem in total." << std::endl;
         for (size_t vector_id = 0; vector_id < d.size(); vector_id++) {
           const DLTensor* tensor = d[vector_id];
           std::string data;
