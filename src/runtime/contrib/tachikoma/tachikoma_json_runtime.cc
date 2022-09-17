@@ -26,7 +26,6 @@
 #include <tvm/runtime/registry.h>
 #include <dmlc/io.h>
 #include <fstream>
-#include <filesystem>
 
 #include <cstddef>
 #include <regex>
@@ -101,7 +100,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     std::cerr << "[writing to " << path_name << " ...]" << std::endl;
     std::cerr << (void*) this << " " << this->symbol_name_ << std::endl;
     std::cerr << d.size() << " vectors in total." << std::endl;
-    fs::create_directories(pathname);
+    std::filesystem::create_directories(pathname);
     for (size_t vector_id = 0; vector_id < d.size(); vector_id++) {
           const DLTensor* tensor = d[vector_id];
           std::string data;
