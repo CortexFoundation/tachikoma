@@ -97,7 +97,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
 
     auto d = data_entry_;
     std::stringstream sstream;
-    sstream << this->export_path_ << "_" << std::hex << (int) (void*) this << "_" << this->symbol_name_ << "/";
+    sstream << this->export_path_ << "_" << std::hex << (long)(void*) this << "_" << this->symbol_name_ << "/";
     std::string path_name = sstream.str();
     std::cerr << "[writing to " << path_name << " ...]" << std::endl;
     std::cerr << (void*) this << " " << this->symbol_name_ << std::endl;
