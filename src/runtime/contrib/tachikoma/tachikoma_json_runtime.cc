@@ -105,20 +105,19 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     std::cerr << d.size() << " vectors in total." << std::endl;
     boost::filesystem::create_directories(path_name);
     for (size_t vector_id = 0; vector_id < d.size(); vector_id++) {
-          const DLTensor* tensor = d[vector_id];
-          std::string data;
-          dmlc::MemoryStringStream writer(&data);
-          dmlc::SeekStream* strm = &writer;
-          std::string file_name = path_name;
-          file_name = file_name + std::to_string(vector_id) + ".bin";
-          if (tensor != nullptr) {
-            SaveDLTensor(strm, tensor);
-            std::ofstream fs(file_name, std::ios::out | std::ios::binary);
-            ICHECK(!fs.fail()) << "Cannot open " << file_name;
-            fs.write(&data[0], data.length());
-          }
-          std::cerr << (void*) d[vector_id] << " ";
+        const DLTensor* tensor = d[vector_id];
+        std::string data;
+        dmlc::MemoryStringStream writer(&data);
+        dmlc::SeekStream* strm = &writer;
+        std::string file_name = path_name;
+        file_name = file_name + std::to_string(vector_id) + ".bin";
+        if (tensor != nullptr) {
+          SaveDLTensor(strm, tensor);
+          std::ofstream fs(file_name, std::ios::out | std::ios::binary);
+          ICHECK(!fs.fail()) << "Cannot open " << file_name;
+          fs.write(&data[0], data.length());
         }
+    }
     std::cerr << "[finished.]" << std::endl;
   }
 
