@@ -73,7 +73,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     // Fill in the input buffers.
     for (size_t i = 0; i < input_nodes_.size(); ++i) {
       auto eid = EntryID(input_nodes_[i], 0);
-      // TODO(@comaniac): Support other data lengths.
+      // TODO(@liaopeiyuan): Support other data lengths.
       size_t offset_in_bytes = entry_out_mem_[eid].second * 4;
       size_t buffer_size = GetDataSize(*data_entry_[eid]);
       write_to_tachikoma_memory(data_entry_[eid]->data, entry_out_mem_[eid].first, buffer_size,
@@ -261,6 +261,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
   tachikoma::memory BindTachikomaMemory(const JSONGraphNodeEntry& entry, tachikoma::memory::desc mem_desc,
                               size_t offset = 0) {
     auto eid = EntryID(entry);
+    std::cerr << "entry id: " << eid << " node idx: " << entry.index_ << " id: " << entry.id_ << std::endl;
     if (entry_out_mem_.count(eid) == 0) {
       return BindTachikomaMemory(entry, tachikoma::memory(mem_desc, engine_), offset);
     }
@@ -271,11 +272,12 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
   tachikoma::memory BindTachikomaMemory(const JSONGraphNodeEntry& entry, tachikoma::memory mem,
                               size_t offset = 0) {
     auto eid = EntryID(entry);
+    std::cerr << "entry id: " << eid << " node idx: " << entry.index_ << " id: " << entry.id_ << std::endl;
     // Since the Tachikoma memory has been created before calling this function, we assume the entry
     // has not yet been bound to the other Tachikoma memory; otherwise it may have memory leak.
     ICHECK_EQ(entry_out_mem_.count(eid), 0);
 
-    // TODO(@comanic): Support other data types (i.e., int8).
+    // TODO(@liaopeiyuan): Support other data types (i.e., int8).
     auto data_node = nodes_[entry.id_];
     auto dltype = data_node.GetOpDataType()[entry.index_];
     ICHECK_EQ(dltype.bits, 32);
@@ -285,7 +287,6 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
   }
 
   void Convolution(const size_t& nid) {
-    std::cerr << "conv..." << std::endl;
     auto node = nodes_[nid];
     auto op_name = node.GetOpName();
     tachikoma::primitive_attr attr;
