@@ -273,6 +273,138 @@ def _build_module_no_factory(mod, target=None, target_host=None, params=None, mo
     """
     return _build_module_no_factory_impl(mod, target, target_host, params, mod_name)
 
+def build_with_bldmod(
+    ir_mod,
+    target=None,
+    target_host=None,
+    executor=Executor("graph"),
+    runtime=Runtime("cpp"),
+    workspace_memory_pools=None,
+    constant_memory_pools=None,
+    params=None,
+    mod_name="default",
+):
+    # fmt: off
+    # pylint: disable=line-too-long
+    """Helper function that builds a Relay function to run on TVM graph executor.
+
+    Parameters
+    ----------
+    ir_mod : :py:class:`~tvm.IRModule`
+        The IR module to build. Using relay.Function is deprecated.
+
+    target : None, or any multi-target like object, see Target.canon_multi_target
+        For homogeneous compilation, the unique build target.
+        For heterogeneous compilation, a dictionary or list of possible build targets.
+        Defaults to the current target in the environment if None.
+
+    target_host : None, or any target like object, see Target.canon_target
+        Host compilation target, if target is device.
+
+    executor : Optional[Executor]
+        The executor configuration with which to build the model.
+        Defaults to "graph" if no executor specified.
+
+    runtime : Optional[Runtime]
+        Runtime configuration to use when building the model.
+        Defaults to "cpp" if no runtime specified.
+
+    workspace_memory_pools : Optional[WorkspaceMemoryPools]
+        The object that contains an Array of WorkspacePoolInfo objects
+        that hold properties of read-write workspace pools that could be
+        used by the inference.
+
+    constant_memory_pools : Optional[ConstantMemoryPools]
+        The object that contains an Array of ConstantPoolInfo objects
+        that hold properties of read-only pools that could be
+        used by the inference.
+
+    params : dict of str to NDArray
+        Input parameters to the graph that do not change
+        during inference time. Used for constant folding.
+
+    mod_name: Optional[str]
+        The module name we will build
+
+    Returns
+    -------
+    factory_module : tvm.relay.backend.executor_factory.ExecutorFactoryModule
+            The runtime factory for the TVM graph executor.
+    """
+    # pylint: enable=line-too-long
+    # fmt: on
+
+    if not isinstance(ir_mod, (IRModule, _function.Function)):
+        raise ValueError("Type of input parameter mod must be tvm.IRModule")
+
+    if isinstance(ir_mod, _function.Function):
+        if params:
+            ir_mod = bind_params_by_name(ir_mod, params)
+        ir_mod = IRModule.from_expr(ir_mod)
+        warnings.warn(
+            "Please use input parameter mod (tvm.IRModule) "
+            "instead of deprecated parameter mod (tvm.relay.function.Function)",
+            DeprecationWarning,
+        )
+
+    raw_targets = Target.canon_multi_target_and_host(Target.target_or_current(target), target_host)
+    assert len(raw_targets) > 0
+    target_host = raw_targets[0].host
+
+    # If current dispatch context is fallback context (the default root context),
+    # then load pre-tuned parameters from TopHub
+    if isinstance(autotvm.DispatchContext.current, autotvm.FallbackContext):
+        tophub_context = autotvm.tophub.context(list(raw_targets))
+    else:
+        tophub_context = autotvm.utils.EmptyContext()
+
+    with tophub_context:
+        bld_mod = BuildModule()
+        graph_json, runtime_mod, params = bld_mod.build(
+            mod=ir_mod,
+            target=raw_targets,
+            params=params,
+            executor=executor,
+            runtime=runtime,
+            workspace_memory_pools=workspace_memory_pools,
+            constant_memory_pools=constant_memory_pools,
+            mod_name=mod_name,
+        )
+        func_metadata = bld_mod.get_function_metadata()
+        devices = bld_mod.get_devices()
+        lowered_ir_mods = bld_mod.get_irmodule()
+        executor_codegen_metadata = bld_mod.get_executor_codegen_metadata()
+
+        if executor.name == "aot":
+            executor_factory = _executor_factory.AOTExecutorFactoryModule(
+                ir_mod,
+                lowered_ir_mods,
+                raw_targets,
+                executor,
+                runtime,
+                runtime_mod,
+                mod_name,
+                params,
+                func_metadata,
+                executor_codegen_metadata,
+                devices,
+            )
+        elif executor.name == "graph":
+            executor_factory = _executor_factory.GraphExecutorFactoryModule(
+                ir_mod,
+                raw_targets,
+                executor,
+                graph_json,
+                runtime_mod,
+                mod_name,
+                params,
+                func_metadata,
+            )
+        else:
+            assert False, "Executor " + executor + " not supported"
+
+        return executor_factory, bld_mod
+
 
 def build(
     ir_mod,
@@ -404,7 +536,7 @@ def build(
         else:
             assert False, "Executor " + executor + " not supported"
 
-        return executor_factory, bld_mod
+        return executor_factory
 
 
 def optimize(mod, target=None, params=None):
