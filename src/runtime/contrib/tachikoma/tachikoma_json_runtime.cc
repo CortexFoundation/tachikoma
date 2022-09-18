@@ -116,6 +116,15 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
           fs.write(&data[0], data.length());
         }
     }
+    std::string data;
+    dmlc::MemoryStringStream writer(&data);
+    dmlc::SeekStream* strm = &writer;
+    this->SaveToBinary(strm);
+    std::string file_name = path_name;
+    file_name = file_name + "graph.bin";
+    std::ofstream fs(file_name, std::ios::out | std::ios::binary);
+    ICHECK(!fs.fail()) << "Cannot open " << file_name;
+    fs.write(&data[0], data.length());
     std::cerr << "/* Finished. */" << std::endl;
   }
 
