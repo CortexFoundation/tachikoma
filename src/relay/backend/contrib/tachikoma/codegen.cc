@@ -594,7 +594,8 @@ runtime::Module TachikomaCompiler(const ObjectRef& ref) {
   TachikomaJSONSerializer serializer(func_name, func);
   serializer.serialize();
   std::string graph_json = serializer.GetJSON();
-
+  auto params = serializer.GetParams();
+  
   // Note that serializer.const_name_to_constant() is ignored. Instead the TECompiler invokes
   // a callback which calls backend::UpdateConstants to capture the map before the function
   // 'disappears' into lowered form, on the assumption the visit order and thus constant
@@ -602,7 +603,7 @@ runtime::Module TachikomaCompiler(const ObjectRef& ref) {
 
   const auto* pf = runtime::Registry::Get("runtime.TachikomaJSONRuntimeCreate");
   ICHECK(pf != nullptr) << "Cannot find JSON runtime module to create";
-  auto mod = (*pf)(func_name, graph_json, serializer.const_names());
+  auto mod = (*pf)(func_name, graph_json, params);
   return mod;
 #else
   TachikomaModuleCodegen tachikoma;
