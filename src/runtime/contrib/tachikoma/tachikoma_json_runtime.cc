@@ -925,6 +925,8 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     return data_md;
   }
 
+  /* Default export path. */
+  std::string export_path_ = "/tmp/tachikoma_serialized/";
   /* The tachikoma engine. */
   tachikoma::engine engine_;
   /* The tachikoma stream. */
