@@ -503,13 +503,9 @@ class TachikomaJSONSerializer : public backend::contrib::JSONSerializer {
   std::vector<JSONGraphNodeEntry> VisitExpr_(const CallNode* cn) override {
     Expr expr = GetRef<Expr>(cn);
     std::string name;
-    tvm::Array<Expr> args;
-    std::unordered_map<std::string, dmlc::any> extra_attrs;
-
     const CallNode* call = cn;
     if (const auto* op_node = cn->op.as<OpNode>()) {
       name = op_node->name;
-      args = cn->args;
     } else if (const auto* fn = cn->op.as<FunctionNode>()) {
       auto comp = fn->GetAttr<String>(attr::kComposite);
       ICHECK(comp.defined()) << "Tachikoma JSON runtime only supports composite functions.";
@@ -547,7 +543,7 @@ class TachikomaJSONSerializer : public backend::contrib::JSONSerializer {
     }
 
     std::vector<JSONGraphNodeEntry> inputs;
-    for (const auto& arg : args) {
+    for (const auto& arg : cn->args) {
       auto res = VisitExpr(arg);
       inputs.insert(inputs.end(), res.begin(), res.end());
     }
@@ -555,15 +551,6 @@ class TachikomaJSONSerializer : public backend::contrib::JSONSerializer {
                                                 "kernel", /* op_type_ */
                                                 inputs, 1 /* num_outputs_ */);
     SetCallNodeAttribute(node, call);
-    // If has post-op `clip`. Assume the last op is clip, add clip's attrs to the pattern attrs.
-    if (name.find("_clip") != std::string::npos) {
-      auto clip_call = cn->op.as<FunctionNode>()->body.as<CallNode>();
-      ICHECK(IsOp(clip_call, "clip"));
-      SetCallNodeAttribute(node, clip_call);
-    }
-    // For QNN.
-    for (const auto& kvp : extra_attrs) node->SetAttr(kvp.first, kvp.second);
-
     return AddNode(node, GetRef<Expr>(cn));
   }
 };
@@ -594,8 +581,7 @@ runtime::Module TachikomaCompiler(const ObjectRef& ref) {
   TachikomaJSONSerializer serializer(func_name, func);
   serializer.serialize();
   std::string graph_json = serializer.GetJSON();
-  auto params = serializer.GetParams();
-  
+
   // Note that serializer.const_name_to_constant() is ignored. Instead the TECompiler invokes
   // a callback which calls backend::UpdateConstants to capture the map before the function
   // 'disappears' into lowered form, on the assumption the visit order and thus constant
@@ -603,7 +589,7 @@ runtime::Module TachikomaCompiler(const ObjectRef& ref) {
 
   const auto* pf = runtime::Registry::Get("runtime.TachikomaJSONRuntimeCreate");
   ICHECK(pf != nullptr) << "Cannot find JSON runtime module to create";
-  auto mod = (*pf)(func_name, graph_json, params);
+  auto mod = (*pf)(func_name, graph_json, serializer.const_names());
   return mod;
 #else
   TachikomaModuleCodegen tachikoma;
