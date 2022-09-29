@@ -245,7 +245,7 @@ class TensorIntrin(Object):
         )  # type: ignore
 
     @staticmethod
-    def get(name: str):
+    def get(name: str, allow_missing: bool = False) -> Optional["TensorIntrin"]:
         """Look up a tensor intrinsic by its name.
 
         Parameters
@@ -253,12 +253,16 @@ class TensorIntrin(Object):
         name : str
             The name of the TensorIntrin to look up.
 
+        allow_missing : bool
+            Whether to allow missing tensor intrin. If False, raise an error if the tensor intrin
+        doesn't exist.
+
         Returns
         -------
-        result : TensorIntrin
-            The TensorIntrin with the specified name.
+        result : Optional[TensorIntrin]
+            The TensorIntrin with the specified name, or None if not found.
         """
-        return _ffi_api.TensorIntrinGet(name)  # pylint: type: ignore
+        return _ffi_api.TensorIntrinGet(name, allow_missing)  # pylint: type: ignore
 
 
 @tvm._ffi.register_object("tir.IndexMap")
@@ -308,8 +312,9 @@ class IndexMap(Object):
 
             The function to map from source indices to target indices.
             The function should accept `tir.Var` parameters and return
-            a list. Each element of the returned list should be a
-            `tir.PrimExpr`.
+            a either a `tir.PrimExpr`, or a list of `tir.PrimExpr`.
+            Returning a `tir.PrimExpr` is equivalent to returning a
+            list of length 1 containing that `tir.PrimExpr`.
 
         ndim: Optional[int]
 
@@ -356,9 +361,12 @@ class IndexMap(Object):
         mapping_function : Callable
 
             The function to map from source indices to target indices.
-            The function should accept tir.Var parameters and return a
-            list. Each element of the returned list should be either a
-            `tir.PrimExpr` or the object `IndexMap.AXIS_SEPARATOR`.
+            The function should accept tir.Var parameters and return
+            either a `tir.PrimExpr` or a list.  Each element of the
+            returned list should be either a `tir.PrimExpr` or the
+            object `IndexMap.AXIS_SEPARATOR`.  Returning a
+            `tir.PrimExpr` is equivalent to returning a list of length
+            1 containing that `tir.PrimExpr`.
 
         ndim: Optional[int]
 
@@ -423,17 +431,27 @@ class IndexMap(Object):
 
         final_indices = []
         axis_separators = []
-        for val in mapping:
-            if isinstance(val, tvm.ir.PrimExpr):
-                final_indices.append(val)
-            elif val is IndexMap.AXIS_SEPARATOR:
-                axis_separators.append(len(final_indices))
-            else:
-                raise TypeError(
-                    "Expected mapping function to return list of "
-                    "either tvm.ir.PrimExpr or IndexMap.AXIS_SEPARATOR.  "
-                    f"Instead received {val} of type {type(val)}."
-                )
+
+        try:
+            iter(mapping)
+            is_iterable = True
+        except TypeError:
+            is_iterable = False
+
+        if is_iterable:
+            for val in mapping:
+                if isinstance(val, tvm.ir.PrimExpr):
+                    final_indices.append(val)
+                elif val is IndexMap.AXIS_SEPARATOR:
+                    axis_separators.append(len(final_indices))
+                else:
+                    raise TypeError(
+                        "Expected mapping function to return list of "
+                        "either tvm.ir.PrimExpr or IndexMap.AXIS_SEPARATOR.  "
+                        f"Instead received {val} of type {type(val)}."
+                    )
+        else:
+            final_indices.append(mapping)
 
         return IndexMap(initial_indices, final_indices, inverse_index_map), axis_separators
 

@@ -131,8 +131,9 @@ class LowerToTECompute : public backend::MemoizedExprTranslator<Array<te::Tensor
     for (Var param : relay_func->params) {
       Array<tvm::te::Tensor> inputs;
       for (const auto& ttype : FlattenTupleType(param->checked_type())) {
-        tvm::te::Tensor tensor =
-            tvm::te::placeholder(GetShape(ttype->shape), ttype->dtype, param->vid->name_hint);
+        auto name_hint = param->vid->name_hint;
+        tvm::te::Tensor tensor = tvm::te::placeholder(
+            GetShape(ttype->shape), ttype->dtype, (name_hint == "") ? "placeholder" : name_hint);
         inputs.push_back(tensor);
         fn_inputs_.push_back(tensor);
       }
@@ -374,7 +375,7 @@ class ScheduleBuilder : public ExprVisitor {
             TuningRecord record = opt_record.value();
             for (const Instruction& inst : record->trace->insts) {
               if (inst->kind.same_as(kind_transform_layout)) {
-                ICHECK_EQ(inst->attrs.size(), 3);
+                ICHECK_EQ(inst->attrs.size(), 4);
                 MetaScheduleLayoutRewriter::LayoutQueuePush(Downcast<IndexMap>(inst->attrs[2]));
               }
             }
