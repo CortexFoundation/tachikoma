@@ -187,14 +187,67 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
       {"tanh", tachikoma::algorithm::eltwise_tanh},
       {"sigmoid", tachikoma::algorithm::eltwise_logistic},
       {"clip", tachikoma::algorithm::eltwise_clip},
+      {"gelu_erf", tachikoma::algorithm::eltwise_gelu_erf},
   };
 
-  bool ParsingOpName(const std::string op_name, tachikoma::primitive_attr attr) {
+  NDArray GetInputByName(const size_t& nid, const std::string& name) {
+    auto idx = GetNodeAttr<int>(nodes_[nid], name, {"-1"});
+    return GetInput(nid, idx);
+  }
+
+  tachikoma::primitive_attr ParseAttrs(const size_t& nid, TensorRequisite* bias_tr) {
+    tachikoma::primitive_attr attr;
+
+    // Post op attributes based on named inputs.
+    auto dst_zp_tr = GetInputByName(nid, "dst_zp_idx");
+    auto o_scl_tr = GetInputByName(nid, "o_scl_idx");
+    auto sum_scl_tr = GetInputByName(nid, "sum_scl_idx");
+
+    if (o_scl_tr) {
+      ICHECK(o_scl_tr.IsConstant());
+      auto data = o_scl_tr.GetConstDataLikeVec<float>();
+      attr.set_output_scales(data.size() == 1 ? 0 : (1 << 1), data);
+    }
+
+    auto activation = GetNodeAttr<std::vector<std::string>>(nodes_[nid], "activation", {"none"});
+    if (activation[0] != "none") {
+      auto a_type = elt_name2algo.at(activation[0]);
+      auto a_scale = GetInput(nid, std::stoi(activation[1])).GetConstScalarData<float>();
+      auto a_alfa = GetInput(nid, std::stoi(activation[2])).GetConstScalarData<float>();
+      auto a_beta = GetInput(nid, std::stoi(activation[3])).GetConstScalarData<float>();
+
+      auto ops = attr.get_post_ops();
+      ops.append_eltwise(a_scale, a_type, a_alfa, a_beta);
+      attr.set_post_ops(ops);
+    }
+
+    if (sum_scl_tr) {
+      auto scl = sum_scl_tr.GetConstScalarData<float>();
+      auto ops = attr.get_post_ops();
+      ops.append_sum(scl);
+      attr.set_post_ops(ops);
+    }
+
+    if (dst_zp_tr) {
+      auto zp = dst_zp_tr.GetConstScalarData<float>();
+      // Use linear post op instead of set_zero_points(). Because of limitation of int32 type,
+      // but we have to use float.
+      auto ops = attr.get_post_ops();
+      ops.append_eltwise(1.0, tachikoma::algorithm::eltwise_linear, 1.0, zp);
+      attr.set_post_ops(ops);
+    }
+    *bias_tr = GetInputByName(nid, "bias_idx");
+
+    if (o_scl_tr || activation[0] != "none" || sum_scl_tr || dst_zp_tr) return attr;
+
+    // parsing of name to extract attributes
+    auto op_name = nodes_[nid].GetOpName();
     // Define RegExp.
     std::regex bias_add_pat(".*_bias.*");
     std::regex relu_pat(".*_relu.*");
     std::regex tanh_pat(".*_tanh.*");
     std::regex sigmoid_pat(".*_sigmoid.*");
+    std::regex gelu_pat(".*_gelu.*");
 
     // Parsing post-ops.
     tachikoma::post_ops ops;
@@ -207,11 +260,19 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     if (std::regex_match(op_name, sigmoid_pat)) {
       ops.append_eltwise(1.f, tachikoma::algorithm::eltwise_logistic, 0.f, 0.f);
     }
-    attr.set_post_ops(ops);
+    if (std::regex_match(op_name, gelu_pat)) {
+      ops.append_eltwise(1.f, tachikoma::algorithm::eltwise_gelu_erf, 0.f, 0.f);
+    }
+    if (ops.len() != 0) {
+      attr.set_post_ops(ops);
+    }
 
     // Parsing bias_add.
-    return std::regex_match(op_name, bias_add_pat) ? true : false;
+    *bias_tr = std::regex_match(op_name, bias_add_pat) ? GetInput(nid, 2) : TensorRequisite{};
+
+    return attr;
   }
+
 
   tachikoma::memory::dims TransformStr2Dims(std::vector<std::string> strs, std::string str_name) {
     tachikoma::memory::dims out_dims;
@@ -300,8 +361,9 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
   void Convolution(const size_t& nid) {
     auto node = nodes_[nid];
     auto op_name = node.GetOpName();
-    tachikoma::primitive_attr attr;
-    bool has_bias = ParsingOpName(op_name, attr);
+    
+    auto attr = ParseAttrs(nid, &bias_tr);
+    attr.set_scratchpad_mode(tachikoma::scratchpad_mode::user);
 
     // Setup attributes.
     auto data_entry = node.GetInputs()[0];
@@ -401,8 +463,9 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
   void Deconvolution(const size_t& nid) {
     auto node = nodes_[nid];
     auto op_name = node.GetOpName();
-    tachikoma::primitive_attr attr;
-    bool has_bias = ParsingOpName(op_name, attr);
+    
+    auto attr = ParseAttrs(nid, &bias_tr);
+    attr.set_scratchpad_mode(tachikoma::scratchpad_mode::user);
 
     // Setup attributes.
     auto data_entry = node.GetInputs()[0];
@@ -511,8 +574,9 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
   void Dense(const size_t& nid) {
     auto node = nodes_[nid];
     auto op_name = node.GetOpName();
-    tachikoma::primitive_attr attr;
-    bool has_bias = ParsingOpName(op_name, attr);
+    
+    auto attr = ParseAttrs(nid, &bias_tr);
+    attr.set_scratchpad_mode(tachikoma::scratchpad_mode::user);
 
     // Setup attributes.
     auto data_entry = node.GetInputs()[0];

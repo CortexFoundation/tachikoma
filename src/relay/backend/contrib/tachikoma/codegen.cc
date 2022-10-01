@@ -37,6 +37,8 @@
 #include "../../utils.h"
 #include "comp_op_matcher.h"
 
+#define USE_JSON_RUNTIME
+
 #ifdef USE_JSON_RUNTIME
 #include "../../../../runtime/contrib/json/json_node.h"
 #include "../codegen_json/codegen_json.h"
@@ -524,6 +526,11 @@ class TachikomaJSONSerializer : public backend::contrib::JSONSerializer {
         std::vector<std::string> op_list = ParsingOpList("dense", name);
         call = GetRootCall(fn->body.as<CallNode>(), op_list.size() - 1, op_list);
         ICHECK(call->op.as<OpNode>()) << "Not op node";
+      } else if (name.find("tachikoma.qnn.conv2d") != std::string::npos ||
+                 name.find("tachikoma.qnn.dense") != std::string::npos) {
+        std::vector<Expr> args_loc;
+        call = ParseComposite(*fn, &extra_attrs, &args_loc);
+        args = BindToCallNodeArgs(args_loc, cn);
       } else {
         LOG(FATAL) << "Unrecognized tachikoma pattern: " << name;
       }
