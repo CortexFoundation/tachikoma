@@ -24,9 +24,6 @@
 
 #include <tvm/runtime/ndarray.h>
 #include <tvm/runtime/registry.h>
-#include <dmlc/io.h>
-#include <fstream>
-#include <boost/filesystem.hpp>
 
 #include <cstddef>
 #include <regex>
@@ -42,6 +39,9 @@
 
 namespace tachikoma = dnnl;
 
+#include "tachikoma_tensor_requisite.h"
+#include "tachikoma_utils.h"
+
 namespace tvm {
 namespace runtime {
 namespace contrib {
@@ -50,132 +50,81 @@ using namespace tvm::runtime;
 using namespace tvm::runtime::json;
 
 class TachikomaJSONRuntime : public JSONRuntimeBase {
-  using tag = tachikoma::memory::format_tag;
-  using dt = tachikoma::memory::data_type;
-
  public:
   TachikomaJSONRuntime(const std::string& symbol_name, const std::string& graph_json,
                   const Array<String> const_names)
-      : JSONRuntimeBase(symbol_name, graph_json, const_names) {}
+      : JSONRuntimeBase(symbol_name, graph_json, const_names),
+        next_unique_eid_offset_(data_entry_.size()),
+        run_arg_eid_(input_var_eid_) {
+    for (const auto e : outputs_) run_arg_eid_.push_back(EntryID(e));
+  }
 
-  const char* type_key() const { return "tachikoma_json"; }
+  const char* type_key() const override { return "tachikoma_json"; }
 
   void Init(const Array<NDArray>& consts) override {
-    BuildEngine();
-
     ICHECK_EQ(consts.size(), const_idx_.size())
         << "The number of input constants must match the number of required.";
 
     // Setup constants entries for weights.
     SetupConstants(consts);
+    BuildEngine();
   }
 
-  void Run() override {
-    // Fill in the input buffers.
-    for (size_t i = 0; i < input_nodes_.size(); ++i) {
-      auto eid = EntryID(input_nodes_[i], 0);
-      // TODO(@liaopeiyuan): Support other data lengths.
-      size_t offset_in_bytes = entry_out_mem_[eid].second * 4;
-      size_t buffer_size = GetDataSize(*data_entry_[eid]);
-      write_to_tachikoma_memory(data_entry_[eid]->data, entry_out_mem_[eid].first, buffer_size,
-                           offset_in_bytes);
-    }
+  /* Unused stub implementation */
+  void Run() override { LOG(FATAL) << "Unreachable code"; }
 
-    // Invoke the engine through intepreting the stream.
-    for (size_t i = 0; i < net_.size(); ++i) {
-      net_.at(i).execute(stream_, net_args_.at(i));
-    }
-    stream_.wait();
+  /* Thread safe implementation of Run. Keep runtime instance immutable */
+  void Run(const TVMArgs& args) const {
+    auto arg_data_provider = makeIODataProvider(args);
+    auto mem_solver = tensor_registry_.MakeSolver(arg_data_provider);
+    // Execute primitives one by one
+    for (const auto& act : net_) {
+      auto prim = std::get<0>(act);
+      auto arg_reqs = std::get<1>(act);
 
-    // Read output buffers.
-    for (size_t i = 0; i < outputs_.size(); ++i) {
-      auto eid = EntryID(outputs_[i]);
-      size_t offset_in_bytes = entry_out_mem_[eid].second * 4;
-      size_t buffer_size = GetDataSize(*data_entry_[eid]);
-      read_from_tachikoma_memory(data_entry_[eid]->data, entry_out_mem_[eid].first, buffer_size,
-                            offset_in_bytes);
+      // Find proper tachikoma::memory buffers
+      std::unordered_map<int, tachikoma::memory> mem_args;
+      for (const auto& kvp : arg_reqs) mem_args[kvp.first] = mem_solver(kvp.second);
+      prim.execute(stream_, mem_args);
     }
-
-    auto d = data_entry_;
-    std::stringstream sstream;
-    sstream << this->export_path_ << std::hex << (long)(void*) this << "_" << this->symbol_name_ << "/";
-    std::string path_name = sstream.str();
-    boost::filesystem::create_directories(path_name);
-    for (size_t vector_id = 0; vector_id < d.size(); vector_id++) {
-        const DLTensor* tensor = d[vector_id];
-        std::string data;
-        dmlc::MemoryStringStream writer(&data);
-        dmlc::SeekStream* strm = &writer;
-        std::string file_name = path_name;
-        file_name = file_name + std::to_string(vector_id) + ".bin";
-        if (tensor != nullptr) {
-          SaveDLTensor(strm, tensor);
-          std::ofstream fs(file_name, std::ios::out | std::ios::binary);
-          ICHECK(!fs.fail()) << "Cannot open " << file_name;
-          fs.write(&data[0], data.length());
-        }
-    }
-    std::string data;
-    dmlc::MemoryStringStream writer(&data);
-    dmlc::SeekStream* strm = &writer;
-    this->SaveToBinary(strm);
-    std::string file_name = path_name;
-    file_name = file_name + "graph.bin";
-    std::ofstream fs(file_name, std::ios::out | std::ios::binary);
-    ICHECK(!fs.fail()) << "Cannot open " << file_name;
-    fs.write(&data[0], data.length());
-    std::cerr << "/* Serialized " << d.size() << " tensors to " << path_name << " . */" << std::endl;
   }
 
   /* Override GetFunction to reimplement Run method */
   PackedFunc GetFunction(const std::string& name, const ObjectPtr<Object>& sptr_to_self) override {
-    if (name == "get_symbol") {
-      return PackedFunc(
-          [sptr_to_self, this](TVMArgs args, TVMRetValue* rv) { *rv = this->symbol_name_; });
-    } else if (name == "get_const_vars") {
-      return PackedFunc(
-          [sptr_to_self, this](TVMArgs args, TVMRetValue* rv) { *rv = this->const_names_; });
-    } else if (name == "set_export_path") {
-      return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
-        std::string file_name = args[0];
-        export_path_ = file_name;
-        std::cerr << "Export path set." << std::endl;
-      });
-    } else if (this->symbol_name_ == name) {
+    if (this->symbol_name_ == name) {
       return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
         ICHECK(this->initialized_) << "The module has not been initialized";
 
-        // Bind argument tensors to data entries.
-        this->SetInputOutputBuffers(args);
-        // Execute the subgraph.
-        this->Run();
-      });
-    } else if ("__init_" + this->symbol_name_ == name) {
-      // The function to initialize constant tensors.
-      return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
-        ICHECK_EQ(args.size(), 1U);
-        std::lock_guard<std::mutex> guard(this->initialize_mutex_);
-        if (!this->initialized_) {
-          this->Init(args[0]);
-          this->initialized_ = true;
-        }
-        *rv = 0;
+        ICHECK_EQ(args.size(), input_var_eid_.size() + outputs_.size())
+            << "Found mismatch in the number of provided data entries and required.";
+
+        Run(args);
       });
     } else {
-      return PackedFunc(nullptr);
+      return JSONRuntimeBase::GetFunction(name, sptr_to_self);
     }
   }
 
- private:
-  // Build up the engine based on the input graph.
-  std::map<std::string, tag> layout_dict{
-      {"NCW", tag::ncw},       {"OIW", tag::oiw},     {"GOIW", tag::goiw},   {"NCHW", tag::nchw},
-      {"OIHW", tag::oihw},     {"GOIHW", tag::goihw}, {"NCDHW", tag::ncdhw}, {"OIDHW", tag::oidhw},
-      {"GOIDHW", tag::goidhw}, {"IOHW", tag::iohw},   {"GIOHW", tag::giohw}, {"IODHW", tag::iodhw},
-      {"GIODHW", tag::giodhw},
-  };
+  /* Same as makeInitDataProvider but in case of InputOutput return real DLTensor */
+  TensorRegistry::DLTensorProvider makeIODataProvider(const TVMArgs& args) const {
+    auto extract_dl_tensor = [](const TVMArgValue& val) -> const DLTensor* {
+      ICHECK(val.type_code() == kTVMNDArrayHandle || val.type_code() == kTVMDLTensorHandle)
+          << "Expect NDArray or DLTensor";
+      return val.IsObjectRef<NDArray>() ? val.operator NDArray().operator->()
+                                        : val.operator DLTensor*();
+    };
 
-  std::map<std::string, tachikoma::algorithm> elt_name2algo{
+    std::map<uint32_t, const DLTensor*> io_map;  // eid to dl tensor map
+    for (size_t i = 0; i < run_arg_eid_.size(); i++) {
+      io_map[run_arg_eid_[i]] = extract_dl_tensor(args[i]);
+    }
+
+    // lambda with captured IO data handlers
+    return [io_map](uint32_t eid) -> const DLTensor* { return io_map.at(eid); };
+  }
+
+ private:
+  const std::map<std::string, tachikoma::algorithm> elt_name2algo{
       {"abs", tachikoma::algorithm::eltwise_abs},
       {"exp", tachikoma::algorithm::eltwise_exp},
       {"log", tachikoma::algorithm::eltwise_log},
@@ -187,14 +136,62 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
       {"tanh", tachikoma::algorithm::eltwise_tanh},
       {"sigmoid", tachikoma::algorithm::eltwise_logistic},
       {"clip", tachikoma::algorithm::eltwise_clip},
+      {"gelu_erf", tachikoma::algorithm::eltwise_gelu_erf},
   };
 
-  bool ParsingOpName(const std::string op_name, tachikoma::primitive_attr attr) {
+  tachikoma::primitive_attr ParseAttrs(const size_t& nid, TensorRequisite* bias_tr) {
+    tachikoma::primitive_attr attr;
+
+    // Post op attributes based on named inputs.
+    auto dst_zp_tr = GetInputByName(nid, "dst_zp_idx");
+    auto o_scl_tr = GetInputByName(nid, "o_scl_idx");
+    auto sum_scl_tr = GetInputByName(nid, "sum_scl_idx");
+
+    if (o_scl_tr) {
+      ICHECK(o_scl_tr.IsConstant());
+      auto data = o_scl_tr.GetConstDataLikeVec<float>();
+      attr.set_output_scales(data.size() == 1 ? 0 : (1 << 1), data);
+    }
+
+    auto activation = GetNodeAttr<std::vector<std::string>>(nodes_[nid], "activation", {"none"});
+    if (activation[0] != "none") {
+      auto a_type = elt_name2algo.at(activation[0]);
+      auto a_scale = GetInput(nid, std::stoi(activation[1])).GetConstScalarData<float>();
+      auto a_alfa = GetInput(nid, std::stoi(activation[2])).GetConstScalarData<float>();
+      auto a_beta = GetInput(nid, std::stoi(activation[3])).GetConstScalarData<float>();
+
+      auto ops = attr.get_post_ops();
+      ops.append_eltwise(a_scale, a_type, a_alfa, a_beta);
+      attr.set_post_ops(ops);
+    }
+
+    if (sum_scl_tr) {
+      auto scl = sum_scl_tr.GetConstScalarData<float>();
+      auto ops = attr.get_post_ops();
+      ops.append_sum(scl);
+      attr.set_post_ops(ops);
+    }
+
+    if (dst_zp_tr) {
+      auto zp = dst_zp_tr.GetConstScalarData<float>();
+      // Use linear post op instead of set_zero_points(). Because of limitation of int32 type,
+      // but we have to use float.
+      auto ops = attr.get_post_ops();
+      ops.append_eltwise(1.0, tachikoma::algorithm::eltwise_linear, 1.0, zp);
+      attr.set_post_ops(ops);
+    }
+    *bias_tr = GetInputByName(nid, "bias_idx");
+
+    if (o_scl_tr || activation[0] != "none" || sum_scl_tr || dst_zp_tr) return attr;
+
+    // parsing of name to extract attributes
+    auto op_name = nodes_[nid].GetOpName();
     // Define RegExp.
     std::regex bias_add_pat(".*_bias.*");
     std::regex relu_pat(".*_relu.*");
     std::regex tanh_pat(".*_tanh.*");
     std::regex sigmoid_pat(".*_sigmoid.*");
+    std::regex gelu_pat(".*_gelu.*");
 
     // Parsing post-ops.
     tachikoma::post_ops ops;
@@ -207,30 +204,30 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     if (std::regex_match(op_name, sigmoid_pat)) {
       ops.append_eltwise(1.f, tachikoma::algorithm::eltwise_logistic, 0.f, 0.f);
     }
-    attr.set_post_ops(ops);
+    if (std::regex_match(op_name, gelu_pat)) {
+      ops.append_eltwise(1.f, tachikoma::algorithm::eltwise_gelu_erf, 0.f, 0.f);
+    }
+    if (ops.len() != 0) {
+      attr.set_post_ops(ops);
+    }
 
     // Parsing bias_add.
-    return std::regex_match(op_name, bias_add_pat) ? true : false;
+    *bias_tr = std::regex_match(op_name, bias_add_pat) ? GetInput(nid, 2) : TensorRequisite{};
+
+    return attr;
   }
 
-  tachikoma::memory::dims TransformStr2Dims(std::vector<std::string> strs, std::string str_name) {
-    tachikoma::memory::dims out_dims;
-    if (str_name == "dilates") {
-      std::transform(strs.begin(), strs.end(), std::back_inserter(out_dims),
-                     [](const std::string& str) { return std::stoi(str) - 1; });
-    } else {
-      std::transform(strs.begin(), strs.end(), std::back_inserter(out_dims),
-                     [](const std::string& str) { return std::stoi(str); });
-    }
-    return out_dims;
-  }
-
+  // Build up the engine based on the input graph.
   void BuildEngine() {
     engine_ = tachikoma::engine(tachikoma::engine::kind::cpu, 0);
     stream_ = tachikoma::stream(engine_);
 
+    std::set<uint32_t> io_eid_set(run_arg_eid_.begin(), run_arg_eid_.end());
+    tensor_registry_ = TensorRegistry(engine_, io_eid_set);
+
     std::regex conv_pat(".*conv[1-3]d.*");
-    std::regex conv_tranpose_pat(".*conv[1-3]d_transpose.*");
+    std::regex deconv_pat(".*deconv[1-3]d.*");
+    std::regex conv_transpose_pat(".*conv[1-3]d_transpose.*");
     std::regex dense_pat(".*dense.*");
     std::regex max_pool_pat(".*max_pool[1-3]d");
     std::regex avg_pool_pat(".*avg_pool[1-3]d");
@@ -241,7 +238,8 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
       if (node.GetOpType() == "kernel") {
         ICHECK_EQ(node.GetOpType(), "kernel");
         auto op_name = node.GetOpName();
-        if (std::regex_match(op_name, conv_tranpose_pat)) {
+        if (std::regex_match(op_name, deconv_pat) ||
+            std::regex_match(op_name, conv_transpose_pat)) {
           Deconvolution(nid);
         } else if (std::regex_match(op_name, conv_pat)) {
           Convolution(nid);
@@ -261,6 +259,8 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
           Binary(nid, tachikoma::algorithm::binary_add);
         } else if ("multiply" == op_name) {
           Binary(nid, tachikoma::algorithm::binary_mul);
+        } else if ("nn.layer_norm" == op_name) {
+          LayerNorm(nid);
         } else {
           LOG(FATAL) << "Unsupported op: " << op_name;
         }
@@ -268,548 +268,541 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     }
   }
 
-  // Bind a JSON graph node entry to a Tachikoma memory.
-  tachikoma::memory BindTachikomaMemory(const JSONGraphNodeEntry& entry, tachikoma::memory::desc mem_desc,
-                              size_t offset = 0) {
-    auto eid = EntryID(entry);
-    // std::cerr << "entry id: " << eid << " node idx: " << entry.index_ << " id: " << entry.id_ << std::endl;
-    if (entry_out_mem_.count(eid) == 0) {
-      return BindTachikomaMemory(entry, tachikoma::memory(mem_desc, engine_), offset);
-    }
-    return entry_out_mem_[eid].first;
-  }
-
-  // Bind a JSON graph node entry to a given Tachikoma memory.
-  tachikoma::memory BindTachikomaMemory(const JSONGraphNodeEntry& entry, tachikoma::memory mem,
-                              size_t offset = 0) {
-    auto eid = EntryID(entry);
-    // std::cerr << "entry id: " << eid << " node idx: " << entry.index_ << " id: " << entry.id_ << std::endl;
-    // Since the Tachikoma memory has been created before calling this function, we assume the entry
-    // has not yet been bound to the other Tachikoma memory; otherwise it may have memory leak.
-    ICHECK_EQ(entry_out_mem_.count(eid), 0);
-
-    // TODO(@liaopeiyuan): Support other data types (i.e., int8).
-    auto data_node = nodes_[entry.id_];
-    auto dltype = data_node.GetOpDataType()[entry.index_];
-    // ICHECK_EQ(dltype.bits, 32);
-
-    entry_out_mem_[eid] = {mem, offset};
-    return entry_out_mem_[eid].first;
-  }
-
   void Convolution(const size_t& nid) {
     auto node = nodes_[nid];
-    auto op_name = node.GetOpName();
-    tachikoma::primitive_attr attr;
-    bool has_bias = ParsingOpName(op_name, attr);
 
     // Setup attributes.
-    auto data_entry = node.GetInputs()[0];
-    auto weight_entry = node.GetInputs()[1];
-    JSONGraphNodeEntry out_entry(nid, 0);
-    tachikoma::memory::dims input_shape = nodes_[data_entry.id_].GetOpShape()[data_entry.index_];
-    tachikoma::memory::dims weight_shape = nodes_[weight_entry.id_].GetOpShape()[weight_entry.index_];
-    tachikoma::memory::dims out_shape = nodes_[out_entry.id_].GetOpShape()[out_entry.index_];
-    tachikoma::memory::dim channels =
-        node.GetAttr<std::vector<std::string>>("channels")[0] != ""
-            ? std::stoi(node.GetAttr<std::vector<std::string>>("channels")[0])
-            : out_shape[1];
-    std::vector<std::string> str_strides = node.GetAttr<std::vector<std::string>>("strides");
-    std::vector<std::string> str_dilates = node.GetAttr<std::vector<std::string>>("dilation");
-    std::vector<std::string> str_padding = node.GetAttr<std::vector<std::string>>("padding");
-    std::vector<std::string> str_padding_l(str_padding.begin(),
-                                           str_padding.begin() + str_padding.size() / 2);
-    std::vector<std::string> str_padding_r(str_padding.end() - str_padding.size() / 2,
-                                           str_padding.end());
-    tachikoma::memory::dim groups = std::stoi(node.GetAttr<std::vector<std::string>>("groups")[0]);
-    std::string data_layout = node.GetAttr<std::vector<std::string>>("data_layout")[0];
-    std::string kernel_layout = node.GetAttr<std::vector<std::string>>("kernel_layout")[0];
+    auto src_tr = GetInput(nid, 0);
+    auto wgh_tr = GetInput(nid, 1);
+    auto dst_tr = GetOutput(nid, 0);
+    auto bias_tr = TensorRequisite{};
 
-    // Check layout.
-    if (layout_dict.find(data_layout) == layout_dict.end() ||
-        layout_dict.find(kernel_layout) == layout_dict.end()) {
-      LOG(FATAL) << "Unsupported layout for conv: " << data_layout << " " << kernel_layout;
+    auto attr = ParseAttrs(nid, &bias_tr);
+    attr.set_scratchpad_mode(tachikoma::scratchpad_mode::user);
+
+    auto strides = GetNodeAttr<std::vector<int64_t>>(node, "strides");
+    auto dilates = GetNodeAttr<std::vector<int64_t>>(node, "dilation");
+    auto padding = GetNodeAttr<std::vector<int64_t>>(node, "padding");
+    std::vector<int64_t> padding_l(padding.begin(), padding.begin() + padding.size() / 2);
+    std::vector<int64_t> padding_r(padding.begin() + padding.size() / 2, padding.end());
+    auto groups = GetNodeAttr<int>(node, "groups");
+    auto src_layout = GetNodeAttr<std::string>(node, "data_layout");
+    auto dst_layout = GetNodeAttr<std::string>(node, "out_layout");
+    auto wgh_layout = GetNodeAttr<std::string>(node, "kernel_layout");
+
+    // dst_layout == "" means to use data_layout
+    if (dst_layout.empty()) dst_layout = src_layout;
+
+    // Minus one for Tachikoma representation. No dilation for Tachikoma is 0, for relay is 1.
+    for (auto& d : dilates) d--;
+
+    // Take into account provided layout strings
+    src_tr = src_tr.TreatAs(src_layout);
+    dst_tr = dst_tr.TreatAs(dst_layout);
+    wgh_tr = wgh_tr.TreatAs(wgh_layout);
+
+    // Should support G mixed with O. Like { G*O, I, H, W }
+    // Use { G, O, I, H, W } weight format even if groups == 1
+    if (wgh_layout.find("G") == std::string::npos) {
+      auto w_dims = wgh_tr.dims();
+      w_dims[0] /= groups;
+      w_dims.insert(w_dims.begin(), groups);
+      wgh_tr = wgh_tr.Reshape(w_dims);
     }
 
+    // Assumption that bias is correct and can be squeezed to 1D
+    bias_tr = bias_tr.Reshape({dst_tr.dims()[1]});
 
-    // Memory shapes.
-    tachikoma::memory::dims src_dims = input_shape;       // {N, IC, ID, IH, IW}
-    tachikoma::memory::dims weights_dims = weight_shape;  // {OC, IC, KD, KH, KW}
-    if (groups > 1) {
-      weights_dims = {groups, channels / groups, input_shape[1] / groups};
-      weights_dims.insert(weights_dims.end(), weight_shape.begin() + 2, weight_shape.end());
-      kernel_layout.insert(0, "G");
+    // TODO(@apeskov): This is WA. In case of padded blocked tensor format we do not know original
+    //  shapes. Example tensor {1, 10, 224, 224} with layout "NCNH8c" will lead to tensor
+    //  {1, 2, 224, 224, 8}. Identically as for shapes {1, 11, 224, 224} or {1, 15, 224, 224}.
+    //
+    // Let's try to compensate it for weight tensor. Weight IC should match with source IC.
+    // Example src: [1, 3, 224, 224] with layout NCHW
+    //         wgh: [16, 3, 3, 3] with layout OIHW2i8o -> [2, 2, 3, 3, 2, 8]
+    if (wgh_tr.dims()[2] != src_tr.dims()[1] / groups) {
+      auto wgh_croped_dims = wgh_tr.dims();
+      wgh_croped_dims[2] = src_tr.dims()[1];
+      auto zero_offset = tachikoma::memory::dims(wgh_tr.dims().size(), 0);
+      wgh_tr = wgh_tr.Crop(wgh_croped_dims, zero_offset);
     }
-    tachikoma::memory::dims bias_dims = {channels};
-    tachikoma::memory::dims dst_dims = out_shape;  // {N, OC, OD, OH, OW}
-    tachikoma::memory::dims strides_dims = TransformStr2Dims(str_strides, "strides");
-    tachikoma::memory::dims dilates_dims = TransformStr2Dims(str_dilates, "dilates");
-    tachikoma::memory::dims padding_dims_l = TransformStr2Dims(str_padding_l, "padding");
-    tachikoma::memory::dims padding_dims_r = TransformStr2Dims(str_padding_r, "padding");
 
-    // Memory descriptions.
-    auto conv_src_md = tachikoma::memory::desc(src_dims, dt::f32, layout_dict[data_layout]);
-    auto conv_weights_md = tachikoma::memory::desc(weights_dims, dt::f32, layout_dict[kernel_layout]);
-    auto conv_bias_md = tachikoma::memory::desc(bias_dims, dt::f32, tag::any);
-    auto conv_dst_md = tachikoma::memory::desc(dst_dims, dt::f32, layout_dict[data_layout]);
-
-    // Covn2d description.
-    auto conv_desc =
-        has_bias ? tachikoma::convolution_forward::desc(
-                       tachikoma::prop_kind::forward_inference, tachikoma::algorithm::convolution_direct,
-                       conv_src_md, conv_weights_md, conv_bias_md, conv_dst_md, strides_dims,
-                       dilates_dims, padding_dims_l, padding_dims_r)
-                 : tachikoma::convolution_forward::desc(tachikoma::prop_kind::forward_inference,
-                                                   tachikoma::algorithm::convolution_direct, conv_src_md,
-                                                   conv_weights_md, conv_dst_md, strides_dims,
-                                                   dilates_dims, padding_dims_l, padding_dims_r);
+    // Conv description.
+    auto conv_desc = tachikoma::convolution_forward::desc(
+        tachikoma::prop_kind::forward_inference, tachikoma::algorithm::convolution_direct,
+        src_tr.LayoutAny().desc(), wgh_tr.LayoutAny().desc(), bias_tr.LayoutAny().desc(),
+        dst_tr.LayoutAny().desc(), strides, dilates, padding_l, padding_r);
 
     // Enable elementwise post-ops.
-    auto conv2d_prim_desc = tachikoma::convolution_forward::primitive_desc(conv_desc, attr, engine_);
+    auto conv_prim_desc = tachikoma::convolution_forward::primitive_desc(conv_desc, attr, engine_);
 
-    // Push to the network.
-    auto conv = tachikoma::convolution_forward(conv2d_prim_desc);
-    net_.push_back(conv);
+    src_tr = src_tr.RequestLayout(conv_prim_desc.src_desc());
+    wgh_tr = wgh_tr.RequestLayout(conv_prim_desc.weights_desc());
+    dst_tr = dst_tr.RequestLayout(conv_prim_desc.dst_desc());
+    bias_tr = bias_tr.RequestLayout(conv_prim_desc.bias_desc());
 
-    // Data memory.
-    auto conv2d_src_memory = BindTachikomaMemory(data_entry, conv_src_md);
+    auto scratchpad_tr = TensorRequisite::AsIs(conv_prim_desc.scratchpad_desc());
 
-    // Weight memory.
-    auto conv2d_weights_memory = BindTachikomaMemory(weight_entry, conv_weights_md);
+    // TODO(@apeskov): Simulation of inplace primitive. just as PoC.
+    auto sum_in_tr = GetInputByName(nid, "sum_idx").TreatAs(dst_layout);
 
-    // Output memory.
-    auto conv2d_dst_memory = BindTachikomaMemory(out_entry, conv2d_prim_desc.dst_desc());
-
-    // Bias memory.
-    auto conv2d_bias_memory = tachikoma::memory({bias_dims, dt::f32, tag::x}, engine_);
-    if (has_bias) {
-      auto bias_entry = node.GetInputs()[2];
-      BindTachikomaMemory(bias_entry, conv2d_bias_memory);
-
-      // Bind memory buffers.
-      net_args_.push_back({{DNNL_ARG_SRC, conv2d_src_memory},
-                           {DNNL_ARG_WEIGHTS, conv2d_weights_memory},
-                           {DNNL_ARG_BIAS, conv2d_bias_memory},
-                           {DNNL_ARG_DST, conv2d_dst_memory}});
-    } else {
-      // Bind memory buffers.
-      net_args_.push_back({{DNNL_ARG_SRC, conv2d_src_memory},
-                           {DNNL_ARG_WEIGHTS, conv2d_weights_memory},
-                           {DNNL_ARG_DST, conv2d_dst_memory}});
-    }
+    Submit(tachikoma::convolution_forward(conv_prim_desc),
+           {{DNNL_ARG_SRC, src_tr},
+            {DNNL_ARG_WEIGHTS, wgh_tr},
+            {DNNL_ARG_BIAS, bias_tr},
+            {DNNL_ARG_SCRATCHPAD, scratchpad_tr},
+            {DNNL_ARG_DST, dst_tr}},
+           {sum_in_tr, DNNL_ARG_DST});
   }
 
   void Deconvolution(const size_t& nid) {
     auto node = nodes_[nid];
-    auto op_name = node.GetOpName();
-    tachikoma::primitive_attr attr;
-    bool has_bias = ParsingOpName(op_name, attr);
 
     // Setup attributes.
-    auto data_entry = node.GetInputs()[0];
-    auto weight_entry = node.GetInputs()[1];
-    JSONGraphNodeEntry out_entry(nid, 0);
-    tachikoma::memory::dims input_shape = nodes_[data_entry.id_].GetOpShape()[data_entry.index_];
-    tachikoma::memory::dims weight_shape = nodes_[weight_entry.id_].GetOpShape()[weight_entry.index_];
-    tachikoma::memory::dims out_shape = nodes_[out_entry.id_].GetOpShape()[out_entry.index_];
-    tachikoma::memory::dim channels =
-        node.GetAttr<std::vector<std::string>>("channels")[0] != ""
-            ? std::stoi(node.GetAttr<std::vector<std::string>>("channels")[0])
-            : out_shape[1];
-    std::vector<std::string> str_strides = node.GetAttr<std::vector<std::string>>("strides");
-    std::vector<std::string> str_dilates = node.GetAttr<std::vector<std::string>>("dilation");
-    std::vector<std::string> str_padding = node.GetAttr<std::vector<std::string>>("padding");
-    std::vector<std::string> str_padding_l(str_padding.begin(),
-                                           str_padding.begin() + str_padding.size() / 2);
-    std::vector<std::string> str_padding_r(str_padding.end() - str_padding.size() / 2,
-                                           str_padding.end());
-    tachikoma::memory::dim groups = std::stoi(node.GetAttr<std::vector<std::string>>("groups")[0]);
-    std::string data_layout = node.GetAttr<std::vector<std::string>>("data_layout")[0];
-    std::string kernel_layout = node.GetAttr<std::vector<std::string>>("kernel_layout")[0];
+    auto src_tr = GetInput(nid, 0);
+    auto wgh_tr = GetInput(nid, 1);
+    auto dst_tr = GetOutput(nid, 0);
+    auto bias_tr = TensorRequisite{};
 
-    // Check layout.
-    if (layout_dict.find(data_layout) == layout_dict.end() ||
-        layout_dict.find(kernel_layout) == layout_dict.end()) {
-      LOG(FATAL) << "Unsupported layout: " << data_layout << " " << kernel_layout;
+    auto attr = ParseAttrs(nid, &bias_tr);
+    attr.set_scratchpad_mode(tachikoma::scratchpad_mode::user);
+
+    auto strides = GetNodeAttr<std::vector<int64_t>>(node, "strides");
+    auto dilates = GetNodeAttr<std::vector<int64_t>>(node, "dilation");
+    auto padding = GetNodeAttr<std::vector<int64_t>>(node, "padding");
+    std::vector<int64_t> padding_l(padding.begin(), padding.begin() + padding.size() / 2);
+    std::vector<int64_t> padding_r(padding.begin() + padding.size() / 2, padding.end());
+    auto groups = GetNodeAttr<int>(node, "groups");
+    auto src_layout = GetNodeAttr<std::string>(node, "data_layout");
+    auto dst_layout = GetNodeAttr<std::string>(node, "out_layout");
+    auto wgh_layout = GetNodeAttr<std::string>(node, "kernel_layout");
+
+    // dst_layout == "" means to use data_layout
+    if (dst_layout.empty()) dst_layout = src_layout;
+
+    // Minus one for Tachikoma representation. No dilation for Tachikoma is 0, for relay is 1.
+    for (auto& d : dilates) d--;
+
+    // TODO(@apeskov): WA. conv3dTranspose uses wrong layout specifier. IO instead of OI.
+    auto wgh_logic_layout = TensorRequisite::DefaultLogicLayoutFor(wgh_layout);
+    if (wgh_logic_layout == "OIDHW") wgh_logic_layout = "IODHW";
+    if (wgh_logic_layout == "GOIDHW") wgh_logic_layout = "GIODHW";
+
+    // Take into account provided layout strings
+    src_tr = src_tr.TreatAs(src_layout);
+    dst_tr = dst_tr.TreatAs(dst_layout);
+    wgh_tr = wgh_tr.TreatAs(wgh_layout, wgh_logic_layout);
+
+    // Should support G mixed with O. Like { G*O, I, H, W }
+    if (wgh_layout.find("G") == std::string::npos) {
+      auto w_dims = wgh_tr.dims();
+      w_dims[0] /= groups;
+      w_dims.insert(w_dims.begin(), groups);
+      wgh_tr = wgh_tr.Reshape(w_dims);
     }
 
-    // Memory shapes.
-    tachikoma::memory::dims src_dims = input_shape;       // {N, IC, ID, IH, IW}
-    tachikoma::memory::dims weights_dims = weight_shape;  // {OC, IC, KD, KH, KW}
+    // Assumption that bias is correct and can be squeezed to 1D
+    bias_tr = bias_tr.Reshape({dst_tr.dims()[1]});
 
-    // Check weight shape, transform to `OIHW`
-    if (weights_dims[0] == src_dims[1] && weights_dims[1] == channels) {
-      std::swap(weights_dims[0], weights_dims[1]);
-    }
-    if (kernel_layout == "OIDHW") {
-      kernel_layout = "IODHW";
-    }
-    if (groups > 1) {
-      weights_dims = {groups, channels / groups, input_shape[1] / groups};
-      weights_dims.insert(weights_dims.end(), weight_shape.begin() + 2, weight_shape.end());
-      kernel_layout.insert(0, "G");
-    }
-    tachikoma::memory::dims bias_dims = {channels};
-    tachikoma::memory::dims dst_dims = out_shape;  // {N, OC, OD, OH, OW}
-    tachikoma::memory::dims strides_dims = TransformStr2Dims(str_strides, "strides");
-    tachikoma::memory::dims dilates_dims = TransformStr2Dims(str_dilates, "dilates");
-    tachikoma::memory::dims padding_dims_l = TransformStr2Dims(str_padding_l, "padding");
-    tachikoma::memory::dims padding_dims_r = TransformStr2Dims(str_padding_r, "padding");
-
-    // Memory descriptions.
-    auto deconv_src_md = tachikoma::memory::desc(src_dims, dt::f32, layout_dict[data_layout]);
-    auto deconv_weights_md = tachikoma::memory::desc(weights_dims, dt::f32, layout_dict[kernel_layout]);
-    auto deconv_bias_md = tachikoma::memory::desc(bias_dims, dt::f32, tag::any);
-    auto deconv_dst_md = tachikoma::memory::desc(dst_dims, dt::f32, layout_dict[data_layout]);
-
-    // Transposed covn2d description.
-    auto deconv_desc =
-        has_bias ? tachikoma::deconvolution_forward::desc(
-                       tachikoma::prop_kind::forward_inference, tachikoma::algorithm::deconvolution_direct,
-                       deconv_src_md, deconv_weights_md, deconv_bias_md, deconv_dst_md,
-                       strides_dims, dilates_dims, padding_dims_l, padding_dims_r)
-                 : tachikoma::deconvolution_forward::desc(
-                       tachikoma::prop_kind::forward_inference, tachikoma::algorithm::deconvolution_direct,
-                       deconv_src_md, deconv_weights_md, deconv_dst_md, strides_dims, dilates_dims,
-                       padding_dims_l, padding_dims_r);
+    // Conv description.
+    auto deconv_desc = tachikoma::deconvolution_forward::desc(
+        tachikoma::prop_kind::forward_inference, tachikoma::algorithm::deconvolution_direct,
+        src_tr.LayoutAny().desc(), wgh_tr.LayoutAny().desc(), bias_tr.LayoutAny().desc(),
+        dst_tr.LayoutAny().desc(), strides, dilates, padding_l, padding_r);
 
     // Enable elementwise post-ops.
-    auto deconv2d_prim_desc =
-        tachikoma::deconvolution_forward::primitive_desc(deconv_desc, attr, engine_);
+    auto deconv_prim_desc = tachikoma::deconvolution_forward::primitive_desc(deconv_desc, attr, engine_);
 
-    // Push to the network.
-    auto deconv = tachikoma::deconvolution_forward(deconv2d_prim_desc);
-    net_.push_back(deconv);
+    src_tr = src_tr.RequestLayout(deconv_prim_desc.src_desc());
+    wgh_tr = wgh_tr.RequestLayout(deconv_prim_desc.weights_desc());
+    dst_tr = dst_tr.RequestLayout(deconv_prim_desc.dst_desc());
+    bias_tr = bias_tr.RequestLayout(deconv_prim_desc.bias_desc());
 
-    // Data memory.
-    auto deconv2d_src_memory = BindTachikomaMemory(data_entry, deconv_src_md);
+    auto scratchpad_tr = TensorRequisite::AsIs(deconv_prim_desc.scratchpad_desc());
 
-    // Weight memory.
-    auto deconv2d_weights_memory = BindTachikomaMemory(weight_entry, deconv_weights_md);
-
-    // Output memory.
-    auto deconv2d_dst_memory = BindTachikomaMemory(out_entry, deconv2d_prim_desc.dst_desc());
-
-    // Bias memory.
-    auto deconv2d_bias_memory = tachikoma::memory({bias_dims, dt::f32, tag::x}, engine_);
-    if (has_bias) {
-      auto bias_entry = node.GetInputs()[2];
-      BindTachikomaMemory(bias_entry, deconv2d_bias_memory);
-
-      // Bind memory buffers.
-      net_args_.push_back({{DNNL_ARG_SRC, deconv2d_src_memory},
-                           {DNNL_ARG_WEIGHTS, deconv2d_weights_memory},
-                           {DNNL_ARG_BIAS, deconv2d_bias_memory},
-                           {DNNL_ARG_DST, deconv2d_dst_memory}});
-    } else {
-      // Bind memory buffers.
-      net_args_.push_back({{DNNL_ARG_SRC, deconv2d_src_memory},
-                           {DNNL_ARG_WEIGHTS, deconv2d_weights_memory},
-                           {DNNL_ARG_DST, deconv2d_dst_memory}});
-    }
+    Submit(tachikoma::deconvolution_forward(deconv_prim_desc), {{DNNL_ARG_SRC, src_tr},
+                                                           {DNNL_ARG_WEIGHTS, wgh_tr},
+                                                           {DNNL_ARG_BIAS, bias_tr},
+                                                           {DNNL_ARG_SCRATCHPAD, scratchpad_tr},
+                                                           {DNNL_ARG_DST, dst_tr}});
   }
 
   void Dense(const size_t& nid) {
     auto node = nodes_[nid];
-    auto op_name = node.GetOpName();
-    tachikoma::primitive_attr attr;
-    bool has_bias = ParsingOpName(op_name, attr);
 
     // Setup attributes.
-    auto data_entry = node.GetInputs()[0];
-    auto weight_entry = node.GetInputs()[1];
-    JSONGraphNodeEntry out_entry(nid, 0);
-    tachikoma::memory::dims input_shape = nodes_[data_entry.id_].GetOpShape()[data_entry.index_];
-    tachikoma::memory::dims weight_shape = nodes_[weight_entry.id_].GetOpShape()[weight_entry.index_];
-    tachikoma::memory::dims out_shape = nodes_[out_entry.id_].GetOpShape()[out_entry.index_];
-    tachikoma::memory::dim OC = out_shape[1];
+    auto src_tr = GetInput(nid, 0);
+    auto wgh_tr = GetInput(nid, 1);
+    auto dst_tr = GetOutput(nid, 0);
+    auto bias_tr = TensorRequisite{};
 
-    // Memory shapes.
-    tachikoma::memory::dims data_dims = input_shape;
-    tachikoma::memory::dims weight_dims = weight_shape;
-    tachikoma::memory::dims bias_dims = {OC};
-    tachikoma::memory::dims out_dims = out_shape;
+    auto attr = ParseAttrs(nid, &bias_tr);
+    attr.set_scratchpad_mode(tachikoma::scratchpad_mode::user);
 
-    // Memory descriptions.
-    auto data_md = tachikoma::memory::desc({data_dims, dt::f32, tag::nc});
-    auto weight_md = tachikoma::memory::desc({weight_dims, dt::f32, tag::nc});
-    auto bias_md = tachikoma::memory::desc({bias_dims, dt::f32, tag::x});
-    auto dst_md = tachikoma::memory::desc({out_dims, dt::f32, tag::nc});
+    // Assumption that bias is correct and can be squeezed to 1D
+    bias_tr = bias_tr.Reshape({dst_tr.dims()[1]});
 
     // Dense description.
-    auto dense_desc = tachikoma::inner_product_forward::desc(tachikoma::prop_kind::forward_inference, data_md,
-                                                        weight_md, bias_md, dst_md);
+    auto dense_desc = tachikoma::inner_product_forward::desc(
+        tachikoma::prop_kind::forward_inference, src_tr.LayoutAny().desc(), wgh_tr.LayoutAny().desc(),
+        bias_tr.LayoutAny().desc(), dst_tr.LayoutAny().desc());
 
     // Enable elementwise post-ops.
     auto dense_prim_desc = tachikoma::inner_product_forward::primitive_desc(dense_desc, attr, engine_);
 
-    auto dense = tachikoma::inner_product_forward(dense_prim_desc);
-    net_.push_back(dense);
+    src_tr = src_tr.RequestLayout(dense_prim_desc.src_desc());
+    wgh_tr = wgh_tr.RequestLayout(dense_prim_desc.weights_desc());
+    dst_tr = dst_tr.RequestLayout(dense_prim_desc.dst_desc());
+    bias_tr = bias_tr.RequestLayout(dense_prim_desc.bias_desc());
 
-    // Memories.
-    auto data_memory = BindTachikomaMemory(data_entry, data_md);
-    auto weight_memory = BindTachikomaMemory(weight_entry, weight_md);
+    auto scratchpad_tr = TensorRequisite::AsIs(dense_prim_desc.scratchpad_desc());
 
-    // Bias memory.
-    auto bias_memory = tachikoma::memory(bias_md, engine_);
-    if (has_bias) {
-      auto bias_entry = node.GetInputs()[2];
-      BindTachikomaMemory(bias_entry, bias_memory);
-    } else {
-      float bias[OC] = {0};
-      write_to_tachikoma_memory(bias, bias_memory, OC * sizeof(float));
-    }
+    // TODO(@apeskov): Simulation of inplace primitive. just as PoC.
+    auto sum_in_tr = GetInputByName(nid, "sum_idx");
 
-    // Output memory.
-    auto dst_memory = BindTachikomaMemory(out_entry, dense_prim_desc.dst_desc());
-
-    net_args_.push_back({{DNNL_ARG_SRC, data_memory},
-                         {DNNL_ARG_WEIGHTS, weight_memory},
-                         {DNNL_ARG_BIAS, bias_memory},
-                         {DNNL_ARG_DST, dst_memory}});
+    Submit(tachikoma::inner_product_forward(dense_prim_desc),
+           {{DNNL_ARG_SRC, src_tr},
+            {DNNL_ARG_WEIGHTS, wgh_tr},
+            {DNNL_ARG_BIAS, bias_tr},
+            {DNNL_ARG_SCRATCHPAD, scratchpad_tr},
+            {DNNL_ARG_DST, dst_tr}},
+           {sum_in_tr, DNNL_ARG_DST});
   }
 
   void BatchNorm(const size_t& nid) {
     auto node = nodes_[nid];
 
-    auto data_entry = node.GetInputs()[0];
-    auto gamma_entry = node.GetInputs()[1];
-    auto beta_entry = node.GetInputs()[2];
-    auto mean_entry = node.GetInputs()[3];
-    auto variance_entry = node.GetInputs()[4];
-    tachikoma::memory::dims data_shape = nodes_[data_entry.id_].GetOpShape()[data_entry.index_];
-    tachikoma::memory::dim IC = data_shape[1];
-    float epsilon = std::stof(node.GetAttr<std::vector<std::string>>("epsilon")[0]);
+    auto src_tr = GetInput(nid, 0);
+    auto gamma_tr = GetInput(nid, 1);
+    auto beta_tr = GetInput(nid, 2);
+    auto mean_tr = GetInput(nid, 3);
+    auto var_tr = GetInput(nid, 4);
+    auto dst_tr = GetOutput(nid, 0);
 
-    // Memory description.
-    tachikoma::memory::desc data_md = GenTachikomaMemDescByShape(data_shape, dt::f32);
+    auto axis = GetNodeAttr<int>(node, "axis");
+    auto epsilon = GetNodeAttr<float>(node, "epsilon");
+    auto center = GetNodeAttr<bool>(node, "center");
+    auto scale = GetNodeAttr<bool>(node, "scale");
 
-    // BN description.
+    ICHECK(axis == 1 && center && scale) << "Unimplemented BatchNorm case";
+
     auto bn_desc = tachikoma::batch_normalization_forward::desc(
-        tachikoma::prop_kind::forward_inference, data_md, epsilon,
+        tachikoma::prop_kind::forward_inference, src_tr.desc(), epsilon,
         tachikoma::normalization_flags::use_global_stats | tachikoma::normalization_flags::use_scale_shift);
     auto bn_prim_desc = tachikoma::batch_normalization_forward::primitive_desc(bn_desc, engine_);
-    auto bn = tachikoma::batch_normalization_forward(bn_prim_desc);
-    net_.push_back(bn);
 
-    // Memories.
-    auto data_memory = BindTachikomaMemory(data_entry, data_md);
-    JSONGraphNodeEntry out_entry(nid, 0);
-    auto out_memory = BindTachikomaMemory(out_entry, data_md);
-    auto mean_memory = BindTachikomaMemory(mean_entry, bn_prim_desc.mean_desc());
-    auto variance_memory = BindTachikomaMemory(variance_entry, bn_prim_desc.variance_desc());
+    // Concatenate scale and shift tensors
+    auto scale_shift_tr = TensorRequisite::AsIs(bn_prim_desc.weights_desc(), GenUniqueEid());
+    auto sc_sh_dims = scale_shift_tr.dims();
+    ICHECK(sc_sh_dims.size() == 2);
+    ICHECK(sc_sh_dims[0] == 2);
+    sc_sh_dims[0] /= 2;
+    auto scale_tr = scale_shift_tr.Crop(sc_sh_dims, {0, 0}).Squeeze();
+    auto shift_tr = scale_shift_tr.Crop(sc_sh_dims, {1, 0}).Squeeze();
 
-    // In Tachikoma, weight is composed of gamma+beta, so we point them to the same Tachikoma memory but
-    // assign an offset to beta data for runtime serialization.
-    auto weight_memory = BindTachikomaMemory(gamma_entry, bn_prim_desc.weights_desc(), 0);
-    BindTachikomaMemory(beta_entry, weight_memory, IC);
+    auto register_copy = [this](const TensorRequisite& src, const TensorRequisite& dst) {
+      tachikoma::reorder::primitive_desc copy_pd(engine_, src.desc(), engine_, dst.desc());
+      Submit(tachikoma::reorder(copy_pd), {{DNNL_ARG_SRC, src}, {DNNL_ARG_DST, dst}});
+    };
 
-    net_args_.push_back({{DNNL_ARG_SRC, data_memory},
-                         {DNNL_ARG_DST, out_memory},
-                         {DNNL_ARG_SCALE_SHIFT, weight_memory},
-                         {DNNL_ARG_MEAN, mean_memory},
-                         {DNNL_ARG_VARIANCE, variance_memory}});
+    register_copy(gamma_tr, scale_tr);
+    register_copy(beta_tr, shift_tr);
+
+    Submit(tachikoma::batch_normalization_forward(bn_prim_desc), {{DNNL_ARG_SRC, src_tr},
+                                                             {DNNL_ARG_DST, dst_tr},
+                                                             {DNNL_ARG_SCALE_SHIFT, scale_shift_tr},
+                                                             {DNNL_ARG_MEAN, mean_tr},
+                                                             {DNNL_ARG_VARIANCE, var_tr}});
+  }
+
+  void LayerNorm(const size_t& nid) {
+    auto node = nodes_[nid];
+
+    auto src_tr = GetInput(nid, 0);
+    auto gamma_tr = GetInput(nid, 1);
+    auto beta_tr = GetInput(nid, 2);
+    auto dst_tr = GetOutput(nid, 0);
+
+    auto axis = GetNodeAttr<int>(node, "axis");
+    auto epsilon = GetNodeAttr<float>(node, "epsilon");
+    auto center = GetNodeAttr<bool>(node, "center");
+    auto scale = GetNodeAttr<bool>(node, "scale");
+
+    ICHECK(axis == -1 && center && scale) << "Unimplemented LayerNorm case";
+
+    // LN description.
+    auto lnorm_desc = tachikoma::layer_normalization_forward::desc(
+        tachikoma::prop_kind::forward_inference, src_tr.desc(), epsilon,
+        tachikoma::normalization_flags::use_scale_shift);
+
+    auto lnorm_prim_desc = tachikoma::layer_normalization_forward::primitive_desc(lnorm_desc, engine_);
+
+    // Concatenate scale and shift tensors
+    auto scale_shift_tr = TensorRequisite::AsIs(lnorm_prim_desc.weights_desc(), GenUniqueEid());
+    auto sc_sh_dims = scale_shift_tr.dims();
+
+    ICHECK(sc_sh_dims.size() == 2);
+    ICHECK(sc_sh_dims[0] == 2);
+    sc_sh_dims[0] /= 2;
+    auto scale_tr = scale_shift_tr.Crop(sc_sh_dims, {0, 0}).Squeeze();
+    auto shift_tr = scale_shift_tr.Crop(sc_sh_dims, {1, 0}).Squeeze();
+
+    auto register_copy = [this](const TensorRequisite& src, const TensorRequisite& dst) {
+      tachikoma::reorder::primitive_desc copy_pd(engine_, src.desc(), engine_, dst.desc());
+      Submit(tachikoma::reorder(copy_pd), {{DNNL_ARG_SRC, src}, {DNNL_ARG_DST, dst}});
+    };
+
+    register_copy(gamma_tr, scale_tr);
+    register_copy(beta_tr, shift_tr);
+
+    Submit(
+        tachikoma::layer_normalization_forward(lnorm_prim_desc),
+        {{DNNL_ARG_SRC, src_tr}, {DNNL_ARG_DST, dst_tr}, {DNNL_ARG_SCALE_SHIFT, scale_shift_tr}});
   }
 
   void Pooling(const size_t& nid, tachikoma::algorithm algo) {
     auto node = nodes_[nid];
 
-    // Setup attributes.
-    auto data_entry = node.GetInputs()[0];
-    JSONGraphNodeEntry out_entry(nid, 0);
-    tachikoma::memory::dims input_shape = nodes_[data_entry.id_].GetOpShape()[data_entry.index_];
-    tachikoma::memory::dims out_shape = nodes_[out_entry.id_].GetOpShape()[out_entry.index_];
-    std::vector<std::string> str_kernel = node.GetAttr<std::vector<std::string>>("pool_size");
-    std::vector<std::string> str_strides = node.GetAttr<std::vector<std::string>>("strides");
-    std::vector<std::string> str_padding = node.GetAttr<std::vector<std::string>>("padding");
-    std::vector<std::string> str_padding_l(str_padding.begin(),
-                                           str_padding.begin() + str_padding.size() / 2);
-    std::vector<std::string> str_padding_r(str_padding.end() - str_padding.size() / 2,
-                                           str_padding.end());
-    std::vector<std::string> str_dilates = node.GetAttr<std::vector<std::string>>("dilation");
-    std::string layout = node.GetAttr<std::vector<std::string>>("layout")[0];
+    auto src_tr = GetInput(nid, 0);
+    auto dst_tr = GetOutput(nid, 0);
 
-    // Check layout.
-    if (layout_dict.find(layout) == layout_dict.end()) {
-      LOG(FATAL) << "Unsupported layout for pooling: " << layout;
-    }
+    // Setup attributes.
+    auto strides = GetNodeAttr<std::vector<int64_t>>(node, "strides");
+    auto dilates = GetNodeAttr<std::vector<int64_t>>(node, "dilation");
+    auto padding = GetNodeAttr<std::vector<int64_t>>(node, "padding");
+    std::vector<int64_t> padding_l(padding.begin(), padding.begin() + padding.size() / 2);
+    std::vector<int64_t> padding_r(padding.begin() + padding.size() / 2, padding.end());
+    auto kernel = GetNodeAttr<std::vector<int64_t>>(node, "pool_size");
+    auto src_layout = GetNodeAttr<std::string>(node, "layout");
+    auto dst_layout = GetNodeAttr<std::string>(node, "out_layout");
+
+    // dst_layout == "" means to use data_layout
+    if (dst_layout.empty()) dst_layout = src_layout;
+
+    // Minus one for Tachikoma representation. No dilation for Tachikoma is 0, for relay is 1.
+    for (auto& d : dilates) d--;
+
+    // Take into account provided layout strings
+    src_tr = src_tr.TreatAs(src_layout);
+    dst_tr = dst_tr.TreatAs(dst_layout);
 
     // Attributes related to AvgPool
     if (algo == tachikoma::algorithm::pooling_avg) {
-      int int_countpad = std::stoi(node.GetAttr<std::vector<std::string>>("count_include_pad")[0]);
-      bool count_include_pad = int_countpad != 0 ? true : false;
-      algo = count_include_pad ? tachikoma::algorithm::pooling_avg_include_padding
-                               : tachikoma::algorithm::pooling_avg_exclude_padding;
+      auto include_pad = GetNodeAttr<bool>(node, "count_include_pad");
+      algo = include_pad ? tachikoma::algorithm::pooling_avg_include_padding
+                         : tachikoma::algorithm::pooling_avg_exclude_padding;
     }
 
-    tachikoma::memory::dims src_dims = input_shape;
-    tachikoma::memory::dims dst_dims = out_shape;
-    tachikoma::memory::dims kernel_dims = TransformStr2Dims(str_kernel, "kernel");
-    tachikoma::memory::dims strides_dims = TransformStr2Dims(str_strides, "strides");
-    tachikoma::memory::dims dilates_dims = TransformStr2Dims(str_dilates, "dilates");
-    tachikoma::memory::dims padding_dims_l = TransformStr2Dims(str_padding_l, "padding");
-    tachikoma::memory::dims padding_dims_r = TransformStr2Dims(str_padding_r, "padding");
-
-    // Memory descriptions.
-    auto pool_src_md = tachikoma::memory::desc(src_dims, dt::f32, layout_dict[layout]);
-    auto pool_dst_md = tachikoma::memory::desc(dst_dims, dt::f32, tag::any);
-
     // Pooling description.
-    auto pool_desc = tachikoma::pooling_forward::desc(tachikoma::prop_kind::forward_inference, algo,
-                                                 pool_src_md, pool_dst_md, strides_dims,
-                                                 kernel_dims, padding_dims_l, padding_dims_r);
+    auto pool_desc = tachikoma::pooling_v2_forward::desc(
+        tachikoma::prop_kind::forward_inference, algo, src_tr.desc(),  //<= Do not use any for src tensor
+        dst_tr.LayoutAny().desc(), strides, kernel, dilates, padding_l, padding_r);
+    auto pool_prim_desc = tachikoma::pooling_v2_forward::primitive_desc(pool_desc, engine_);
 
-    auto pool_prim_desc = tachikoma::pooling_forward::primitive_desc(pool_desc, engine_, true);
-    auto pool = tachikoma::pooling_forward(pool_prim_desc);
-    net_.push_back(pool);
+    src_tr = src_tr.RequestLayout(pool_prim_desc.src_desc());
+    dst_tr = dst_tr.RequestLayout(pool_prim_desc.dst_desc());
 
-    // Memories.
-    auto pool2d_src_memory = BindTachikomaMemory(data_entry, pool_src_md);
+    auto scratchpad_tr = TensorRequisite::AsIs(pool_prim_desc.scratchpad_desc());
 
-    auto pool2d_dst_memory = BindTachikomaMemory(out_entry, pool_prim_desc.dst_desc());
-
-    // Bind memory buffers.
-    net_args_.push_back({{DNNL_ARG_SRC, pool2d_src_memory}, {DNNL_ARG_DST, pool2d_dst_memory}});
+    Submit(tachikoma::pooling_v2_forward(pool_prim_desc),
+           {{DNNL_ARG_SRC, src_tr}, {DNNL_ARG_DST, dst_tr}, {DNNL_ARG_SCRATCHPAD, scratchpad_tr}});
   }
 
   void Eltwise(const size_t& nid) {
     auto node = nodes_[nid];
     auto op_name = node.GetOpName();
-    auto algo = elt_name2algo[op_name];
+    auto algo = elt_name2algo.at(op_name);
 
-    auto data_entry = node.GetInputs()[0];
-    tachikoma::memory::dims shape = nodes_[data_entry.id_].GetOpShape()[data_entry.index_];
-    tachikoma::memory::desc data_md = GenTachikomaMemDescByShape(shape, dt::f32);
+    auto src_tr = GetInput(nid, 0);
+    auto dst_tr = GetOutput(nid, 0);
+
     float alpha = 0., beta = 0.;
     if (op_name == "clip") {
-      alpha = std::stof(node.GetAttr<std::vector<std::string>>("a_min")[0]);
-      beta = std::stof(node.GetAttr<std::vector<std::string>>("a_max")[0]);
+      alpha = GetNodeAttr<float>(node, "a_min");
+      beta = GetNodeAttr<float>(node, "a_max");
     } else if (op_name == "nn.leaky_relu") {
-      alpha = std::stof(node.GetAttr<std::vector<std::string>>("alpha")[0]);
+      alpha = GetNodeAttr<float>(node, "alpha");
     }
 
-    auto elt_desc =
-        tachikoma::eltwise_forward::desc(tachikoma::prop_kind::forward_inference, algo, data_md, alpha, beta);
+    auto elt_desc = tachikoma::eltwise_forward::desc(tachikoma::prop_kind::forward_inference, algo,
+                                                src_tr.desc(), alpha, beta);
     auto elt_prim_desc = tachikoma::eltwise_forward::primitive_desc(elt_desc, engine_);
-    ICHECK(data_md == elt_prim_desc.dst_desc());
+    ICHECK(src_tr.desc() == elt_prim_desc.dst_desc());
 
-    auto elt = tachikoma::eltwise_forward(elt_prim_desc);
-    net_.push_back(elt);
-
-    auto data_memory = BindTachikomaMemory(data_entry, data_md);
-    JSONGraphNodeEntry out_entry(nid, 0);
-    auto out_memory = BindTachikomaMemory(out_entry, data_md);
-
-    net_args_.push_back({{DNNL_ARG_SRC, data_memory}, {DNNL_ARG_DST, out_memory}});
+    Submit(tachikoma::eltwise_forward(elt_prim_desc), {{DNNL_ARG_SRC, src_tr}, {DNNL_ARG_DST, dst_tr}});
   }
 
   void Softmax(const size_t& nid) {
     auto node = nodes_[nid];
 
-    auto data_entry = node.GetInputs()[0];
-    tachikoma::memory::dims shape = nodes_[data_entry.id_].GetOpShape()[data_entry.index_];
-    int axis = std::stoi(node.GetAttr<std::vector<std::string>>("axis")[0]);
+    auto src_tr = GetInput(nid, 0);
+    auto dst_tr = GetOutput(nid, 0);
+
+    auto axis = GetNodeAttr<int>(node, "axis");
     if (axis < 0) {
-      axis = shape.size() + axis;
+      axis = src_tr.dims().size() + axis;
     }
-    tachikoma::memory::desc data_md = GenTachikomaMemDescByShape(shape, dt::f32);
 
     auto softmax_desc =
-        tachikoma::softmax_forward::desc(tachikoma::prop_kind::forward_inference, data_md, axis);
+        tachikoma::softmax_forward::desc(tachikoma::prop_kind::forward_inference, src_tr.desc(), axis);
     auto softmax_prim_desc = tachikoma::softmax_forward::primitive_desc(softmax_desc, engine_);
-    ICHECK(data_md == softmax_prim_desc.dst_desc());
+    ICHECK(dst_tr.desc() == softmax_prim_desc.dst_desc());
 
-    auto softmax = tachikoma::softmax_forward(softmax_prim_desc);
-    net_.push_back(softmax);
-
-    auto data_memory = BindTachikomaMemory(data_entry, data_md);
-    JSONGraphNodeEntry out_entry(nid, 0);
-    auto out_memory = BindTachikomaMemory(out_entry, data_md);
-
-    net_args_.push_back({{DNNL_ARG_SRC, data_memory}, {DNNL_ARG_DST, out_memory}});
+    Submit(tachikoma::softmax_forward(softmax_prim_desc),
+           {{DNNL_ARG_SRC, src_tr}, {DNNL_ARG_DST, dst_tr}});
   }
 
   void Binary(const size_t& nid, tachikoma::algorithm algo) {
     auto node = nodes_[nid];
+    ICHECK_EQ(node.GetInputs().size(), 2U);
 
     // Memory and compute description.
-    std::vector<tachikoma::memory::dims> data_dims;
-    std::vector<tachikoma::memory::desc> data_mds;
-    std::vector<tachikoma::memory> data_memories;
+    auto lhs_tr = GetInput(nid, 0);
+    auto rhs_tr = GetInput(nid, 1);
+    auto dst_tr = GetOutput(nid, 0);
 
-    ICHECK_EQ(node.GetInputs().size(), 2U);
-    for (auto entry : node.GetInputs()) {
-      auto data_shape = nodes_[entry.id_].GetOpShape()[entry.index_];
-      tachikoma::memory::desc data_md = GenTachikomaMemDescByShape(data_shape, dt::f32);
+    lhs_tr = lhs_tr.Broadcast(dst_tr.dims());
+    rhs_tr = rhs_tr.Broadcast(dst_tr.dims());
 
-      data_dims.push_back(data_shape);
-      data_mds.push_back(data_md);
-      data_memories.push_back(BindTachikomaMemory(entry, data_md));
-    }
-    ICHECK(data_dims[0] == data_dims[1]);
-    auto out_md = data_mds[0];
-    JSONGraphNodeEntry out_entry(nid, 0);
-    auto out_memory = BindTachikomaMemory(out_entry, out_md);
-
-    auto binary_desc = tachikoma::binary::desc(algo, data_mds[0], data_mds[1], out_md);
+    auto binary_desc = tachikoma::binary::desc(algo, lhs_tr.desc(), rhs_tr.desc(), dst_tr.desc());
     auto binary_prim_desc = tachikoma::binary::primitive_desc(binary_desc, engine_);
-    auto binary = tachikoma::binary(binary_prim_desc);
-    net_.push_back(binary);
 
-    net_args_.push_back({{DNNL_ARG_SRC_0, data_memories[0]},
-                         {DNNL_ARG_SRC_1, data_memories[1]},
-                         {DNNL_ARG_DST, out_memory}});
+    Submit(tachikoma::binary(binary_prim_desc),
+           {{DNNL_ARG_SRC_0, lhs_tr}, {DNNL_ARG_SRC_1, rhs_tr}, {DNNL_ARG_DST, dst_tr}});
   }
 
-  // Read from Tachikoma memory (+offset) and write to the handle.
-  inline void read_from_tachikoma_memory(void* handle, const tachikoma::memory& mem, size_t size,
-                                    size_t offset = 0) {
-    uint8_t* src = static_cast<uint8_t*>(mem.get_data_handle());
-    std::copy(src + offset, src + offset + size, static_cast<uint8_t*>(handle));
+  template <typename T, std::enable_if_t<std::is_integral<T>::value, int> = 0>
+  T AttrConvert(std::vector<std::string> val) {
+    ICHECK_EQ(val.size(), 1);
+    return std::stol(val[0]);
   }
 
-  // Read from the handle and write to Tachikoma memory (+offset).
-  inline void write_to_tachikoma_memory(void* handle, const tachikoma::memory& mem, size_t size,
-                                   size_t offset = 0) {
-    uint8_t* dst = static_cast<uint8_t*>(mem.get_data_handle());
-    std::copy(reinterpret_cast<uint8_t*>(handle), reinterpret_cast<uint8_t*>(handle) + size,
-              dst + offset);
+  template <typename T, std::enable_if_t<std::is_floating_point<T>::value, int> = 0>
+  T AttrConvert(std::vector<std::string> val) {
+    ICHECK_EQ(val.size(), 1);
+    return std::stof(val[0]);
   }
 
-  // Generate Tachikoma memory description and infer the data layout by the given shape.
-  inline tachikoma::memory::desc GenTachikomaMemDescByShape(const tachikoma::memory::dims& shape, dt dtype) {
-    tachikoma::memory::desc data_md;
-    switch (shape.size()) {
-      case 2:
-        data_md = tachikoma::memory::desc({shape, dtype, tag::ab});
-        break;
-      case 3:
-        data_md = tachikoma::memory::desc({shape, dtype, tag::abc});
-        break;
-      case 4:
-        data_md = tachikoma::memory::desc({shape, dtype, tag::abcd});
-        break;
-      case 5:
-        data_md = tachikoma::memory::desc({shape, dtype, tag::abcde});
-        break;
-      default:
-        LOG(FATAL) << "Unsupported data shape dimension: " << shape.size();
-        break;
+  template <typename T, std::enable_if_t<std::is_same<T, std::string>::value, int> = 0>
+  T AttrConvert(std::vector<std::string> val) {
+    ICHECK_EQ(val.size(), 1);
+    return val[0];
+  }
+
+  template <typename T,
+            std::enable_if_t<std::is_same<T, std::vector<typename T::value_type>>::value, int> = 0>
+  T AttrConvert(std::vector<std::string> val) {
+    T res;
+    for (const auto& el : val) res.push_back(AttrConvert<typename T::value_type>({el}));
+    return res;
+  }
+
+  /*!
+   * \brief Helper to extract node attribute with ability to specify default value and result type.
+   */
+  template <typename T>
+  const T GetNodeAttr(const json::JSONGraphNode& node, std::string name,
+                      std::vector<std::string> def = {}) {
+    auto attr = node.HasAttr(name) ? node.GetAttr<std::vector<std::string>>(name) : def;
+    return AttrConvert<T>(attr);
+  }
+
+  TensorRequisite GetInput(const size_t& nid, const int idx) {
+    if (idx == -1) return {};  // -1 reserved value for empty input.
+
+    const JSONGraphNode& node = nodes_[nid];
+
+    ICHECK_LT(idx, node.GetInputs().size());
+    auto data_entry = node.GetInputs()[idx];
+
+    auto shape = nodes_[data_entry.id_].GetOpShape()[data_entry.index_];
+    auto dtype = nodes_[data_entry.id_].GetOpDataType()[data_entry.index_];
+    auto eid = node_row_ptr_[data_entry.id_] + data_entry.index_;
+    auto const_dl_tensor = data_entry_[eid];
+
+    auto desc = MakePlainDesc(shape, dtype);
+
+    TensorRequisite res;
+    if (const_dl_tensor) {
+      ICHECK(const_dl_tensor->data);
+      ICHECK(const_dl_tensor->strides == nullptr);
+      auto mem = tachikoma::memory(desc, engine_, const_dl_tensor->data);
+      res = TensorRequisite::AsIs(mem, eid);
+    } else {
+      res = TensorRequisite::AsIs(desc, eid);
     }
-    return data_md;
+    return res;
   }
 
-  std::string export_path_ = "/tmp/tachikoma_serialized/";
-  /* The DNNL engine. */
+  TensorRequisite GetInputByName(const size_t& nid, const std::string& name) {
+    auto idx = GetNodeAttr<int>(nodes_[nid], name, {"-1"});
+    return GetInput(nid, idx);
+  }
+
+  TensorRequisite GetOutput(const size_t& nid, const int idx) {
+    if (idx == -1) return {};  // -1 reserved value for empty input.
+
+    const JSONGraphNode& node = nodes_[nid];
+
+    ICHECK_LT(idx, node.GetNumOutput());
+    auto shape = node.GetOpShape()[idx];
+    auto dtype = node.GetOpDataType()[idx];
+    auto eid = node_row_ptr_[nid] + static_cast<uint32_t>(idx);
+
+    ICHECK(data_entry_[eid] == nullptr);
+    auto desc = MakePlainDesc(shape, dtype);
+
+    return TensorRequisite::AsIs(desc, eid).Backward();
+  }
+
+  /*! \brief Helper function to register primitive into execution queue */
+  void Submit(const tachikoma::primitive& prim, const std::unordered_map<int, TensorRequisite>& tr_args,
+              const std::pair<TensorRequisite, int>& inplace_conf = {}) {
+    // Register all provided TR arguments
+    std::unordered_map<int, TensorRegistry::ArgId> prim_arg_id;
+    TensorRegistry::ActionQue post_prim_actions;
+    for (const auto& kvp : tr_args) {
+      const auto& key = kvp.first;
+      const auto& tr = kvp.second;
+
+      if (!tr.defined()) continue;  // empty arg is admitted. Just skip it
+      auto arg_id = tensor_registry_.Register(tr, tr.IsReversed() ? &post_prim_actions : &net_);
+      prim_arg_id[key] = arg_id;
+    }
+
+    // Simulate inplace primitive
+    if (auto tr = inplace_conf.first) {
+      auto arg_id = tensor_registry_.Register(tr, &net_);
+      auto dst_tr = tr_args.at(inplace_conf.second);
+      auto dst_arg_id = prim_arg_id.at(inplace_conf.second);
+
+      // Register copy action direct before main primitive
+      tachikoma::reorder::primitive_desc io_copy_pd(engine_, tr.desc(), engine_, dst_tr.desc());
+      net_.push_back(
+          {tachikoma::reorder(io_copy_pd), {{DNNL_ARG_SRC, arg_id}, {DNNL_ARG_DST, dst_arg_id}}});
+    }
+
+    // Register main primitive
+    net_.push_back({prim, prim_arg_id});
+
+    // Register post actions
+    net_.insert(net_.end(), post_prim_actions.begin(), post_prim_actions.end());
+  }
+
+  uint32_t GenUniqueEid() { return next_unique_eid_offset_++; }
+
+  /* The tachikoma engine. */
   tachikoma::engine engine_;
-  /* The DNNL stream. */
+  /* The tachikoma stream. */
   tachikoma::stream stream_;
   /* The network layers that are represented in tachikoma primitives. */
-  std::vector<tachikoma::primitive> net_;
-  /* The memory that is consumed by arguments. */
-  std::vector<std::unordered_map<int, tachikoma::memory>> net_args_;
-  /* The entry ID to its corresponding output memory. */
-  std::unordered_map<uint32_t, std::pair<tachikoma::memory, size_t>> entry_out_mem_;
+  TensorRegistry::ActionQue net_;
+  /* Storage for all memory objects */
+  TensorRegistry tensor_registry_;
+  /* Generator of new unique eid which doesn't match with existing data entry */
+  uint32_t next_unique_eid_offset_;
+  /* Map of Run arg idx to corresponding eid */
+  std::vector<uint32_t> run_arg_eid_;
 };
 
 runtime::Module TachikomaJSONRuntimeCreate(String symbol_name, String graph_json,
@@ -818,21 +811,10 @@ runtime::Module TachikomaJSONRuntimeCreate(String symbol_name, String graph_json
   return runtime::Module(n);
 }
 
-void TachikomaSetExportPath(runtime::Module mod, const std::string& file_name) {
-  tvm::runtime::PackedFunc setExportPath = mod.GetFunction("set_export_path", false);
-  if (setExportPath != nullptr) {
-    setExportPath(file_name);
-  } else {
-    std::cerr << "Warning: module set_export_path not found, may not be a Tachikoma module." << std::endl;
-  }
-}
-
 TVM_REGISTER_GLOBAL("runtime.TachikomaJSONRuntimeCreate").set_body_typed(TachikomaJSONRuntimeCreate);
 
 TVM_REGISTER_GLOBAL("runtime.module.loadbinary_tachikoma_json")
     .set_body_typed(JSONRuntimeBase::LoadFromBinary<TachikomaJSONRuntime>);
-
-TVM_REGISTER_GLOBAL("runtime.TachikomaSetExportPath").set_body_typed(TachikomaSetExportPath);
 
 }  // namespace contrib
 }  // namespace runtime
