@@ -225,10 +225,13 @@ def make_qnn_dense_pattern():
     data = wildcard()
     weight = is_constant()
     bias = is_constant()
-    o_scl = is_constant()
-    dst_zp = is_constant()
-    act_scl = is_constant()
-    sum_scl = is_constant()
+    cast_fp = is_op("cast")(is_constant())
+
+    o_scl = is_op("expand_dims")(is_op("divide")(is_constant(), is_constant()))
+    act_scl = is_op("expand_dims")(is_op("divide")(is_constant(), is_constant())) | is_constant()
+    sum_scl = is_op("expand_dims")(is_op("divide")(is_constant(), is_constant())) | is_constant()
+    
+    dst_zp = is_op("expand_dims")(cast_fp - cast_fp * act_scl - cast_fp * sum_scl) | is_constant()
     sum_src = wildcard()
 
     zero_zp = is_expr(const(0, dtype="int32"))
@@ -305,7 +308,7 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
         super(LegalizeQnnOpForTachikoma, self).__init__()
         self.src = wildcard()
         self.wgh = wildcard()
-        self.bias = wildcard()
+        # self.bias = wildcard()
         self.sum_src = wildcard()
 
         self.src_scl = is_constant()
@@ -328,7 +331,7 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
         self.root = (is_op("qnn.conv2d") | is_op("qnn.dense"))(
             self.src, self.wgh, self.src_zp, self.wgh_zp, self.src_scl, self.wgh_scl
         )
-        pat = is_op("add")(self.root, self.bias) | self.root  # optional bias
+        # pat = is_op("add")(self.root, self.bias) | self.root  # optional bias
         pat = is_op("qnn.requantize")(
             pat, self.rq_in_scl, self.rq_in_zp, self.rq_out_scl, self.rq_out_zp
         )
@@ -352,12 +355,13 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
         root = node_map[self.root][0]
         src = node_map[self.src][0]
         wgh = node_map[self.wgh][0]
+        # TODO(@liaopeiyuan): add everything re bias back
         # bias = node_map.get(self.bias, default=[relay.const(0, dtype="int32")])[0]
-        src_zp = node_map[self.src_zp][0]
+        # src_zp = node_map[self.src_zp][0]
         rq_in_scl = node_map[self.rq_in_scl][0]
-        rq_in_zp = node_map[self.rq_in_zp][0]
+        # rq_in_zp = node_map[self.rq_in_zp][0]
         rq_out_scl = node_map[self.rq_out_scl][0]
-        rq_out_zp = node_map[self.rq_out_zp][0]
+        # rq_out_zp = node_map[self.rq_out_zp][0]
 
         final_dtype = node_map[self.pattern][0].checked_type.dtype
 
@@ -370,8 +374,8 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
             dst_layout = "NC"
             wgh_layout = "OI"
 
-        # TODO(@apeskov): dst_layout may be blocked
-        bias_rank = len(dst_layout) - dst_layout.index("C")
+        # TODO(@liaopeiyuan): dst_layout may be blocked
+        # bias_rank = len(dst_layout) - dst_layout.index("C")
 
         sum_src = node_map[self.sum_src][0] if self.sum_src in node_map else None
         # Default values if qnn.sum is not present
@@ -406,7 +410,6 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
         zero_zp = relay.const(0, dtype="int32")
         one_scl = relay.const(1.0, dtype="float32")
 
-        print('1')
         # construct new graph with proper post op ordering
         gr = tvm.relay.Call(
             root.op,
@@ -418,7 +421,6 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
         gr = relay.op.cast(gr, dtype="float32")
         # gr = gr + bias
         gr = gr * o_scl
-        #print('2')
         gr = relay.op.clip(gr, 0, 255) * act_scl
         gr = gr + sum_scl * cast_fp(sum_src) if sum_src else gr
         gr = gr + dst_zp
@@ -504,7 +506,7 @@ def partition_for_tachikoma(mod, params=None):
         mod = seq(mod)
 
     mod["main"] = rewrite(LegalizeQnnOpForTachikoma(), mod["main"])
-    #mod = relay.qnn.transform.CanonicalizeOps()(mod)
+    # mod = relay.qnn.transform.CanonicalizeOps()(mod)
 
     seq_byoc = tvm.transform.Sequential(
         [
