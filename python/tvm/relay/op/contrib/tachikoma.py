@@ -39,6 +39,7 @@ from tvm import relay
 from tvm.relay import transform
 from tvm.relay.build_module import bind_params_by_name
 from tvm.relay.expr import const
+import numpy as np
 
 from ...dataflow_pattern import wildcard, is_op, is_constant, is_expr, rewrite, DFPatternCallback
 from .register import register_pattern_table
@@ -383,7 +384,7 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
             return relay.op.cast(op, dtype="float32")
 
         # recalculate some factors
-        o_scl = rq_in_scl / rq_out_scl
+        o_scl = relay.Constant(tvm.nd.array(np.expand_dims(rq_in_scl.data.numpy() / rq_out_scl.data.numpy(), axis=(1,2))))
         act_scl = sum_lhs_scl / sum_out_scl
         sum_scl = sum_rhs_scl / sum_out_scl
         dst_zp = (
