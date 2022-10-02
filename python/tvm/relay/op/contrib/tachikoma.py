@@ -386,6 +386,8 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
         sum_out_scl = node_map[self.sum_out_scl][0] if sum_src else relay.const(1, dtype="float32")
         sum_out_zp = node_map[self.sum_out_zp][0] if sum_src else relay.const(0, dtype="int32")
 
+        print(type(sum_out_zp))
+        
         def cast_fp(op):
             return relay.op.cast(op, dtype="float32")
 
