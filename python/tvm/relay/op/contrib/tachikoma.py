@@ -200,8 +200,8 @@ def make_qnn_conv2d_pattern():
 
     pat = is_op("qnn.conv2d")(data, weight, zero_zp, zero_zp, is_constant(), is_constant())
     pat = is_op("cast")(pat)
-    #pat = is_op("add")(pat, bias) | pat  # optional bias
-    #pat = is_op("multiply")(pat, o_scl)
+    pat = is_op("add")(pat, bias) | pat  # optional bias
+    pat = is_op("multiply")(pat, o_scl)
     #pat = is_op("clip")(pat)  # TBD, not only clip
     #pat = is_op("multiply")(pat, act_scl) | pat  # optional multiply. Ex: act_scl == 1
     #pat = is_op("add")(pat, sum_scl * is_op("cast")(sum_src)) | pat  # optional sum
@@ -414,9 +414,9 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
             root.type_args,
             root.span,
         )
-        #gr = relay.op.cast(gr, dtype="float32")
-        #gr = gr + bias
-        #gr = gr * o_scl
+        gr = relay.op.cast(gr, dtype="float32")
+        # gr = gr + bias
+        gr = gr * o_scl
         #print('2')
         #gr = relay.op.clip(gr, 0, 255) * act_scl
         #gr = gr + sum_scl * cast_fp(sum_src) if sum_src else gr
