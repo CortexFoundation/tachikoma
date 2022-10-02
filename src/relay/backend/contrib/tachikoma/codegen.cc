@@ -530,7 +530,7 @@ class TachikomaJSONSerializer : public backend::contrib::JSONSerializer {
                  name.find("tachikoma.qnn.dense") != std::string::npos) {
         std::vector<Expr> args_loc;
         call = ParseComposite(*fn, &extra_attrs, &args_loc);
-        args = BindToCallNodeArgs(args_loc, cn);
+        // args = BindToCallNodeArgs(args_loc, cn);
       } else {
         LOG(FATAL) << "Unrecognized tachikoma pattern: " << name;
       }
