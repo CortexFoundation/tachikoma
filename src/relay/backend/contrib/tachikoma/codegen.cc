@@ -528,6 +528,7 @@ class TachikomaJSONSerializer : public backend::contrib::JSONSerializer {
         ICHECK(call->op.as<OpNode>()) << "Not op node";
       } else if (name.find("tachikoma.qnn.conv2d") != std::string::npos ||
                  name.find("tachikoma.qnn.dense") != std::string::npos) {
+        std::cerr << name << " hit" << std::endl;
         std::vector<Expr> args_loc;
         call = ParseComposite(*fn, &extra_attrs, &args_loc);
         args = BindToCallNodeArgs(args_loc, cn);
