@@ -331,6 +331,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
       LOG(FATAL) << "Unsupported layout for conv: " << data_layout << " " << kernel_layout;
     }
 
+
     // Memory shapes.
     tachikoma::memory::dims src_dims = input_shape;       // {N, IC, ID, IH, IW}
     tachikoma::memory::dims weights_dims = weight_shape;  // {OC, IC, KD, KH, KW}
