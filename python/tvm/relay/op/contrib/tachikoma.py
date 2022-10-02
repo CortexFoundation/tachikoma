@@ -383,7 +383,7 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
             return relay.op.cast(op, dtype="float32")
 
         # recalculate some factors
-        o_scl = rq_in_scl / rq_out_scl
+        o_scl = relay.expand_dims(rq_in_scl / rq_out_scl, axis=1, num_newaxis=2)
         act_scl = sum_lhs_scl / sum_out_scl
         sum_scl = sum_rhs_scl / sum_out_scl
         dst_zp = (
@@ -502,8 +502,8 @@ def partition_for_tachikoma(mod, params=None):
     with tvm.transform.PassContext(opt_level=3):
         mod = seq(mod)
 
-    #mod["main"] = rewrite(LegalizeQnnOpForTachikoma(), mod["main"])
-    mod = relay.qnn.transform.CanonicalizeOps()(mod)
+    mod["main"] = rewrite(LegalizeQnnOpForTachikoma(), mod["main"])
+    #mod = relay.qnn.transform.CanonicalizeOps()(mod)
 
     seq_byoc = tvm.transform.Sequential(
         [
