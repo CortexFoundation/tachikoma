@@ -190,7 +190,7 @@ def make_qnn_conv2d_pattern():
     data = wildcard()
     weight = is_constant()
     bias = is_constant()
-    o_scl = is_constant() | is_op("expand_dims")(is_op("divide")(is_constant(), is_constant()))
+    o_scl = is_op("expand_dims")(is_op("divide")(is_constant(), is_constant()))
     dst_zp = is_constant()
     act_scl = is_constant()
     sum_scl = is_constant()
