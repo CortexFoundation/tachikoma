@@ -189,11 +189,11 @@ def make_qnn_conv2d_pattern():
     """
     data = wildcard()
     weight = is_constant()
-    bias = is_constant()
+    # bias = is_constant()
     o_scl = is_op("expand_dims")(is_op("divide")(is_constant(), is_constant()))
-    dst_zp = is_constant()
-    act_scl = is_constant()
-    sum_scl = is_constant()
+    dst_zp = is_op("expand_dims")(is_op("divide")(is_constant(), is_constant()))
+    act_scl = is_op("expand_dims")(is_op("divide")(is_constant(), is_constant()))
+    sum_scl = is_op("expand_dims")(is_op("divide")(is_constant(), is_constant()))
     sum_src = wildcard()
 
     zero_zp = is_expr(const(0, dtype="int32"))
@@ -202,11 +202,11 @@ def make_qnn_conv2d_pattern():
     pat = is_op("cast")(pat)
     # pat = is_op("add")(pat, bias) | pat  # optional bias
     pat = is_op("multiply")(pat, o_scl)
-    #pat = is_op("clip")(pat)  # TBD, not only clip
-    #pat = is_op("multiply")(pat, act_scl) | pat  # optional multiply. Ex: act_scl == 1
-    #pat = is_op("add")(pat, sum_scl * is_op("cast")(sum_src)) | pat  # optional sum
-    #pat = is_op("add")(pat, dst_zp) | pat  # optional dst_zp, can be dst_zp == 0
-    #pat = is_op("cast")(pat)
+    pat = is_op("clip")(pat)  # TBD, not only clip
+    pat = is_op("multiply")(pat, act_scl) | pat  # optional multiply. Ex: act_scl == 1
+    pat = is_op("add")(pat, sum_scl * is_op("cast")(sum_src)) | pat  # optional sum
+    pat = is_op("add")(pat, dst_zp) | pat  # optional dst_zp, can be dst_zp == 0
+    pat = is_op("cast")(pat)
 
     return "tachikoma.qnn.conv2d", pat
 
@@ -349,7 +349,7 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
         root = node_map[self.root][0]
         src = node_map[self.src][0]
         wgh = node_map[self.wgh][0]
-        bias = node_map.get(self.bias, default=[relay.const(0, dtype="int32")])[0]
+        # bias = node_map.get(self.bias, default=[relay.const(0, dtype="int32")])[0]
         src_zp = node_map[self.src_zp][0]
         rq_in_scl = node_map[self.rq_in_scl][0]
         rq_in_zp = node_map[self.rq_in_zp][0]
@@ -384,13 +384,13 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
 
         # recalculate some factors
         o_scl = relay.expand_dims(rq_in_scl / rq_out_scl, axis=1, num_newaxis=2)
-        act_scl = sum_lhs_scl / sum_out_scl
-        sum_scl = sum_rhs_scl / sum_out_scl
-        dst_zp = (
+        act_scl = relay.expand_dims(sum_lhs_scl / sum_out_scl, axis=1, num_newaxis=2)
+        sum_scl = relay.expand_dims(sum_rhs_scl / sum_out_scl, axis=1, num_newaxis=2)
+        dst_zp = relay.expand_dims(
             cast_fp(sum_out_zp)
             - cast_fp(sum_lhs_zp) * sum_lhs_scl / sum_out_scl
             - cast_fp(sum_rhs_zp) * sum_rhs_scl / sum_out_scl
-        )
+            , axis=1, num_newaxis=2)
         """
         bias = self.squeeze_bias(bias, dst_layout)
         bias = (
@@ -418,9 +418,9 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
         # gr = gr + bias
         gr = gr * o_scl
         #print('2')
-        #gr = relay.op.clip(gr, 0, 255) * act_scl
-        #gr = gr + sum_scl * cast_fp(sum_src) if sum_src else gr
-        #gr = gr + dst_zp
+        gr = relay.op.clip(gr, 0, 255) * act_scl
+        gr = gr + sum_scl * cast_fp(sum_src) if sum_src else gr
+        gr = gr + dst_zp
         gr = relay.op.cast(gr, dtype=final_dtype)
         print(gr)
         return gr
