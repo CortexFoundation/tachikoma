@@ -391,7 +391,6 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
             - cast_fp(sum_lhs_zp) * sum_lhs_scl / sum_out_scl
             - cast_fp(sum_rhs_zp) * sum_rhs_scl / sum_out_scl
         )
-        """
         bias = self.squeeze_bias(bias, dst_layout)
         bias = (
             cast_fp(bias)
@@ -400,7 +399,6 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
             + cast_fp(rq_out_zp) * rq_out_scl / rq_in_scl
         )
         bias = self.broadcast_to_rank(bias, bias_rank)
-        """
 
         zero_zp = relay.const(0, dtype="int32")
         one_scl = relay.const(1.0, dtype="float32")
@@ -415,7 +413,7 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
             root.span,
         )
         gr = relay.op.cast(gr, dtype="float32")
-        # gr = gr + bias
+        gr = gr + bias
         gr = gr * o_scl
         #print('2')
         #gr = relay.op.clip(gr, 0, 255) * act_scl
