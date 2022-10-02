@@ -391,8 +391,8 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
 
         # recalculate some factors
         o_scl = relay.expand_dims(rq_in_scl / rq_out_scl, axis=1, num_newaxis=2)
-        act_scl = relay.expand_dims(sum_lhs_scl / sum_out_scl, num_newaxis=2)
-        sum_scl = relay.expand_dims(sum_rhs_scl / sum_out_scl, num_newaxis=2)
+        act_scl = relay.expand_dims(sum_lhs_scl / sum_out_scl, axis=1, num_newaxis=2)
+        sum_scl = relay.expand_dims(sum_rhs_scl / sum_out_scl, axis=1, num_newaxis=2)
         dst_zp = (
             cast_fp(sum_out_zp)
             - cast_fp(sum_lhs_zp) * act_scl
