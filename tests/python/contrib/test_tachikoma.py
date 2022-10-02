@@ -95,6 +95,8 @@ def run_and_verify_func(config, run_module, target="llvm", dtype="float32"):
         for k, v in input_shapes.items()
         if k not in is_param
     }
+    print(input_dict)
+    assert False
     run_and_verify(f, input_dict, params, target, run_module)
 
 
