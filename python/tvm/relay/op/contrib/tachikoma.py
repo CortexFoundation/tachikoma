@@ -496,7 +496,7 @@ def partition_for_tachikoma(mod, params=None):
     with tvm.transform.PassContext(opt_level=3):
         mod = seq(mod)
 
-    mod = legalize_qnn_for_tachikoma(mod)
+    mod["main"] = rewrite(LegalizeQnnOpForTachikoma(), mod["main"])
 
     seq_byoc = tvm.transform.Sequential(
         [
