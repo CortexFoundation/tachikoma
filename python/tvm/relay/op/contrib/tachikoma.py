@@ -481,8 +481,6 @@ def partition_for_tachikoma(mod, params=None):
     if params:
         mod["main"] = bind_params_by_name(mod["main"], params)
 
-    mod["main"] = rewrite(LegalizeQnnOpForTachikoma(), mod["main"])
-
     seq = tvm.transform.Sequential(
         [
             transform.CanonicalizeOps(),
@@ -493,6 +491,15 @@ def partition_for_tachikoma(mod, params=None):
             # fold consecutive add ops to simplify pattern `conv2d-bias_add-bn-relu`
             transform.SimplifyExpr(),
             transform.FoldConstant(),
+        ]
+    )
+    with tvm.transform.PassContext(opt_level=3):
+        mod = seq(mod)
+
+    mod = legalize_qnn_for_tachikoma(mod)
+
+    seq_byoc = tvm.transform.Sequential(
+        [
             transform.MergeComposite(pattern_table()),
             transform.AnnotateTarget("tachikoma"),
             transform.MergeCompilerRegions(),
@@ -500,5 +507,6 @@ def partition_for_tachikoma(mod, params=None):
         ]
     )
     with tvm.transform.PassContext(opt_level=3):
-        mod = seq(mod)
+        mod = seq_byoc(mod)
+
     return mod
