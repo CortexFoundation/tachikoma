@@ -181,10 +181,10 @@ const tvm::relay::CallNode* ParseQnnDenseComp(const tvm::relay::FunctionNode& co
   auto act_scl = IsOp("expand_dims")({IsOp("divide")({IsConstant(), IsConstant()})}) || IsConstant();
   auto sum_scl = IsOp("expand_dims")({IsOp("divide")({IsConstant(), IsConstant()})}) || IsConstant();
   
-  auto act_scl_cast = IsOp("multiply")({cast_fp, act_scl});
-  auto sum_scl_cast = IsOp("multiply")({cast_fp, sum_scl});
+  // auto act_scl_cast = IsOp("multiply")({cast_fp, act_scl});
+  // auto sum_scl_cast = IsOp("multiply")({cast_fp, sum_scl});
 
-  auto dst_zp = IsOp("expand_dims")({IsOp("subtract")({cast_fp, IsOp("subtract")({act_scl_cast, sum_scl_cast})})}) || IsConstant();
+  auto dst_zp = IsOp("expand_dims")({cast_fp - cast_fp * act_scl - cast_fp * sum_scl}) || IsConstant();
 
   DFPattern dns, act, pat;
 
