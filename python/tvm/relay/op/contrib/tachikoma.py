@@ -203,11 +203,11 @@ def make_qnn_conv2d_pattern():
     pat = is_op("cast")(pat)
     pat = is_op("add")(pat, bias) | pat  # optional bias
     pat = is_op("multiply")(pat, o_scl)
-    #pat = is_op("clip")(pat)  # TBD, not only clip
-    #pat = is_op("multiply")(pat, act_scl) | pat  # optional multiply. Ex: act_scl == 1
-    #pat = is_op("add")(pat, sum_scl * is_op("cast")(sum_src)) | pat  # optional sum
-    #pat = is_op("add")(pat, dst_zp) | pat  # optional dst_zp, can be dst_zp == 0
-    #pat = is_op("cast")(pat)
+    pat = is_op("clip")(pat)  # TBD, not only clip
+    pat = is_op("multiply")(pat, act_scl) | pat  # optional multiply. Ex: act_scl == 1
+    pat = is_op("add")(pat, sum_scl * is_op("cast")(sum_src)) | pat  # optional sum
+    pat = is_op("add")(pat, dst_zp) | pat  # optional dst_zp, can be dst_zp == 0
+    pat = is_op("cast")(pat)
 
     return "tachikoma.qnn.conv2d", pat
 
@@ -383,8 +383,11 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
         def cast_fp(op):
             return relay.op.cast(op, dtype="float32")
 
+        def cast_to_constant(d):
+            return relay.Constant(d.data)
+
         # recalculate some factors
-        o_scl = relay.Constant(tvm.nd.array(np.expand_dims(rq_in_scl.data.numpy() / rq_out_scl.data.numpy(), axis=(1,2))))
+        o_scl = rq_in_scl / rq_out_scl
         act_scl = sum_lhs_scl / sum_out_scl
         sum_scl = sum_rhs_scl / sum_out_scl
         dst_zp = (
@@ -392,7 +395,6 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
             - cast_fp(sum_lhs_zp) * sum_lhs_scl / sum_out_scl
             - cast_fp(sum_rhs_zp) * sum_rhs_scl / sum_out_scl
         )
-        """
         bias = self.squeeze_bias(bias, dst_layout)
         bias = (
             cast_fp(bias)
@@ -401,12 +403,16 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
             + cast_fp(rq_out_zp) * rq_out_scl / rq_in_scl
         )
         bias = self.broadcast_to_rank(bias, bias_rank)
-        """
+
+        o_scl = cast_to_constant(o_scl)
+        act_scl = cast_to_constant(act_scl)
+        sum_scl = cast_to_constant(sum_scl)
+        dst_zp = cast_to_constant(dst_zp)
+        bias = cast_to_constant(bias)
 
         zero_zp = relay.const(0, dtype="int32")
         one_scl = relay.const(1.0, dtype="float32")
 
-        print('1')
         # construct new graph with proper post op ordering
         gr = tvm.relay.Call(
             root.op,
@@ -416,12 +422,11 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
             root.span,
         )
         gr = relay.op.cast(gr, dtype="float32")
-        # gr = gr + bias
+        gr = gr + bias
         gr = gr * o_scl
-        #print('2')
-        #gr = relay.op.clip(gr, 0, 255) * act_scl
-        #gr = gr + sum_scl * cast_fp(sum_src) if sum_src else gr
-        #gr = gr + dst_zp
+        gr = relay.op.clip(gr, 0, 255) * act_scl
+        gr = gr + sum_scl * cast_fp(sum_src) if sum_src else gr
+        gr = gr + dst_zp
         gr = relay.op.cast(gr, dtype=final_dtype)
         print(gr)
         return gr
