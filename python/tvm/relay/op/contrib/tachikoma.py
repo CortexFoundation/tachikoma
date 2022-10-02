@@ -345,6 +345,7 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
         self.pattern = pat | cast
 
     def callback(self, pre, post, node_map):
+        print('callback tachikoma QNN')
         root = node_map[self.root][0]
         src = node_map[self.src][0]
         wgh = node_map[self.wgh][0]
@@ -366,7 +367,7 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
             dst_layout = "NC"
             wgh_layout = "OI"
 
-        # TODO(@apeskov): dst_layout may ne blocked
+        # TODO(@apeskov): dst_layout may be blocked
         bias_rank = len(dst_layout) - dst_layout.index("C")
 
         sum_src = node_map[self.sum_src][0] if self.sum_src in node_map else None
