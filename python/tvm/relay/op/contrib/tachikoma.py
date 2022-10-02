@@ -422,7 +422,7 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
         #gr = gr + sum_scl * cast_fp(sum_src) if sum_src else gr
         #gr = gr + dst_zp
         gr = relay.op.cast(gr, dtype=final_dtype)
-        #print(gr)
+        print(gr)
         return gr
 
     @staticmethod
