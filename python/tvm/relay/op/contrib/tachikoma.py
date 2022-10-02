@@ -414,15 +414,15 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
             root.type_args,
             root.span,
         )
-        gr = relay.op.cast(gr, dtype="float32")
-        # gr = gr + bias
-        gr = gr * o_scl
-        print('2')
-        gr = relay.op.clip(gr, 0, 255) * act_scl
-        gr = gr + sum_scl * cast_fp(sum_src) if sum_src else gr
-        gr = gr + dst_zp
-        gr = relay.op.cast(gr, dtype=final_dtype)
-        print(gr)
+        #gr = relay.op.cast(gr, dtype="float32")
+        #gr = gr + bias
+        #gr = gr * o_scl
+        #print('2')
+        #gr = relay.op.clip(gr, 0, 255) * act_scl
+        #gr = gr + sum_scl * cast_fp(sum_src) if sum_src else gr
+        #gr = gr + dst_zp
+        #gr = relay.op.cast(gr, dtype=final_dtype)
+        #print(gr)
         return gr
 
     @staticmethod
