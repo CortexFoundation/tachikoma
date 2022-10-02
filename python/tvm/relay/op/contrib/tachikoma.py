@@ -383,8 +383,11 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
         def cast_fp(op):
             return relay.op.cast(op, dtype="float32")
 
-        def cast_to_constant(d):
-            return relay.Constant(d.data)
+        def cast_to_constant(mod):
+            res = relay.create_executor(
+                kind="vm", mod=mod
+            ).evaluate()()
+            return relay.Constant(res)
 
         # recalculate some factors
         o_scl = rq_in_scl / rq_out_scl
