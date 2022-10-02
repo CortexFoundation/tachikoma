@@ -191,9 +191,9 @@ def make_qnn_conv2d_pattern():
     weight = is_constant()
     # bias = is_constant()
     o_scl = is_op("expand_dims")(is_op("divide")(is_constant(), is_constant()))
-    dst_zp = is_op("expand_dims")(is_op("divide")(is_constant(), is_constant()))
-    act_scl = is_op("expand_dims")(is_op("divide")(is_constant(), is_constant()))
-    sum_scl = is_op("expand_dims")(is_op("divide")(is_constant(), is_constant()))
+    dst_zp = is_op("expand_dims")(is_op("divide")(is_constant(), is_constant())) | is_constant()
+    act_scl = is_op("expand_dims")(is_op("divide")(is_constant(), is_constant())) | is_constant()
+    sum_scl = is_op("expand_dims")(is_op("divide")(is_constant(), is_constant())) | is_constant()
     sum_src = wildcard()
 
     zero_zp = is_expr(const(0, dtype="int32"))
@@ -384,13 +384,16 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
 
         # recalculate some factors
         o_scl = relay.expand_dims(rq_in_scl / rq_out_scl, axis=1, num_newaxis=2)
-        act_scl = relay.expand_dims(sum_lhs_scl / sum_out_scl, axis=1, num_newaxis=2)
-        sum_scl = relay.expand_dims(sum_rhs_scl / sum_out_scl, axis=1, num_newaxis=2)
+        act_scl = relay.expand_dims(sum_lhs_scl / sum_out_scl, axis=1, num_newaxis=2) if sum_src else sum_lhs_scl / sum_out_scl
+        sum_scl = relay.expand_dims(sum_rhs_scl / sum_out_scl, axis=1, num_newaxis=2) if sum_src else sum_rhs_scl / sum_out_scl
         dst_zp = relay.expand_dims(
             cast_fp(sum_out_zp)
             - cast_fp(sum_lhs_zp) * sum_lhs_scl / sum_out_scl
             - cast_fp(sum_rhs_zp) * sum_rhs_scl / sum_out_scl
-            , axis=1, num_newaxis=2)
+            , axis=1, num_newaxis=2) if sum_src else (
+            cast_fp(sum_out_zp)
+            - cast_fp(sum_lhs_zp) * sum_lhs_scl / sum_out_scl
+            - cast_fp(sum_rhs_zp) * sum_rhs_scl / sum_out_scl)
         """
         bias = self.squeeze_bias(bias, dst_layout)
         bias = (
