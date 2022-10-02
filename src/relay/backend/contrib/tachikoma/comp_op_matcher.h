@@ -104,19 +104,25 @@ const tvm::relay::CallNode* ParseQnnConvComp(const tvm::relay::FunctionNode& com
   auto src = IsWildcard();
   auto wgh = IsWildcard();
   auto sum_src = IsWildcard();
-  auto bias = IsConstant();
+  // auto bias = IsConstant();
 
-  auto o_scl = IsConstant();
-  auto act_scl = IsConstant();
-  auto sum_scl = IsConstant();
-  auto dst_zp = IsConstant();
+  auto cast_fp = IsOp("cast")({IsConstant()});
+
+  auto o_scl = IsOp("expand_dims")({IsOp("divide")({IsConstant(), IsConstant()})});
+  auto act_scl = IsOp("expand_dims")({IsOp("divide")({IsConstant(), IsConstant()})}) || IsConstant();
+  auto sum_scl = IsOp("expand_dims")({IsOp("divide")({IsConstant(), IsConstant()})}) || IsConstant();
+  
+  auto act_scl_cast = IsOp("multiply")({cast_fp, act_scl});
+  auto sum_scl_cast = IsOp("multiply")({cast_fp, sum_scl});
+
+  auto dst_zp = IsOp("expand_dims")({IsOp("subtract")({cast_fp, IsOp("subtract")({act_scl_cast, sum_scl_cast})})}) || IsConstant();
 
   DFPattern cnv;
   DFPattern pat;
 
   cnv = IsOp("qnn.conv2d")({src, wgh, IsConstant(), IsConstant(), IsConstant(), IsConstant()});
   pat = IsOp("cast")({cnv});
-  pat = IsOp("add")({pat, bias}) || pat;
+  // pat = IsOp("add")({pat, bias}) || pat;
   pat = IsOp("multiply")({pat, o_scl});
   pat = IsOp("clip")({pat});
   pat = IsOp("multiply")({pat, act_scl}) || pat;
@@ -140,7 +146,7 @@ const tvm::relay::CallNode* ParseQnnConvComp(const tvm::relay::FunctionNode& com
   ArgPacker arg_holder(ext_attrs, args);
   arg_holder.Put(find(src));
   arg_holder.Put(find(wgh));
-  arg_holder.Put(find(bias), "bias_idx");
+  // arg_holder.Put(find(bias), "bias_idx");
   arg_holder.Put(find(sum_src), "sum_idx");
   arg_holder.Put(find(o_scl), "o_scl_idx");
   arg_holder.Put(find(act_scl), "act_scl_idx");
@@ -167,18 +173,24 @@ const tvm::relay::CallNode* ParseQnnDenseComp(const tvm::relay::FunctionNode& co
   auto src = IsWildcard();
   auto wgh = IsWildcard();
   auto sum_src = IsWildcard();
-  auto bias = IsConstant();
+  // auto bias = IsConstant();
 
-  auto o_scl = IsConstant();
-  auto act_scl = IsConstant();
-  auto sum_scl = IsConstant();
-  auto dst_zp = IsConstant();
+  auto cast_fp = IsOp("cast")({IsConstant()});
+
+  auto o_scl = IsOp("expand_dims")({IsOp("divide")({IsConstant(), IsConstant()})});
+  auto act_scl = IsOp("expand_dims")({IsOp("divide")({IsConstant(), IsConstant()})}) || IsConstant();
+  auto sum_scl = IsOp("expand_dims")({IsOp("divide")({IsConstant(), IsConstant()})}) || IsConstant();
+  
+  auto act_scl_cast = IsOp("multiply")({cast_fp, act_scl});
+  auto sum_scl_cast = IsOp("multiply")({cast_fp, sum_scl});
+
+  auto dst_zp = IsOp("expand_dims")({IsOp("subtract")({cast_fp, IsOp("subtract")({act_scl_cast, sum_scl_cast})})}) || IsConstant();
 
   DFPattern dns, act, pat;
 
   dns = IsOp("qnn.dense")({src, wgh, IsConstant(), IsConstant(), IsConstant(), IsConstant()});
   pat = IsOp("cast")({dns});
-  pat = IsOp("add")({pat, bias}) || pat;
+  // pat = IsOp("add")({pat, bias}) || pat;
   pat = IsOp("multiply")({pat, o_scl});
   pat = IsOp("clip")({pat});
   pat = IsOp("multiply")({pat, act_scl}) || pat;
@@ -202,7 +214,7 @@ const tvm::relay::CallNode* ParseQnnDenseComp(const tvm::relay::FunctionNode& co
   ArgPacker arg_holder(ext_attrs, args);
   arg_holder.Put(find(src));
   arg_holder.Put(find(wgh));
-  arg_holder.Put(find(bias), "bias_idx");
+  // arg_holder.Put(find(bias), "bias_idx");
   arg_holder.Put(find(sum_src), "sum_idx");
   arg_holder.Put(find(o_scl), "o_scl_idx");
   arg_holder.Put(find(act_scl), "act_scl_idx");
