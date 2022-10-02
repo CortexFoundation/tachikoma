@@ -403,6 +403,7 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
         zero_zp = relay.const(0, dtype="int32")
         one_scl = relay.const(1.0, dtype="float32")
 
+        print('1')
         # construct new graph with proper post op ordering
         gr = tvm.relay.Call(
             root.op,
@@ -414,6 +415,7 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
         gr = relay.op.cast(gr, dtype="float32")
         gr = gr + bias
         gr = gr * o_scl
+        print('2')
         gr = relay.op.clip(gr, 0, 255) * act_scl
         gr = gr + sum_scl * cast_fp(sum_src) if sum_src else gr
         gr = gr + dst_zp
