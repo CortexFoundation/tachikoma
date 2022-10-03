@@ -153,7 +153,6 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
       attr.set_output_scales(data.size() == 1 ? 0 : (1 << 1), data);
     }
 
-
     auto activation = GetNodeAttr<std::vector<std::string>>(nodes_[nid], "activation", {"none"});
     if (activation[0] != "none") {
       auto a_type = elt_name2algo.at(activation[0]);
@@ -166,16 +165,13 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
       attr.set_post_ops(ops);
     }
 
-    /*
     if (sum_scl_tr) {
       auto scl = sum_scl_tr.GetConstScalarData<float>();
       auto ops = attr.get_post_ops();
       ops.append_sum(scl);
       attr.set_post_ops(ops);
     }
-    */
 
-    /*
     if (dst_zp_tr) {
       auto zp = dst_zp_tr.GetConstScalarData<float>();
       // Use linear post op instead of set_zero_points(). Because of limitation of int32 type,
@@ -184,7 +180,6 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
       ops.append_eltwise(1.0, tachikoma::algorithm::eltwise_linear, 1.0, zp);
       attr.set_post_ops(ops);
     }
-    */
 
     *bias_tr = GetInputByName(nid, "bias_idx");
 
