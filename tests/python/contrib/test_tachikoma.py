@@ -1260,7 +1260,7 @@ qnn_dense_profiles = tvm.testing.parameter(
     }
 )
 
-
+"""
 @has_tachikoma_codegen
 def test_qnn_dense(qnn_dense_profiles):
     def generate_model(p, c, q):
@@ -1365,6 +1365,7 @@ def test_dense_plus(dense_profiles):
     ref_mod, args = generate_model(dense_p, arg_p)
     mod = tachikoma.partition_for_tachikoma(ref_mod)
     check_result(mod, ref_mod, args, tol=1e-5, desired_compiler="tachikoma")
+"""
 
 if __name__ == "__main__":
     import sys
