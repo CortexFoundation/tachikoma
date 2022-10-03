@@ -238,9 +238,7 @@ extern "C" void tachikoma_relu(float* data, float* out, std::vector<int64_t> sha
   engine eng(engine::kind::cpu, 0);
   stream s(eng);
 
-  memory::dims data_tz = {p_N_, p_C_, p_H_, p_W_};
-
-  auto data_md = memory::desc{{data_tz}, dt::f32, tag::nchw};
+  auto data_md = GenTachikomaMemDescByShape(shape, dt::f32);
 
   auto data_memory = memory(data_md, eng, data);
   auto dst_memory = memory(data_md, eng);
