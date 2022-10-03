@@ -108,25 +108,25 @@ inline std::ostream& operator<<(std::ostream& o, const tachikoma::memory::data_t
 
 /*! \brief Converter data type template arg to runtime object */
 template <typename T>
-inline tachikoma::memory::data_type DnnlDType();
+inline tachikoma::memory::data_type TachikomaDType();
 
 template <>
-inline tachikoma::memory::data_type DnnlDType<int>() {
+inline tachikoma::memory::data_type TachikomaDType<int>() {
   return tachikoma::memory::data_type::s32;
 }
 
 template <>
-inline tachikoma::memory::data_type DnnlDType<float>() {
+inline tachikoma::memory::data_type TachikomaDType<float>() {
   return tachikoma::memory::data_type::f32;
 }
 
 template <>
-inline tachikoma::memory::data_type DnnlDType<uint8_t>() {
+inline tachikoma::memory::data_type TachikomaDType<uint8_t>() {
   return tachikoma::memory::data_type::u8;
 }
 
 template <>
-inline tachikoma::memory::data_type DnnlDType<int8_t>() {
+inline tachikoma::memory::data_type TachikomaDType<int8_t>() {
   return tachikoma::memory::data_type::s8;
 }
 
