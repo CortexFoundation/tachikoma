@@ -1246,7 +1246,7 @@ def test_conv2d_plus(conv_profiles):
 
     conv_p, arg_p = conv_profiles
     ref_mod, args = generate_model(conv_p, arg_p)
-    mod = tachikoma.partition_for_tachikoma(ref_mod, alter_layout=False)
+    mod = tachikoma.partition_for_tachikoma(ref_mod)
     check_result(mod, ref_mod, args, tol=1e-5, desired_compiler="tachikoma")
 
 
