@@ -1219,11 +1219,11 @@ def test_tachikoma_fuse():
         conv2d_relu_pat,
         conv2d_sigmoid_pat,
     ) = (
-        tachikoma_patterns[1],
-        tachikoma_patterns[13],
-        tachikoma_patterns[19],
-        tachikoma_patterns[25],
-        tachikoma_patterns[37],
+        tachikoma_patterns[3],
+        tachikoma_patterns[15],
+        tachikoma_patterns[21],
+        tachikoma_patterns[27],
+        tachikoma_patterns[39],
     )
 
     def get_blocks(
