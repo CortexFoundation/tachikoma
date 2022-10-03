@@ -595,17 +595,17 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     }
 
     // Pooling description.
-    auto pool_desc = tachikoma::pooling_forward::desc(
+    auto pool_desc = tachikoma::pooling_v2_forward::desc(
         tachikoma::prop_kind::forward_inference, algo, src_tr.desc(),  //<= Do not use any for src tensor
         dst_tr.LayoutAny().desc(), strides, kernel, dilates, padding_l, padding_r);
-    auto pool_prim_desc = tachikoma::pooling_forward::primitive_desc(pool_desc, engine_);
+    auto pool_prim_desc = tachikoma::pooling_v2_forward::primitive_desc(pool_desc, engine_);
 
     src_tr = src_tr.RequestLayout(pool_prim_desc.src_desc());
     dst_tr = dst_tr.RequestLayout(pool_prim_desc.dst_desc());
 
     auto scratchpad_tr = TensorRequisite::AsIs(pool_prim_desc.scratchpad_desc());
 
-    Submit(tachikoma::pooling_forward(pool_prim_desc),
+    Submit(tachikoma::pooling_v2_forward(pool_prim_desc),
            {{DNNL_ARG_SRC, src_tr}, {DNNL_ARG_DST, dst_tr}, {DNNL_ARG_SCRATCHPAD, scratchpad_tr}});
   }
 
