@@ -147,13 +147,12 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
     auto o_scl_tr = GetInputByName(nid, "o_scl_idx");
     auto sum_scl_tr = GetInputByName(nid, "sum_scl_idx");
 
-    /*
     if (o_scl_tr) {
       ICHECK(o_scl_tr.IsConstant());
       auto data = o_scl_tr.GetConstDataLikeVec<float>();
       attr.set_output_scales(data.size() == 1 ? 0 : (1 << 1), data);
     }
-    */
+
 
     auto activation = GetNodeAttr<std::vector<std::string>>(nodes_[nid], "activation", {"none"});
     if (activation[0] != "none") {
@@ -186,7 +185,7 @@ class TachikomaJSONRuntime : public JSONRuntimeBase {
       attr.set_post_ops(ops);
     }
     */
-   
+
     *bias_tr = GetInputByName(nid, "bias_idx");
 
     if (o_scl_tr || activation[0] != "none" || sum_scl_tr || dst_zp_tr) return attr;

@@ -415,7 +415,7 @@ class TensorRequisite {
     auto const_data = GetConstData();
     auto desc = const_data.get_desc();
     ICHECK(desc.data_type() == utils::TachikomaDType<T>());
-    ICHECK(desc.dims().size() == 1);
+    ICHECK(desc.dims().size() == 1 || desc.dims().size() == 3);
 
     auto size = desc.get_size() / sizeof(T);
     auto ptr = static_cast<T*>(const_data.get_data_handle());
