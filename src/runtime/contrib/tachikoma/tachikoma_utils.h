@@ -136,4 +136,3 @@ inline tachikoma::memory::data_type DnnlDType<int8_t>() {
 }  // namespace tvm
 
 #endif  // TVM_RUNTIME_CONTRIB_TACHIKOMA_TACHIKOMA_UTILS_H_
-Footer
