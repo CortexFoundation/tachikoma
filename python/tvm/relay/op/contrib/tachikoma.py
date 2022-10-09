@@ -1272,14 +1272,14 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
                 + cast_fp(rq_out_zp) * rq_out_scl / rq_in_scl
             )
             bias = self.broadcast_to_rank(bias, bias_rank)
-
-            o_scl = cast_to_constant(o_scl)
-            act_scl = cast_to_constant(act_scl)
-            sum_scl = cast_to_constant(sum_scl)
-            dst_zp = cast_to_constant(dst_zp)
-            bias = cast_to_constant(bias)
         else:
             raise ValueError(f"Quantization constant with dim {const_dim}({const_shape}) not supported")
+
+        o_scl = cast_to_constant(o_scl)
+        act_scl = cast_to_constant(act_scl)
+        sum_scl = cast_to_constant(sum_scl)
+        dst_zp = cast_to_constant(dst_zp)
+        bias = cast_to_constant(bias)
 
         zero_zp = relay.const(0, dtype="int32")
         one_scl = relay.const(1.0, dtype="float32")
