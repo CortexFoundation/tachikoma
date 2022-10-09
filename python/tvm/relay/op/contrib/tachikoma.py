@@ -1213,7 +1213,7 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
             dst_layout = "NC"
             wgh_layout = "OI"
 
-        # TODO(@apeskov): dst_layout may be blocked
+        # TODO(@liaopeiyuan): dst_layout may be blocked
         bias_rank = len(dst_layout) - dst_layout.index("C")
 
         sum_src = node_map[self.sum_src][0] if self.sum_src in node_map else None
@@ -1228,21 +1228,15 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
         def cast_fp(op):
             return relay.op.cast(op, dtype="float32")
 
-        def cast_to_constant(fn):
-            res = relay.create_executor(
-                kind="vm", mod=tvm.IRModule.from_expr(fn)
-            ).evaluate()()
-            return relay.Constant(res)
-
         # recalculate some factors
-        o_scl = relay.expand_dims(rq_in_scl / rq_out_scl, axis=1, num_newaxis=2)
-        act_scl = relay.expand_dims(sum_lhs_scl / sum_out_scl, axis=1, num_newaxis=2) if sum_src else relay.const(1, dtype="float32")
-        sum_scl = relay.expand_dims(sum_rhs_scl / sum_out_scl, axis=1, num_newaxis=2) if sum_src else relay.const(0, dtype="float32")
+        o_scl = rq_in_scl / rq_out_scl
+        act_scl = sum_lhs_scl / sum_out_scl
+        sum_scl = sum_rhs_scl / sum_out_scl
         dst_zp = (
             cast_fp(sum_out_zp)
-            - cast_fp(sum_lhs_zp) * act_scl
-            - cast_fp(sum_rhs_zp) * sum_scl
-        ) if sum_src else relay.const(0, dtype="float32")
+            - cast_fp(sum_lhs_zp) * sum_lhs_scl / sum_out_scl
+            - cast_fp(sum_rhs_zp) * sum_rhs_scl / sum_out_scl
+        )
         bias = self.squeeze_bias(bias, dst_layout)
         bias = (
             cast_fp(bias)
@@ -1251,12 +1245,6 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
             + cast_fp(rq_out_zp) * rq_out_scl / rq_in_scl
         )
         bias = self.broadcast_to_rank(bias, bias_rank)
-
-        o_scl = cast_to_constant(o_scl)
-        act_scl = cast_to_constant(act_scl)
-        sum_scl = cast_to_constant(sum_scl)
-        dst_zp = cast_to_constant(dst_zp)
-        bias = cast_to_constant(bias)
 
         zero_zp = relay.const(0, dtype="int32")
         one_scl = relay.const(1.0, dtype="float32")
@@ -1276,7 +1264,6 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
         gr = gr + sum_scl * cast_fp(sum_src) if sum_src else gr
         gr = gr + dst_zp
         gr = relay.op.cast(gr, dtype=final_dtype)
-        print(gr)
         return gr
 
     @staticmethod
