@@ -88,8 +88,8 @@ inline void simultaneous_sort(T* vals, T* vals_2nd_level, U* keys, size_t size, 
 }
 
 void compute_blocks(dims_t blocks, const tachikoma::memory::desc* md) {
-  using format_kind_t = tachikoma_format_kind_t;
-  const format_kind_t blocked = tachikoma_blocked;
+  using format_kind_t = dnnl_format_kind_t;
+  const format_kind_t blocked = dnnl_blocked;
   if (!(md->data.format_kind == blocked)) {
     array_set(blocks, 0, md->data.ndims);
     return;
@@ -101,8 +101,8 @@ void compute_blocks(dims_t blocks, const tachikoma::memory::desc* md) {
 }
 
 inline bool has_runtime_strides(const tachikoma::memory::desc* md) {
-  using format_kind_t = tachikoma_format_kind_t;
-  const format_kind_t blocked = tachikoma_blocked;
+  using format_kind_t = dnnl_format_kind_t;
+  const format_kind_t blocked = dnnl_blocked;
   if (!(md->data.format_kind == blocked)) return false;
   for (int d = 0; d < md->data.ndims; ++d)
     if (md->data.format_desc.blocking.strides[d] == DNNL_RUNTIME_DIM_VAL) return true;
