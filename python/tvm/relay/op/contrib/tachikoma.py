@@ -1234,8 +1234,6 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
                 kind="vm", mod=tvm.IRModule.from_expr(fn)
             ).evaluate()()
             return relay.Constant(res)
-
-        print(rq_in_scl)
         
         # recalculate some factors
         o_scl = rq_in_scl / rq_out_scl
@@ -1260,6 +1258,8 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
         sum_scl = cast_to_constant(sum_scl)
         dst_zp = cast_to_constant(dst_zp)
         bias = cast_to_constant(bias)
+
+        print(o_scl.data.shape)
 
         zero_zp = relay.const(0, dtype="int32")
         one_scl = relay.const(1.0, dtype="float32")
