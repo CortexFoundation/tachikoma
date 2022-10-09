@@ -1235,6 +1235,8 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
             ).evaluate()()
             return relay.Constant(res)
         
+        print(cast_to_constant(rq_in_scl).data.shape)
+        
         # recalculate some factors
         o_scl = rq_in_scl / rq_out_scl
         act_scl = sum_lhs_scl / sum_out_scl
@@ -1271,12 +1273,7 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
             root.span,
         )
         gr = relay.op.cast(gr, dtype="float32")
-
-        gr = gr + bias
-
-        print(o_scl.data.shape)
-        print(gr)
-        
+        gr = gr + bias        
         gr = gr * o_scl
         gr = relay.op.clip(gr, 0, 255) * act_scl
         gr = gr + sum_scl * cast_fp(sum_src) if sum_src else gr
