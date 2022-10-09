@@ -1235,6 +1235,8 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
             ).evaluate()()
             return relay.Constant(res)
 
+        print(rq_in_scl)
+        
         # recalculate some factors
         o_scl = rq_in_scl / rq_out_scl
         act_scl = sum_lhs_scl / sum_out_scl
