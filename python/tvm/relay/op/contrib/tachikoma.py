@@ -1259,8 +1259,6 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
         dst_zp = cast_to_constant(dst_zp)
         bias = cast_to_constant(bias)
 
-        print(o_scl.data.shape)
-
         zero_zp = relay.const(0, dtype="int32")
         one_scl = relay.const(1.0, dtype="float32")
 
@@ -1273,7 +1271,14 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
             root.span,
         )
         gr = relay.op.cast(gr, dtype="float32")
+
+        partial_res = cast_to_constant(gr)
+
         gr = gr + bias
+
+        print(o_scl.data.shape)
+        print(partial_res.data.shape)
+        
         gr = gr * o_scl
         gr = relay.op.clip(gr, 0, 255) * act_scl
         gr = gr + sum_scl * cast_fp(sum_src) if sum_src else gr
