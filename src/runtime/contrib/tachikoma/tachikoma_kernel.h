@@ -19,7 +19,7 @@
 
 /*!
  * \file src/runtime/contrib/tachikoma/tachikoma_kernel.h
- * \brief Use external dnnl library kernels for Tachikoma
+ * \brief Use external tachikoma library kernels.
  */
 
 #ifndef TVM_RUNTIME_CONTRIB_TACHIKOMA_TACHIKOMA_KERNEL_H_
@@ -72,4 +72,4 @@ extern "C" TVM_DLL void tachikoma_binary_op(float* data, float* weight, float* o
 }  // namespace contrib
 }  // namespace runtime
 }  // namespace tvm
-#endif  // TVM_RUNTIME_CONTRIB_DNNL_DNNL_KERNEL_H_
+#endif  // TVM_RUNTIME_CONTRIB_TACHIKOMA_TACHIKOMA_KERNEL_H_

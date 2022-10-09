@@ -37,8 +37,6 @@
 #include "../../utils.h"
 #include "comp_op_matcher.h"
 
-#define USE_JSON_RUNTIME
-
 #ifdef USE_JSON_RUNTIME
 #include "../../../../runtime/contrib/json/json_node.h"
 #include "../codegen_json/codegen_json.h"
@@ -406,10 +404,9 @@ class TachikomaModuleCodegen : public CSourceModuleCodegenBase {
     code_stream_ << "#include <cstring>\n";
     code_stream_ << "#include <vector>\n";
     code_stream_ << "#include <tvm/runtime/c_runtime_api.h>\n";
-    code_stream_ << "#include <tvm/runtime/container.h>\n";
     code_stream_ << "#include <tvm/runtime/packed_func.h>\n";
     code_stream_ << "#include <dlpack/dlpack.h>\n";
-    // tachikoma file is saved under src/runtime/contrib/tachikoma so that we don't
+    // tachikoma_kernel file is saved under src/runtime/contrib/tachikoma so that we don't
     // expose it to ordinary users. To make export_library use it, users need to
     // pass -I${PATH_TO_TVM}/src/runtime/contrib
     code_stream_ << "#include <tachikoma/tachikoma_kernel.h>\n";
@@ -439,6 +436,7 @@ class TachikomaModuleCodegen : public CSourceModuleCodegenBase {
 };
 
 #else  // Tachikoma JSON runtime
+
 /*!
  * \brief Replace var expr which bind with args of call node
  *
@@ -462,27 +460,11 @@ static tvm::Array<Expr> BindToCallNodeArgs(const std::vector<Expr>& args, const 
   return res;
 }
 
+/*! \brief Serializer to Tachikoma JSON runtime module */
 class TachikomaJSONSerializer : public backend::contrib::JSONSerializer {
   using JSONGraphNode = tvm::runtime::json::JSONGraphNode;
   using JSONGraphNodeEntry = tvm::runtime::json::JSONGraphNodeEntry;
 
-  std::map<std::string, std::string> op_map{
-      {"bias", "add"},
-      {"relu", "nn.relu"},
-      {"tanh", "tanh"},
-      {"sigmoid", "sigmoid"},
-  };
-
-  std::vector<std::string> ParsingOpList(std::string op, std::string pattern_name) {
-    std::vector<std::string> op_list = {"nn." + op};
-    for (auto& t : op_map) {
-      if (pattern_name.find(t.first) != std::string::npos) {
-        op_list.push_back(t.second);
-      }
-    }
-    return op_list;
-  }
-  
  public:
   TachikomaJSONSerializer(const std::string& symbol, const Expr& expr)
       : JSONSerializer("tachikoma_" + symbol, expr) {}
@@ -502,38 +484,31 @@ class TachikomaJSONSerializer : public backend::contrib::JSONSerializer {
       ICHECK(comp.defined()) << "Tachikoma JSON runtime only supports composite functions.";
       name = comp.value();
 
-      if (name.find("tachikoma.conv2d_transpose") != std::string::npos) {
-        std::vector<std::string> op_list = ParsingOpList("conv2d_transpose", name);
-        call = GetRootCall(fn->body.as<CallNode>(), op_list.size() - 1, op_list);
+      if (name.find("tachikoma.deconv2d") != std::string::npos) {
+        call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.conv2d_transpose");
         ICHECK(call->op.as<OpNode>()) << "Not op node";
-      } else if (name.find("tachikoma.conv3d_transpose") != std::string::npos) {
-        std::vector<std::string> op_list = ParsingOpList("conv3d_transpose", name);
-        call = GetRootCall(fn->body.as<CallNode>(), op_list.size() - 1, op_list);
+      } else if (name.find("tachikoma.deconv3d") != std::string::npos) {
+        call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.conv3d_transpose");
         ICHECK(call->op.as<OpNode>()) << "Not op node";
       } else if (name.find("tachikoma.conv1d") != std::string::npos) {
-        std::vector<std::string> op_list = ParsingOpList("conv1d", name);
-        call = GetRootCall(fn->body.as<CallNode>(), op_list.size() - 1, op_list);
+        call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.conv1d");
         ICHECK(call->op.as<OpNode>()) << "Not op node";
       } else if (name.find("tachikoma.conv2d") != std::string::npos) {
-        std::vector<std::string> op_list = ParsingOpList("conv2d", name);
-        call = GetRootCall(fn->body.as<CallNode>(), op_list.size() - 1, op_list);
+        call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.conv2d");
         ICHECK(call->op.as<OpNode>()) << "Not op node";
       } else if (name.find("tachikoma.conv3d") != std::string::npos) {
-        std::vector<std::string> op_list = ParsingOpList("conv3d", name);
-        call = GetRootCall(fn->body.as<CallNode>(), op_list.size() - 1, op_list);
+        call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.conv3d");
         ICHECK(call->op.as<OpNode>()) << "Not op node";
       } else if (name.find("tachikoma.dense") != std::string::npos) {
-        std::vector<std::string> op_list = ParsingOpList("dense", name);
-        call = GetRootCall(fn->body.as<CallNode>(), op_list.size() - 1, op_list);
+        call = GetRootCall(fn->body.as<CallNode>(), 10, "nn.dense");
         ICHECK(call->op.as<OpNode>()) << "Not op node";
       } else if (name.find("tachikoma.qnn.conv2d") != std::string::npos ||
                  name.find("tachikoma.qnn.dense") != std::string::npos) {
-        std::cerr << name << " hit" << std::endl;
         std::vector<Expr> args_loc;
         call = ParseComposite(*fn, &extra_attrs, &args_loc);
         args = BindToCallNodeArgs(args_loc, cn);
       } else {
-        LOG(FATAL) << "Unrecognized tachikoma pattern: " << name;
+        LOG(FATAL) << "Unrecognized Tachikoma pattern: " << name;
       }
 
       if (args.empty()) {
@@ -564,19 +539,6 @@ class TachikomaJSONSerializer : public backend::contrib::JSONSerializer {
     return AddNode(node, GetRef<Expr>(cn));
   }
 };
-
-/*!
- * \brief Get the external symbol of the Relay function name.
- *
- * \param func The provided function.
- *
- * \return An external symbol.
- */
-std::string GetExtSymbol(const Function& func) {
-  const auto name_node = func->GetAttr<String>(tvm::attr::kGlobalSymbol);
-  ICHECK(name_node.defined()) << "Fail to retrieve external symbol.";
-  return std::string(name_node.value());
-}
 #endif
 
 /*!

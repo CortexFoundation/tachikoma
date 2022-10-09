@@ -1,3 +1,5 @@
+
+
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -184,7 +186,7 @@ class TensorRequisite {
     auto desc = t_desc_.submemory_desc(shape, offset, /*allow_empty=*/true);
 
     // Originally Tachikoma implementation is very limited. Let's slightly enhance it.
-    if (!desc && t_desc_.data.format_kind == dnnl_blocked) {
+    if (!desc && t_desc_.data.format_kind == tachikoma_blocked) {
       bool offset_is_zero =
           std::all_of(offset.begin(), offset.end(), [](auto el) { return el == 0; });
 
