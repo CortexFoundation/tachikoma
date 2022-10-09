@@ -1234,33 +1234,52 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
                 kind="vm", mod=tvm.IRModule.from_expr(fn)
             ).evaluate()()
             return relay.Constant(res)
-        
-        print(len(cast_to_constant(rq_in_scl).data.shape))
-        print(len(relay.const(1, dtype="float32").data.shape))
+    
+        const_shape = cast_to_constant(rq_in_scl).data.shape
+        const_dim = len(const_shape)
+        if const_dim == 0:
+            # recalculate some factors
+            o_scl = rq_in_scl / rq_out_scl
+            act_scl = sum_lhs_scl / sum_out_scl
+            sum_scl = sum_rhs_scl / sum_out_scl
+            dst_zp = (
+                cast_fp(sum_out_zp)
+                - cast_fp(sum_lhs_zp) * sum_lhs_scl / sum_out_scl
+                - cast_fp(sum_rhs_zp) * sum_rhs_scl / sum_out_scl
+            )
+            bias = self.squeeze_bias(bias, dst_layout)
+            bias = (
+                cast_fp(bias)
+                - cast_fp(self.fake_op(src_zp, wgh, wgh_layout))
+                - cast_fp(rq_in_zp)
+                + cast_fp(rq_out_zp) * rq_out_scl / rq_in_scl
+            )
+            bias = self.broadcast_to_rank(bias, bias_rank)
+        elif const_dim == 1:
+            o_scl = relay.expand_dims(rq_in_scl / rq_out_scl, axis=1, num_newaxis=2)
+            act_scl = relay.expand_dims(sum_lhs_scl / sum_out_scl, axis=1, num_newaxis=2) if sum_src else relay.const(1, dtype="float32")
+            sum_scl = relay.expand_dims(sum_rhs_scl / sum_out_scl, axis=1, num_newaxis=2) if sum_src else relay.const(0, dtype="float32")
+            dst_zp = (
+                cast_fp(sum_out_zp)
+                - cast_fp(sum_lhs_zp) * act_scl
+                - cast_fp(sum_rhs_zp) * sum_scl
+            ) if sum_src else relay.const(0, dtype="float32")
+            bias = self.squeeze_bias(bias, dst_layout)
+            bias = (
+                cast_fp(bias)
+                - cast_fp(self.fake_op(src_zp, wgh, wgh_layout))
+                - cast_fp(rq_in_zp)
+                + cast_fp(rq_out_zp) * rq_out_scl / rq_in_scl
+            )
+            bias = self.broadcast_to_rank(bias, bias_rank)
 
-        # recalculate some factors
-        o_scl = rq_in_scl / rq_out_scl
-        act_scl = sum_lhs_scl / sum_out_scl
-        sum_scl = sum_rhs_scl / sum_out_scl
-        dst_zp = (
-            cast_fp(sum_out_zp)
-            - cast_fp(sum_lhs_zp) * sum_lhs_scl / sum_out_scl
-            - cast_fp(sum_rhs_zp) * sum_rhs_scl / sum_out_scl
-        )
-        bias = self.squeeze_bias(bias, dst_layout)
-        bias = (
-            cast_fp(bias)
-            - cast_fp(self.fake_op(src_zp, wgh, wgh_layout))
-            - cast_fp(rq_in_zp)
-            + cast_fp(rq_out_zp) * rq_out_scl / rq_in_scl
-        )
-        bias = self.broadcast_to_rank(bias, bias_rank)
-
-        o_scl = cast_to_constant(o_scl)
-        act_scl = cast_to_constant(act_scl)
-        sum_scl = cast_to_constant(sum_scl)
-        dst_zp = cast_to_constant(dst_zp)
-        bias = cast_to_constant(bias)
+            o_scl = cast_to_constant(o_scl)
+            act_scl = cast_to_constant(act_scl)
+            sum_scl = cast_to_constant(sum_scl)
+            dst_zp = cast_to_constant(dst_zp)
+            bias = cast_to_constant(bias)
+        else:
+            raise ValueError(f"Quantization constant with dim {const_dim}({const_shape}) not supported")
 
         zero_zp = relay.const(0, dtype="int32")
         one_scl = relay.const(1.0, dtype="float32")
@@ -1274,7 +1293,7 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
             root.span,
         )
         gr = relay.op.cast(gr, dtype="float32")
-        gr = gr + bias        
+        gr = gr + bias  
         gr = gr * o_scl
         gr = relay.op.clip(gr, 0, 255) * act_scl
         gr = gr + sum_scl * cast_fp(sum_src) if sum_src else gr
