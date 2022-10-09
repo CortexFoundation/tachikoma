@@ -1229,6 +1229,12 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
         def cast_fp(op):
             return relay.op.cast(op, dtype="float32")
 
+        def cast_to_constant(fn):
+            res = relay.create_executor(
+                kind="vm", mod=tvm.IRModule.from_expr(fn)
+            ).evaluate()()
+            return relay.Constant(res)
+
         # recalculate some factors
         o_scl = rq_in_scl / rq_out_scl
         act_scl = sum_lhs_scl / sum_out_scl
@@ -1246,6 +1252,12 @@ class LegalizeQnnOpForTachikoma(DFPatternCallback):
             + cast_fp(rq_out_zp) * rq_out_scl / rq_in_scl
         )
         bias = self.broadcast_to_rank(bias, bias_rank)
+
+        o_scl = cast_to_constant(o_scl)
+        act_scl = cast_to_constant(act_scl)
+        sum_scl = cast_to_constant(sum_scl)
+        dst_zp = cast_to_constant(dst_zp)
+        bias = cast_to_constant(bias)
 
         zero_zp = relay.const(0, dtype="int32")
         one_scl = relay.const(1.0, dtype="float32")
