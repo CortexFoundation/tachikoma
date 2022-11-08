@@ -7,7 +7,7 @@ tachikoma defines how a neural network's inference process should be serialized 
 
 ---------------
 
-We are actively working consolidating the standards into a stable form and release relevant artifacts, as well as forming a committee and organizing regular meetings. If you are interested in this effort, please reach out!
+We are actively working on consolidating the standards into a stable form and release relevant artifacts, as well as forming a committee and organizing regular meetings. If you are interested in this effort, please reach out!
 
 ---------------
 
