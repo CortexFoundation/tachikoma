@@ -23,44 +23,6 @@ import tvm
 from tvm import te
 
 
-def allocate_hexagon_array(
-    dev, tensor_shape=None, dtype=None, data=None, axis_separators=None, mem_scope=None
-):
-    """
-    Allocate a hexagon array which could be a 2D array
-    on physical memory defined by axis_separators
-    """
-    if tensor_shape is None:
-        assert data is not None, "Must provide either tensor shape or numpy data array"
-        tensor_shape = data.shape
-    elif data is not None:
-        assert (
-            tensor_shape == data.shape
-        ), "Mismatch between provided tensor shape and numpy data array shape"
-
-    if dtype is None:
-        assert data is not None, "Must provide either dtype or numpy data array"
-        dtype = data.dtype.name
-    elif data is not None:
-        assert dtype == data.dtype, "Mismatch between provided dtype and numpy data array dtype"
-
-    if axis_separators is None:
-        axis_separators = []
-
-    boundaries = [0, *axis_separators, len(tensor_shape)]
-    physical_shape = [
-        numpy.prod(tensor_shape[dim_i:dim_f])
-        for dim_i, dim_f in zip(boundaries[:-1], boundaries[1:])
-    ]
-
-    arr = tvm.nd.empty(physical_shape, dtype=dtype, device=dev, mem_scope=mem_scope)
-
-    if data is not None:
-        arr.copyfrom(data.reshape(physical_shape))
-
-    return arr._create_view(tensor_shape)
-
-
 def ceildiv(o, d):
     assert o >= 0
     assert d >= 0
@@ -128,7 +90,7 @@ def get_packed_filter_shape(logical_shape_oihw):
     return physical_shape_oihw8i32o4i
 
 
-def build_and_run(inputs, func, target, target_host, *args, **kwargs):
+def build_and_run(inputs, func, target: str, target_host: str, *args, **kwargs):
     """build and run the function func"""
     schedule, placeholders, binds = func(*args, **kwargs)
 
@@ -351,3 +313,9 @@ def quantize_np(arr_np: numpy.ndarray, dtype: str):
     zero_point = numpy.rint((fmax * qmin - fmin * qmax) / (fmax - fmin)).astype("int32")
     quant_np = (arr_np / scale + zero_point).astype(dtype)
     return quant_np, scale, zero_point
+
+
+def get_hexagon_target(cpu_ver: str) -> tvm.target.Target:
+    """Creates a Hexagon target"""
+    target = tvm.target.hexagon(cpu_ver)
+    return tvm.target.Target(target, host=target)
