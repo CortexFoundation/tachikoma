@@ -1,4 +1,4 @@
-<img src=https://raw.githubusercontent.com/zk-ml/linear-a-site/main/logo/linear-a-logo.png width=64/> tachikoma: neural network inference standard for arithmetic circuits
+<img src=https://raw.githubusercontent.com/zk-ml/linear-a-site/main/logo/linear-a-logo.png width=64/> tachikoma: neural network inference standard for zero-knowledge-proof systems
 
 
 ---------------
