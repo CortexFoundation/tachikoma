@@ -165,6 +165,7 @@ class ConstantFolder : public MixedModeMutator {
       return std::move(post_call);
     }
     Op op = GetRef<Op>(op_node);
+    VLOG(1) << op->name << " " << op->GetTypeKey();
     static auto op_stateful = Op::GetAttrMap<TOpIsStateful>("TOpIsStateful");
     if (op_stateful.get(op, false)) {
       // skip stateful ops.

@@ -783,6 +783,12 @@ class Interpreter : public ExprFunctor<ObjectRef(const Expr& n)>,
                       "fusing and lowering";
       }
 
+      VLOG(0) 
+        << " ================ "
+        << call_node->op.as<OpNode>()
+        << " " << call_node->op->GetTypeKey();
+
+
       // Now we just evaluate and expect to find a closure.
       // TODO(@electriclilies): How should call_lowered behave with closures?
       ObjectRef fn_val = Eval(call_node->op);

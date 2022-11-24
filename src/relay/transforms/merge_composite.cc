@@ -53,8 +53,9 @@ Expr MergeComposite(const Function& func, const Array<runtime::String>& pattern_
     Map<String, ObjectRef> attrs;
     attrs.Set("Composite", pattern_names[i]);
     merged_func = Downcast<Function>(PartitionPattern(patterns[i], merged_func, attrs, checks[i]));
-    merged_func = InferType(merged_func, m);
+    // merged_func = InferType(merged_func, m);
   }
+  merged_func = InferType(merged_func, m);
   return std::move(merged_func);
 }
 
