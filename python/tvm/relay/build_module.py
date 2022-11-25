@@ -750,6 +750,7 @@ class AotExecutor(_interpreter.Executor):
 # reuse the executor for multiple expressions and b) any preparation necessary for the expression
 # evaluation needs to (currently) be done along with preparation for the module.
 def create_executor(kind="debug", mod=None, device=None, target="llvm", params=None):
+
     """Factory function to create an executor.
 
     Example

@@ -1,30 +1,41 @@
 from __future__ import annotations
 import typing
 
+from dataclasses import dataclass, fields
+from functools import wraps
+
 import tvm
 from tvm import relay, ir
 from tvm.ir.expr import *
 from tvm.relay.expr import *
 
-from dataclasses import dataclass, is_dataclass, fields
-from functools import wraps
-
 from .utils import *
+from .types import *
 
-VAR_NAME = "Var"
+__all__ = [
+        "Symbol", "Parameters",
+        "is_operator", "is_variable", "is_input", "is_param",
+        # symbol pass wrapper and some help functions
+        "transform", "transform_operators", "visit",
+        "simple_raw_print",
+        # API with expr
+        "expr2symbol", "symbol2expr",
+        ]
+
+VAR_NAME = "var"
 TUPLE_GET_ITEM_NAME = "TupleGetItem"
 TUPLE_NAME = "Tuple"
 
-def is_operator(symbol: Symbol, params = {}):
+def is_operator(symbol: Symbol, params: Parameters = {}):
     return symbol.op_name != VAR_NAME
 
-def is_variable(symbol: Symbol, params = {}):
+def is_variable(symbol: Symbol, params: Parameters = {}):
     return symbol.op_name == VAR_NAME
 
-def is_input(symbol: Symbol, params):
+def is_input(symbol: Symbol, params: Parameters):
     return is_variable(symbol) and symbol.name not in params
 
-def is_param(symbol: Symbol, params):
+def is_param(symbol: Symbol, params: Parameters):
     return is_variable(symbol) and symbol.name in params
 
 CopyAttrsT = typing.Union[typing.List[str], str]
@@ -36,6 +47,11 @@ class Symbol:
     RelayExpr has different format for operators, functions,
         which is hard to apply uniform transformation pass.
         Such as the `TupleGetItem`.
+
+    Abstract representation allows different definitions
+        for operators, which can be easier for graph
+        transformation. Like the `BatchNorm` op returns
+        a 3-tuple, whereas the return is first in cvm.
     """
 
     name: str
@@ -93,6 +109,7 @@ def _topo_sort(symbol: Symbol, sym_list: typing.List[Symbol]):
         _topo_sort(c, sym_list)
     sym_list.append(symbol)
 
+Visitor = typing.Callable[[Symbol], None]
 Transformer = typing.Callable[[Symbol], typing.Optional[Symbol]]
 """ Symbol Transformer
 
@@ -100,8 +117,20 @@ Transformer = typing.Callable[[Symbol], typing.Optional[Symbol]]
         or just return None for symbol visit.
 """
 
+def visit(symbol: Symbol, callback: Visitor):
+    """ Visitor mode, possible modify symbol itself. """
+    sym_list: typing.List[Symbol] = []
+    _topo_sort(symbol, sym_list)
+    for sym in sym_list:
+        callback(sym)
+
+
 def transform(symbol: Symbol, callback: Transformer) -> Symbol:
-    """ Transform symbol from old to new, with inputs updated. """
+    """ Transform symbol from old to new, with inputs updated.
+
+        Only the return value indicates mutation, while changing
+        attributes in parameter passed in args does nothing.
+    """
     sym_list: typing.List[Symbol] = []
     _topo_sort(symbol, sym_list)
 
@@ -121,21 +150,20 @@ def transform_operators(op_names: typing.Union[typing.List[str], str]):
 
     def _pass(f: Transformer):
         @wraps(f)
-        def _wrapper(symbol: Symbol) -> typing.Optional[Symbol]:
-            if symbol.op_name not in op_names:
-                return
-            return transform(symbol, f)
+        def _wrapper(sym: Symbol) -> typing.Optional[Symbol]:
+            if any([ sym.is_op(n) for n in op_names ]):
+                return transform(symbol, f)
         return _wrapper
     return _pass
 
-def simple_raw_print(symbol: Symbol, params={}):
+def simple_raw_print(symbol: Symbol, params: Parameters ={}):
     info = { "op": 0, "param": 0 }
     def _simple_visit(sym):
         if is_param(sym, params):
-            info["param"] += utils.product(sym.attrs["shape"])
+            info["param"] += product(params[sym.name].shape)
 
         info["op"] += is_operator(sym)
-        print("{:15} = {:>20}{:30} /* attrs */ \t{}".format(
+        print("{:30} = {:>15}{:30} /* attrs */ {}".format(
             sym.name, sym.op_name,
             "(" + ", ".join([i.name for i in sym.args]) + ")",
             sym.attrs,
@@ -145,7 +173,6 @@ def simple_raw_print(symbol: Symbol, params={}):
     print("Operators: {} | Parameters: {}".format(
         info["op"], info["param"]))
     print("="*50)
-
 
 # ==============================================================
 # API from relay.Function to Symbol.
@@ -158,12 +185,20 @@ SUPPORTED_EXPR_TYPE = (
         relay.expr.TupleGetItem,
         )
 
+def expr_type(checked_type: ir.type.Type, key):
+    if isinstance(checked_type, ir.type.TupleType):
+        return [expr_type(f, key) for f in checked_type.fields]
+    return getattr(checked_type, key)
+
 def expr2symbol(expr: RelayExpr) -> Symbol:
     symbol_map = {}
-    def _cast_expr(node):
+    def _cast_expr(node: RelayExpr):
         if not isinstance(node, SUPPORTED_EXPR_TYPE):
             raise RuntimeError(
                 "MRT not support expr type:{}".format(type(node)))
+
+        if isinstance(node, ir.op.Op):
+            return
 
         if isinstance(node, relay.Var):
             name = node.name_hint or N.n(prefix="input_")
@@ -183,12 +218,33 @@ def expr2symbol(expr: RelayExpr) -> Symbol:
             symbol_map[node] = Symbol(N.n(), TUPLE_NAME,
                     args, {})
 
+        dtype = expr_type(node.checked_type, "dtype")
+        shape = expr_type(node.checked_type, "concrete_shape")
+        #  print(dtype, shape, type(shape))
+        symbol_map[node].attrs.update({
+            "shape": list(shape),
+            "dtype": dtype,
+        })
+
     with N():
         relay.analysis.post_order_visit(expr, _cast_expr)
     return symbol_map[expr]
 
-def symbol2expr(symbol: Symbol) -> RelayExpr:
-    expr_map = {}
+def symbol2expr(symbol: Symbol, expr_map={}) -> RelayExpr:
+    # operator creator don't need shape or dtype attrs,
+    #   except for the variable.
+    def _remove_type(sym: Symbol):
+        if is_variable(sym):
+            return
+
+        if "shape" in sym.attrs:
+            del sym.attrs["shape"]
+        if "dtype" in sym.attrs:
+            del sym.attrs["dtype"]
+        return sym
+    symbol = transform(symbol, _remove_type)
+
+    expr_map.clear()
     def _cast_symbol(sym: Symbol):
         args = [expr_map[i] for i in sym.args]
         if sym.is_op(TUPLE_NAME):
@@ -202,12 +258,11 @@ def symbol2expr(symbol: Symbol) -> RelayExpr:
 
         if isinstance(out, relay.TupleWrapper):
             out = out.tuple_value
+        relay.transform.InferTypeLocal(out)
         expr_map[sym] = out
 
-    with N():
-        transform(symbol, _cast_symbol)
+    _ = transform(symbol, _cast_symbol)
     return expr_map[symbol]
-
 
 
 

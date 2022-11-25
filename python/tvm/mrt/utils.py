@@ -2,8 +2,20 @@ from __future__ import annotations
 
 import typing
 import threading
+from os import path
 
 from tvm import relay, ir
+
+from .types import *
+
+ROOT = path.abspath(path.join(__file__, "../../../"))
+PY_ROOT = path.join(ROOT, "python")
+
+def product(shape: ShapeT):
+    total = 1
+    for s in shape:
+        total *= s
+    return total
 
 class N:
     def __init__(self, name=""):
