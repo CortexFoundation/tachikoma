@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import typing
 import threading
+import os
 from os import path
 
 from tvm import relay, ir
@@ -10,6 +11,14 @@ from .types import *
 
 ROOT = path.abspath(path.join(__file__, "../../../"))
 PY_ROOT = path.join(ROOT, "python")
+
+MRT_MODEL_ROOT = path.expanduser("~/mrt_model")
+if not path.exists(MRT_MODEL_ROOT):
+    os.makedirs(MRT_MODEL_ROOT)
+
+MRT_DATASET_ROOT = path.expanduser("~/.mxnet/datasets")
+if not path.exists(MRT_DATASET_ROOT):
+    os.makedirs(MRT_DATASET_ROOT)
 
 def product(shape: ShapeT):
     total = 1
@@ -57,36 +66,22 @@ class N:
     def register_global_scope(name=""):
         N._set_name_scope(N(name))
 
-# def get_op_name(expr: ir.RelayExpr):
-#     """Get the operator name from an expression."""
-#     if isinstance(expr, ir.Op):
-#         return expr.name
-#     if isinstance(expr, relay.expr.Call):
-#         return get_op_name(expr.op)
-#     if isinstance(expr, relay.TupleGetItem):
-#         return get_op_name(expr.tuple_value)
-#     if isinstance(expr, relay.Tuple):
-#         return get_op_name(expr.fields[0])
-#     if isinstance(expr, relay.expr.Var):
-#         return "null"
-#     return ""
+def extend_fname(prefix, with_ext=False):
+    """ Get the precision of the data.
 
+        Parameters
+        __________
+        prefix : str
+            The model path prefix.
+        with_ext : bool
+            Whether to include ext_file path in return value.
 
-# def get_args(expr):
-#     """Get the arguments from an expression."""
-#     if isinstance(expr, relay.expr.Call):
-#         return expr.args
-#     if isinstance(expr, relay.TupleGetItem):
-#         return get_args(expr.tuple_value)
-#     if isinstance(expr, relay.Tuple):
-#         return [arg for args in map(get_args, expr.fields) for arg in args]
-#     return []
-
-
-# def get_attrs(expr):
-#     """Get the attributes from an expression."""
-#     if isinstance(expr, relay.expr.Call):
-#         return expr.attrs
-#     if isinstance(expr, relay.TupleGetItem):
-#         return get_attrs(expr.tuple_value)
-#     return {}
+        Returns
+        _______
+        ret : tuple
+            The symbol path, params path; and with_ext is True, also return ext file path.
+    """
+    ret = ["%s.json"%prefix, "%s.params"%prefix]
+    if with_ext:
+        ret.append("%s.ext"%prefix)
+    return tuple(ret)

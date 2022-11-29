@@ -1,5 +1,7 @@
 import typing
 
+from os import path
+
 import tvm
 
 from .types import *

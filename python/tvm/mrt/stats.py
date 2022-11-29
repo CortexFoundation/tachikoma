@@ -43,42 +43,52 @@ class Statistics:
 class ClassificationOutput(Statistics):
     def __init__(self, num_classes=None):
         self.num_classes = None
-        self.data, self.label = None
+        self.data, self.label = None, None
+
+        self.top1_hit = 0
+        self.top5_hit = 0
+        self.dl_total = 0
+
+        self.dl_top1, self.top1_raw = [], []
+        self.dl_top5, self.top5_raw = [], []
+
+    def reset(self):
+        self.top1_hit = 0
+        self.top5_hit = 0
+        self.dl_total = 0
 
     def merge(self, dl: DataLabelT):
-        self.data, self.label = dl
+        data, label = dl
         self.argsort = [ np.argsort(d).tolist() for d in data]
+
+        self.dl_top1 = [a[-1] for a in self.argsort]
+        self.dl_top5 = [a[-5:] for a in self.argsort]
+        self.top1_raw = [ data[i][b] \
+                for i, b in enumerate(self.dl_top1) ]
+        self.top5_raw = [ [data[i][a] for a in b] \
+                for i, b in enumerate(self.dl_top5) ]
 
         assert len(data.shape) == 2
         self.batch = data.shape[0]
+        assert self.batch == len(label)
         if self.num_classes is None:
             self.num_classes = data.shape[1]
         else:
             assert self.num_classes == data.shape[1]
 
-    @property
-    def top1(self):
-        return [ a[-1] for a in self.argsort ]
+        self.dl_total += self.batch
+        for d, l in zip(self.dl_top1, label):
+            self.top1_hit += (d == int(l))
 
-    @property
-    def top1_raw(self):
-        return [ self.data[i][b] for i, b in enumerate(self.top1) ]
+        for d, l in zip(self.dl_top5, label):
+            self.top5_hit += (int(l) in d)
 
-    @property
-    def top5(self):
-        return [ a[-5:] for a in self.argsort ]
-
-    @property
-    def top5_raw(self):
-        return [ [self.data[i][a] for a in b] \
-                for i, b in enumerate(self.top5) ]
-
-    def info(self):
+    def dl_info(self):
         print("=" * 50)
         print("Batch: {}, Class Number: {}".format(
             self.batch, self.num_classes))
-        top1, top1_raw = self.top1, self.top1_raw
-        top5, top5_raw = self.top5, self.top5_raw
+        top1, top1_raw = self.dl_top1, self.top1_raw
+        top5, top5_raw = self.dl_top5, self.top5_raw
         for i in range(self.batch):
             print("{:5} Top1: {:3} | Raw: {}".format(
                 i, top1[i], top1_raw[i]))
@@ -88,3 +98,7 @@ class ClassificationOutput(Statistics):
             #     i, top1[i], top5[i]))
         print("=" * 50)
 
+    def info(self):
+        return "{},{}".format(
+                (1. * self.top1_hit / self.dl_total),
+                (1. * self.top5_hit / self.dl_total))

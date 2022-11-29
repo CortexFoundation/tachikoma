@@ -3,6 +3,7 @@ import typing
 
 from dataclasses import dataclass, fields
 from functools import wraps
+import json
 
 import tvm
 from tvm import relay, ir

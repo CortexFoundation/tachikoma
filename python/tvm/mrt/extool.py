@@ -12,31 +12,10 @@ from tvm.relay.expr import *
 
 from .types import *
 
-def expr_type(checked_type: ir.type.Type, key):
-    if isinstance(checked_type, ir.type.TupleType):
-        return [expr_type(f, key) for f in checked_type.fields]
-    return getattr(checked_type, key)
-
 def update_expr_args(old: RelayExpr, expr_map) -> RelayExpr:
-    op_str = op_name(old)
-    args = []
-    attrs = {}
-    if isinstance(old, TupleGetItem):
-        attrs["tuple_value"] = expr_map[old.tuple_value]
-        attrs["index"] = old.index
-    elif isinstance(old, Tuple):
-        attrs["fields"] = [expr_map[f] for f in old.fields]
-    elif isinstance(old, Call):
-        args = [expr_map[a] for a in old.args]
-        attrs = old.attrs or {}
-        attrs = {k: attrs[k] for k in attrs.keys()}
-    elif isinstance(old, Var):
-        attrs["name_hint"] = old.name_hint
-        attrs["dtype"] = expr_type(old.checked_type, "dtype")
-        attrs["shape"] = expr_type(old.checked_type, "concrete_shape")
-
     try:
-        new = eval("relay." + op_str)(*args, **attrs)
+        new = eval("relay." + op_name(old))(
+                *args(old), **attrs(old))
     except Exception as e:
         print(op_name(old))
         raise e
@@ -52,8 +31,8 @@ def clone(expr: RelayExpr, **kwargs) -> RelayExpr:
         setattr(expr, k, v)
 
 
-Visitor = typing.Callable[ [RelayExpr], None ]
-Transformer = typing.Callable[
+VisitorT = typing.Callable[ [RelayExpr], None ]
+TransformerT = typing.Callable[
         [RelayExpr], typing.Optional[RelayExpr]]
 """ Expr Transformer
 
@@ -61,7 +40,7 @@ Transformer = typing.Callable[
         or just return None for expr visit.
 """
 
-def transform(expr: RelayExpr, callback: Transformer) -> RelayExpr:
+def transform(expr: RelayExpr, callback: TransformerT) -> RelayExpr:
     expr_list: typing.List[RelayExpr] = []
     def _collect_expr(expr: RelayExpr):
         # primitive ir operators, wrapper by CallNode
@@ -84,7 +63,7 @@ def infer_type(expr: RelayExpr) -> expr:
     mod = relay.transform.InferType()(ir.IRModule.from_expr(expr))
     return mod["main"].body
 
-def visit(expr: RelayExpr, callback: Visitor):
+def visit(expr: RelayExpr, callback: VisitorT):
     expr_list: typing.List[RelayExpr] = []
     def _collect_expr(expr: RelayExpr):
         # primitive ir operators, wrapper by CallNode
@@ -119,13 +98,27 @@ def simple_raw_print(expr: RelayExpr, params: Parameters = {}):
         info["op"], info["param"]))
     print("="*50)
 
+def to_json(expr: RelayExpr):
+    json_map = {}
+    def _cast(expr: RelayExpr):
+        data = {
+            "op_name": op_name(expr),
+            "args": [],
+            "attrs": {},
+        }
+
+        json_map[expr] = data
+    visit(expr, _cast)
+    return json_map[expr]
+
+
 def filter_operators(*op_names: typing.List[str]):
-    def _pass(f: Transformer) -> Transformer:
+    def _pass(f: TransformerT) -> TransformerT:
         @wraps(f)
-        def _wrapper(expr: RelayExpr):
+        def _wrapper(expr: RelayExpr, *args, **kw):
             if op_name(expr) not in op_names:
                 return
-            return f(expr)
+            return f(expr, *args, **kw)
         return _wrapper
     return _pass
 
@@ -143,6 +136,34 @@ def op_name(expr: RelayExpr):
     elif isinstance(expr, Var):
         return VAR_NAME
     assert False, type(expr)
+
+def args(expr: RelayExpr) -> List[RelayExpr]:
+    if isinstance(expr, Call):
+        return expr.args
+    elif isinstance(expr, TupleGetItem):
+        return [ expr.tuple_value ]
+    elif isinstance(expr, Tuple):
+        return expr.fields
+    elif isinstance(expr, Var):
+        return []
+    assert False, type(expr)
+
+def attrs(expr: RelayExpr) -> dict:
+    if isinstance(expr, Call):
+        attrs = expr.attrs or {}
+        return {k: attrs[k] for k in attrs.keys()}
+    elif isinstance(expr, TupleGetItem):
+        return { "index": expr.index }
+    elif isinstance(expr, Tuple):
+        return {}
+    elif isinstance(expr, Var):
+        return {
+            "name_hint": expr.name_hint,
+            "shape": expr.type_annotation.concrete_shape,
+            "dtype": expr.type_annotation.dtype,
+        }
+    assert False, type(expr)
+
 
 def is_operator(expr: RelayExpr, params: Parameters = {}):
     return not isinstance(expr, Var)
