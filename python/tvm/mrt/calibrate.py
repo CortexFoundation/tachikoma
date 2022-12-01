@@ -1,24 +1,36 @@
 from __future__ import annotations
 
-from dataclasses import InitVar
+import typing
+import numpy as np
+
+import tvm
+
+from dataclasses import dataclass, field, InitVar
 
 from .symbol import *
-from .trace import *
 from . import runtime
+from .transform import Transformer
+from .types import *
 
 @dataclass
-class Calibrator(Symbol):
+class Calibrator(Transformer):
     args: typing.List[Calibrator]
 
-    init_data: InitVar[np.ndarray | None] = None
+    is_nd: bool = False
+    output: typing.List[np.ndarray] = field(default_factory=list)
 
-    is_nd: bool = field(init=False)
-    output: typing.List[np.ndarray] = field(init=False)
-
-    def __post_init__(self, init_data):
-        if is_variable(self):
-            assert isinstance(init_data, tvm.nd.NDArray), type(init_data)
-            out = init_data
+    def __call__(self,
+            data: tvm.nd.NDArray | None =None,
+            data_dict: ParametersT = {}):
+        if self.is_input():
+            out = data_dict.get(self.name, data)
+            if out is None:
+                # use random input data
+                out = np.random.randn(*self.shape)
+                out = out.astype(self.dtype)
+                out = tvm.nd.array(out)
+        elif self.is_param():
+            out = self.params[self.name]
         elif self.is_op(TUPLE_GET_ITEM_NAME):
             out = self.args[0].raw_output[self.attrs["index"]]
             assert isinstance(out, tvm.nd.NDArray), type(out)
@@ -29,15 +41,13 @@ class Calibrator(Symbol):
         if isinstance(out, tvm.nd.NDArray):
             self.is_nd = True
             self.output = [ out, ]
-            assert out.dtype == self.dtype, (
-                    "{} vs. {}").format(out.dtype, self.dtype)
-            assert list(out.shape) == list(self.shape), (
-                "{} vs. {}").format(out.shape, self.shape)
+            self._assert(out.dtype, self.dtype)
+            self._assert(out.shape, self.shape)
         else:
             self.is_nd = False
-            self.output = [ o for o in out ]
-            assert [o.dtype for o in out] == self.attrs["dtype"]
-            assert [o.shape for o in out] == self.attrs["shape"]
+            self.output = out
+            self._assert([o.dtype for o in out], self.dtype)
+            self._assert([o.shape for o in out], self.shape)
 
         print(self.name, self.op_name, self.shape, self.dtype)
 
@@ -45,18 +55,20 @@ class Calibrator(Symbol):
         args = [ a.as_parameter() for a in self.args]
         sym = self.clone(Symbol, args=args)
         expr = symbol2expr(sym)
-        data = { a.name: a.raw_output for a in self.args }
-        return runtime.infer(expr, data)
+        #  data = { a.name: a.raw_output for a in self.args }
+        return runtime.infer(expr, args_data)
 
     @property
     def raw_output(self):
         return self.output[0] if self.is_nd else self.output
 
-    def _type_assert(self, val, expect):
+    def _assert(self, val, expect):
         if isinstance(val, (list, tuple)):
-            assert len(val) == len(expect)
+            assert len(val) == len(expect), (
+                    "{} vs. {}").format(val, expect)
             for v, e in zip(val, expect):
-                self._type_assert(v, e)
+                self._assert(v, e)
+            return
         assert val == expect, "{} vs. {}".format(val, expect)
 
     #  @property

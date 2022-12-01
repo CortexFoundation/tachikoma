@@ -1,11 +1,15 @@
+from dataclasses import InitVar
 
 from .symbol import *
 
 @dataclass
 class FusionOp(Symbol):
-    def transform(self):
-        self = self._fuse_batch_norm()
-        return self
+
+    params: InitVar[ParametersT]
+
+    def __post_init__(self, params):
+        self._fuse_batch_norm()
+
 
     @filter_operators("nn.batch_norm")
     def _fuse_batch_norm(self):

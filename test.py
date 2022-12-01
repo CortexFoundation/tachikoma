@@ -95,23 +95,31 @@ def fuse_batch_norm(expr: relay.expr.Call, params: ParametersT):
 #  tr = tr.transform(fuse_batch_norm)
 
 from tvm.mrt.calibrate import Calibrator
-def calibrate(sym: Symbol, params: ParametersT):
-    #  print("apply calibrate for {}".format(sym))
-    data = None
-    if is_input(sym, params):
-        data = np.random.randn(*sym.shape).astype(sym.dtype)
-        data = tvm.nd.array(data)
-    elif is_param(sym, params):
-        data = params[sym.name]
-    return sym.clone(Calibrator, init_data=data)
+#  def calibrate(sym: Symbol, params: ParametersT):
+#      #  print("apply calibrate for {}".format(sym))
+#      data = None
+#      if is_input(sym, params):
+#          data = np.random.randn(*sym.shape).astype(sym.dtype)
+#          data = tvm.nd.array(data)
+#      elif is_param(sym, params):
+#          data = params[sym.name]
+#      return sym.clone(Calibrator, init_data=data)
 
+tvm.nd.NDArray
 tr.print()
-#  calibrated_tr = tr.transform(calibrate)
+#  calibrate_tr = tr.transform(calibrate)
+calibrate_tr = tr.transform(Calibrator.apply())
+
+print("\n\n\n")
+def _cast(sym: Calibrator, params: ParametersT):
+    print("cast: ", sym.output[0].shape)
+calibrate_tr.transform(_cast)
+sys.exit(1)
 # ctx = tvm.runtime.cuda(1)
 
 from tvm.mrt.fuse import FusionOp
 def fuse(sym: Symbol, params: ParametersT):
-    return sym.clone(FusionOp).transform()
+    return sym.clone(FusionOp, params=params)
 
 fuse_tr = tr.transform(fuse)
 

@@ -7,37 +7,34 @@ import tvm
 from tvm import relay, ir
 
 from . import transformers
-from .api import Trace, VisitorT, TransformerT
-from .extool import *
+from .symbol import *
+from .trace import *
 
 @dataclass
-class Transformer:
+class Transformer(Symbol):
     """ Type TransformerT for Trace """
 
-    op: RelayExpr
-    # name: str
+    params: ParametersT = field(default_factory=dict)
 
-    op_name: str = fields(init=False)
-    args: typing.List[Transformer] = fields(init=False)
-    attrs: typing.Dict[str, typing.Any] = fields(init=False)
+    def is_input(self) -> bool:
+        return is_input(self, self.params)
+    def is_param(self) -> bool:
+        return is_param(self, self.params)
+    def is_variable(self) -> bool:
+        return is_variable(self, self.params)
+    def is_operator(self) -> bool:
+        return is_operator(self, self.params)
 
-    # def __init__(self, tfm_name: str):
-    #     self.name = tfm_name
-    #     self.transformer = getattr(transformers, tfm_name)
+    @classmethod
+    def apply(cls, *args, **kw):
+        def _tfm(symbol: Symbol, params: ParametersT):
+            ins = symbol.clone(cls, params=params)
+            return ins(*args, **kw) or ins
+        return _tfm
 
-    def __post_init__(self):
-        self.op_name = op_name(self.op)
-        self.args = args(self.op)
-        self.attrs = attrs(self.op)
+    def __call__(self, *args, **kw) -> Symbol:
+        return self
 
-    # def __call__(self, expr: RelayExpr, params: Parameterss):
-    #     expr_tfm: TransformerT = getattr(self.transformer,
-    #             "{}_{}".format(self.name, op_name(expr)))
-    #     return expr_tfm(expr, params)
-
-    # @classmethod
-    # def transform(cls, ):
-    
 
 class Validator(Transformer):
     pass
