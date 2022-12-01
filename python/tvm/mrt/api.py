@@ -8,18 +8,18 @@ from tvm import relay, ir
 
 from .extool import *
 from .types import *
-from . import runtime
+from . import runtime, topi
 
-VisitorT = typing.Callable[ [RelayExpr, Parameters], None ]
+VisitorT = typing.Callable[ [RelayExpr, ParametersT], None ]
 TransformerT = typing.Callable[
-        [RelayExpr, Parameters], typing.Optional[RelayExpr]]
+        [RelayExpr, ParametersT], typing.Optional[RelayExpr]]
 
 @dataclass
 class Trace:
     name: str
     """ Trace Name """
     expr: RelayExpr
-    params: Parameters
+    params: ParametersT
 
     input_vars: typing.List[Var] = field(init=False)
     param_vars: typing.List[Var] = field(init=False)
@@ -46,6 +46,36 @@ class Trace:
             data = np.random.randn(*shape).astype(dtype)
             inputs[v.name_hint] = data
         return inputs
+
+    def calibrate(self,
+            data: typing.Optional[np.ndarray] = None,
+            data_dict: typing.Dict[str, np.ndarray] = {},
+        ) -> typing.Dict[str, np.ndarray]:
+        self.infer_type()
+
+        calibrate_outputs: typing.Dict[str, np.ndarray] = {
+                k: v.numpy() for k, v in params.items()}
+
+        # set input data
+        for v in self.input_vars:
+            shape = v.type_annotation.concrete_shape
+            dtype = v.type_annotation.dtype
+            val = data_dict.get(v.name_hint, data)
+            if val is None:
+                print("input: {} use random data".format(
+                    v.name_hint))
+                val = np.random.randn(*shape).astype(dtype)
+            calibrate_outputs[v.name_hint] = val
+
+        def _calibrate(expr: RelayExpr, params: ParametersT):
+            data = [ calibrate_outputs[e] for e in args(expr) ]
+            out = topi.execute(expr, data)
+            shape = list(expr.checked_type.concrete_shape)
+            assert list(out.shape) == shape
+            assert str(out.dtype) == expr.checked_type.dtype
+            calibrate_outputs[expr] = out
+        self.visit(_calibrate)
+        return calibrate_outputs
 
     def run(self,
             data: typing.Optional[np.ndarray] = None,

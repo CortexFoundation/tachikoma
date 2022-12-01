@@ -1,7 +1,7 @@
 from __future__ import annotations
 import typing
 
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, is_dataclass
 from functools import wraps
 import json
 
@@ -13,33 +13,33 @@ from tvm.relay.expr import *
 from .utils import *
 from .types import *
 
-__all__ = [
-        "Symbol", "Parameters",
-        "is_operator", "is_variable", "is_input", "is_param",
-        # symbol pass wrapper and some help functions
-        "transform", "transform_operators", "visit",
-        "simple_raw_print",
-        # API with expr
-        "expr2symbol", "symbol2expr",
-        ]
+# __all__ = [
+#         "Symbol", "ParametersT",
+#         "is_operator", "is_variable", "is_input", "is_param",
+#         # symbol pass wrapper and some help functions
+#         "transform", "filter_operators", "visit",
+#         "simple_raw_print",
+#         # API with expr
+#         "expr2symbol", "symbol2expr",
+#         ]
 
 VAR_NAME = "var"
 TUPLE_GET_ITEM_NAME = "TupleGetItem"
 TUPLE_NAME = "Tuple"
 
-def is_operator(symbol: Symbol, params: Parameters = {}):
+def is_operator(symbol: Symbol, params: ParametersT = {}):
     return symbol.op_name != VAR_NAME
 
-def is_variable(symbol: Symbol, params: Parameters = {}):
+def is_variable(symbol: Symbol, params: ParametersT = {}):
     return symbol.op_name == VAR_NAME
 
-def is_input(symbol: Symbol, params: Parameters):
+def is_input(symbol: Symbol, params: ParametersT):
     return is_variable(symbol) and symbol.name not in params
 
-def is_param(symbol: Symbol, params: Parameters):
+def is_param(symbol: Symbol, params: ParametersT):
     return is_variable(symbol) and symbol.name in params
 
-CopyAttrsT = typing.Union[typing.List[str], str]
+_CopyAttrsT = typing.Union[typing.List[str], str]
 
 @dataclass
 class Symbol:
@@ -53,6 +53,9 @@ class Symbol:
         for operators, which can be easier for graph
         transformation. Like the `BatchNorm` op returns
         a 3-tuple, whereas the return is first in cvm.
+
+    We need to consistently print symbol information such as name,
+        for the user's config about quantization layers.
     """
 
     name: str
@@ -67,28 +70,44 @@ class Symbol:
     def variable(name):
         return Symbol(name, VAR_NAME, [], { "name_hint": name })
 
-    def as_parameter(self):
-        return self.clone(
-                copy_attrs = ["shape", "dtype"],
-                op_name = VAR_NAME,
-                args = [])
+    def as_parameter(self) -> Symbol:
+        var = Symbol.variable(self.name)
+        var.attrs["shape"] = self.shape
+        var.attrs["dtype"] = self.dtype
+        return var
 
     def is_op(self, op_name):
         return self.op_name == op_name
 
-    def clone(self, copy_attrs: CopyAttrsT=[], **kw) -> Symbol:
-        kw.setdefault("attrs", {})
-        if isinstance(copy_attrs, str):
-            copy_attrs = [ copy_attrs, ]
-        # copy all attributes by default
-        copy_attrs = copy_attrs or self.attrs.keys()
-        kw["attrs"].update({k: self.attrs[k] for k in copy_attrs})
-
-        data = dict((f.name, getattr(self, f.name)) \
+    def to_dict(self):
+        return dict((f.name, getattr(self, f.name)) \
                 for f in fields(self))
+
+    def clone(self, cls: typing.Type[Symbol] = None, **kw):
+        cls = cls or type(self)
+        assert is_dataclass(cls)
+
+        data = {}
+        for k in [f.name for f in fields(cls)]:
+            if k in [f.name for f in fields(self)]:
+                data[k] = getattr(self, k)
         data.update(kw)
 
-        return Symbol(**data)
+        try:
+            new = cls(**data)
+        except Exception as e:
+            print("clone failed: ", cls.__name__,
+                    self, list(data.keys()))
+            raise e
+        return new
+
+    @property
+    def shape(self):
+        return self.attrs["shape"]
+
+    @property
+    def dtype(self):
+        return self.attrs["dtype"]
 
     def __eq__(self, other: Symbol):
         return self.args == other.args and hash(self) == hash(other)
@@ -110,15 +129,15 @@ def _topo_sort(symbol: Symbol, sym_list: typing.List[Symbol]):
         _topo_sort(c, sym_list)
     sym_list.append(symbol)
 
-Visitor = typing.Callable[[Symbol], None]
-Transformer = typing.Callable[[Symbol], typing.Optional[Symbol]]
+_VisitorT = typing.Callable[[Symbol], None]
+_TransformerT = typing.Callable[[Symbol], typing.Optional[Symbol]]
 """ Symbol Transformer
 
     Return new symbol to transform old symbol into updated one,
         or just return None for symbol visit.
 """
 
-def visit(symbol: Symbol, callback: Visitor):
+def visit(symbol: Symbol, callback: _VisitorT):
     """ Visitor mode, possible modify symbol itself. """
     sym_list: typing.List[Symbol] = []
     _topo_sort(symbol, sym_list)
@@ -126,7 +145,7 @@ def visit(symbol: Symbol, callback: Visitor):
         callback(sym)
 
 
-def transform(symbol: Symbol, callback: Transformer) -> Symbol:
+def transform(symbol: Symbol, callback: _TransformerT) -> Symbol:
     """ Transform symbol from old to new, with inputs updated.
 
         Only the return value indicates mutation, while changing
@@ -138,26 +157,25 @@ def transform(symbol: Symbol, callback: Transformer) -> Symbol:
     sym_map = {}
     for sym in sym_list:
         args = [sym_map[c.name] for c in sym.args]
-        sym = sym.clone(args=args)
         # pre-clone symbol, to avoid misleading usage in callback
-        out = callback(sym.clone()) or sym
+        sym = sym.clone(
+                args=args,
+                attrs={k: v for k, v in sym.attrs.items()})
+        out = callback(sym) or sym
         assert isinstance(out, Symbol)
         sym_map[sym.name] = out
     return sym_map[symbol.name]
 
-def transform_operators(op_names: typing.Union[typing.List[str], str]):
-    if isinstance(op_names, str):
-        op_names = [ op_names, ]
-
-    def _pass(f: Transformer):
+def filter_operators(*op_names: typing.List[str]):
+    def _pass(f):
         @wraps(f)
-        def _wrapper(sym: Symbol) -> typing.Optional[Symbol]:
+        def _wrapper(sym: Symbol) -> typing.Any:
             if any([ sym.is_op(n) for n in op_names ]):
-                return transform(symbol, f)
+                return f(sym)
         return _wrapper
     return _pass
 
-def simple_raw_print(symbol: Symbol, params: Parameters ={}):
+def simple_raw_print(symbol: Symbol, params: ParametersT ={}):
     info = { "op": 0, "param": 0 }
     def _simple_visit(sym):
         if is_param(sym, params):
@@ -192,6 +210,9 @@ def expr_type(checked_type: ir.type.Type, key):
     return getattr(checked_type, key)
 
 def expr2symbol(expr: RelayExpr) -> Symbol:
+    mod = relay.transform.InferType()(ir.IRModule.from_expr(expr))
+    expr = mod["main"].body
+
     symbol_map = {}
     def _cast_expr(node: RelayExpr):
         if not isinstance(node, SUPPORTED_EXPR_TYPE):
@@ -259,7 +280,7 @@ def symbol2expr(symbol: Symbol, expr_map={}) -> RelayExpr:
 
         if isinstance(out, relay.TupleWrapper):
             out = out.tuple_value
-        relay.transform.InferTypeLocal(out)
+        # relay.transform.InferTypeLocal(out)
         expr_map[sym] = out
 
     _ = transform(symbol, _cast_symbol)

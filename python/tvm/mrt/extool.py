@@ -76,7 +76,7 @@ def visit(expr: RelayExpr, callback: _VisitorT):
         callback(sym)
 
 
-def simple_raw_print(expr: RelayExpr, params: Parameters = {}):
+def simple_raw_print(expr: RelayExpr, params: ParametersT = {}):
     info = { "op": 0, "param": 0 }
     def _simple_visit(sym):
         if not is_operator(sym):
@@ -165,7 +165,7 @@ def attrs(expr: RelayExpr) -> dict:
     assert False, type(expr)
 
 
-def is_operator(expr: RelayExpr, params: Parameters = {}):
+def is_operator(expr: RelayExpr, params: ParametersT = {}):
     return not isinstance(expr, Var)
 def is_variable(expr: RelayExpr, params: Parameters = {}):
     return isinstance(expr, Var)

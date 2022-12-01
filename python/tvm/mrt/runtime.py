@@ -10,11 +10,12 @@ from tvm.ir import RelayExpr
 from .types import *
 from .dataset import Dataset
 from .stats import Statistics
+from . import symbol
 
 __all__ = ["infer"]
 
 def create_executor(
-        expr: RelayExpr, params: Parameters, device=runtime.cpu(0),
+        expr: RelayExpr, params: ParametersT, device=runtime.cpu(0),
         opt_level=0
 ) -> relay.build_module.GraphExecutor:
     target = "llvm"
@@ -27,31 +28,35 @@ def create_executor(
             graph_executor.GraphModule(lib["default"](device))
     return rt_mod
 
+OutputDataType = typing.List[np.ndarray]
 
-def infer(expr: RelayExpr, params: Parameters,
-        device=runtime.cpu(0)) -> typing.List[np.ndarray]:
-    #  target = "llvm"
-    target = tvm.target.cuda()
-    with tvm.transform.PassContext(opt_level=3):
-        lib = relay.build_module.build(
-                ir.IRModule.from_expr(expr),
-                target=target,
-                params=params)
+def infer(expr: RelayExpr, params: ParametersT,
+        device=runtime.cpu(0)) -> OutputDataType:
+    # #  target = "llvm"
+    # target = tvm.target.cuda()
+    # with tvm.transform.PassContext(opt_level=3):
+    #     lib = relay.build_module.build(
+    #             ir.IRModule.from_expr(expr),
+    #             target=target,
+    #             params=params)
 
-    rt_mod: relay.build_module.GraphExecutor = graph_executor.GraphModule(lib["default"](device))
-    #  rt_mod.set_input("input", data)
-    rt_mod.run()
-    return [rt_mod.get_output(i).numpy() \
-            for i in range(rt_mod.get_num_outputs())]
+    # rt_mod: relay.build_module.GraphExecutor = graph_executor.GraphModule(lib["default"](device))
+    # #  rt_mod.set_input("input", data)
+    # rt_mod.run()
+    # return [rt_mod.get_output(i).numpy() \
+    #         for i in range(rt_mod.get_num_outputs())]
 
     result = tvm.relay.create_executor(
         "graph", mod=ir.IRModule.from_expr(expr),
-        device=device, target="llvm"
+        device=device, target="llvm",
     ).evaluate()(**params)
-    return result.numpy()
+    return result
+    # if isinstance(result, tvm.runtime.NDArray):
+    #     result = [ result, ]
+    # return [ r.numpy() for r in result ]
 
 
-def validator(expr: RelayExpr, params: Parameters, name: str,
+def validator(expr: RelayExpr, params: ParametersT, name: str,
         device=runtime.cpu(0), ):
     target = "llvm"
     with tvm.transform.PassContext(opt_level=3):

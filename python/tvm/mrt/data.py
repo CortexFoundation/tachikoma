@@ -5,10 +5,10 @@ import tvm
 from tvm import relay, ir, runtime
 
 from .extool import *
-from .types import Parameters
+from .types import ParametersT
 
 def random_inputs(expr: ir.expr.RelayExpr,
-        params: Parameters = {}) -> Parameters:
+        params: ParametersT = {}) -> ParametersT:
     input_data = {k: v for k, v in params.items()}
     for v in relay.analysis.free_vars(expr):
         if v.name_hint in params:
@@ -24,7 +24,7 @@ def random_inputs(expr: ir.expr.RelayExpr,
     return input_data
 
 def set_inputs(expr: ir.expr.RelayExpr,
-        params: Parameters = {}) -> Parameters:
+        params: ParametersT = {}) -> ParametersT:
     free_vars = relay.analysis.free_vars(expr)
     input_data = {k: v for k, v in params.items()}
 
