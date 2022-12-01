@@ -31,8 +31,8 @@ def clone(expr: RelayExpr, **kwargs) -> RelayExpr:
         setattr(expr, k, v)
 
 
-VisitorT = typing.Callable[ [RelayExpr], None ]
-TransformerT = typing.Callable[
+_VisitorT = typing.Callable[ [RelayExpr], None ]
+_TransformerT = typing.Callable[
         [RelayExpr], typing.Optional[RelayExpr]]
 """ Expr Transformer
 
@@ -40,7 +40,7 @@ TransformerT = typing.Callable[
         or just return None for expr visit.
 """
 
-def transform(expr: RelayExpr, callback: TransformerT) -> RelayExpr:
+def transform(expr: RelayExpr, callback: _TransformerT) -> RelayExpr:
     expr_list: typing.List[RelayExpr] = []
     def _collect_expr(expr: RelayExpr):
         # primitive ir operators, wrapper by CallNode
@@ -63,7 +63,7 @@ def infer_type(expr: RelayExpr) -> expr:
     mod = relay.transform.InferType()(ir.IRModule.from_expr(expr))
     return mod["main"].body
 
-def visit(expr: RelayExpr, callback: VisitorT):
+def visit(expr: RelayExpr, callback: _VisitorT):
     expr_list: typing.List[RelayExpr] = []
     def _collect_expr(expr: RelayExpr):
         # primitive ir operators, wrapper by CallNode
@@ -113,7 +113,7 @@ def to_json(expr: RelayExpr):
 
 
 def filter_operators(*op_names: typing.List[str]):
-    def _pass(f: TransformerT) -> TransformerT:
+    def _pass(f):
         @wraps(f)
         def _wrapper(expr: RelayExpr, *args, **kw):
             if op_name(expr) not in op_names:

@@ -41,7 +41,7 @@ class Statistics:
 
 
 class ClassificationOutput(Statistics):
-    def __init__(self, num_classes=None):
+    def __init__(self):
         self.num_classes = None
         self.data, self.label = None, None
 
@@ -70,12 +70,14 @@ class ClassificationOutput(Statistics):
 
         assert len(data.shape) == 2
         self.batch = data.shape[0]
-        assert self.batch == len(label)
+        assert len(label.shape) == 1
+        assert self.batch == label.shape[0]
         if self.num_classes is None:
             self.num_classes = data.shape[1]
         else:
             assert self.num_classes == data.shape[1]
 
+        label = label.tolist()
         self.dl_total += self.batch
         for d, l in zip(self.dl_top1, label):
             self.top1_hit += (d == int(l))

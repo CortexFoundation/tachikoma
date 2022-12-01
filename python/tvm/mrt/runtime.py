@@ -61,10 +61,14 @@ def validator(expr: RelayExpr, params: Parameters, name: str,
                 params=params)
     mod: relay.build_module.GraphExecutor = graph_executor.GraphModule(lib["default"](device))
 
-    free_vars = relay.analysis.free_vars(expr)
-    assert len(free_vars) == 1
-    assert len(mod.get_num_outputs() == 1)
-    input_name = free_vars[0].name_hint
+    input_names = []
+    for v in relay.analysis.free_vars(expr):
+        if v.name_hint not in params:
+            input_names.append(v.name_hint)
+
+    assert len(input_names) == 1
+    assert mod.get_num_outputs() == 1
+    input_name = input_names[0]
 
     def _run(dl: DataLabelT) -> DataLabelT:
         data, label = dl
@@ -83,7 +87,7 @@ def multiple_validate(
         *comp_funcs: typing.List[ValidateFunctionT],
         max_iter_num: typing.Optional[int] = None,
 ):
-    all_funcs = [ base_func, ] + comp_funcs
+    all_funcs = [ base_func, ] + list(comp_funcs)
     all_stats = [stats_type() for _ in all_funcs]
 
     log_str = "Iteration: {:3d} | "
