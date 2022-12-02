@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import typing
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field
 
 import numpy as np
 
 import tvm
 from tvm import relay, ir
 
-from . import transformers
+from . import transformers, op
 from .symbol import *
 from .trace import *
 from .attrs import _BaseAttrs, parse_attrs
@@ -21,7 +21,10 @@ class Transformer(Symbol):
 
     args: typing.List[Transformer]
     params: ParametersT
-    parsed: typing.Type[_BaseAttrs | None] = fields(init=False)
+    parsed: typing.Type[_BaseAttrs] = field(default_factory=dict)
+
+    def __repr__(self):
+        return super().__repr__()
 
     def __post_init__(self):
         self.parsed = parse_attrs(self.op_name, self.attrs)
@@ -37,15 +40,14 @@ class Transformer(Symbol):
     def update_data(self, data: np.ndarray):
         self.params[self.name] = tvm.nd.array(data)
 
-    def from_np_data(self, data: np.ndarray) -> Transformer:
-        new_name = N.n()
+    def from_np_data(self,
+            data: np.ndarray,
+            prefix=None,
+    ) -> Transformer:
+        new_name = N.n(prefix=prefix)
         self.params[new_name] = tvm.nd.array(data)
-        return Transformer(name, VAR_NAME, [],
-                {
-                    "shape": data.shape,
-                    "dtype": data.dtype,
-                    "name_hint": new_name,
-                }, self.params)
+        return op.variable(self, new_name,
+                data.shape, data.dtype.name)
 
     def is_input(self) -> bool:
         return is_input(self, self.params)
@@ -61,6 +63,7 @@ class Transformer(Symbol):
         def _tfm(symbol: Symbol, params: ParametersT):
             ins = symbol.clone(cls, params=params)
             return ins(*args, **kw) or ins
+        _tfm.__name__ = cls.__name__
         return _tfm
 
     def __call__(self, *args, **kw) -> Symbol:

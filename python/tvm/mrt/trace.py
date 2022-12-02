@@ -10,9 +10,39 @@ from tvm import relay, ir
 from tvm.contrib import graph_executor as graph
 
 from .symbol import *
+from .sym_expr import *
 from .types import *
 from . import topi
 from . import runtime
+
+def is_operator(symbol: Symbol, params: ParametersT = {}):
+    return symbol.op_name != VAR_NAME
+
+def is_variable(symbol: Symbol, params: ParametersT = {}):
+    return symbol.op_name == VAR_NAME
+
+def is_input(symbol: Symbol, params: ParametersT):
+    return is_variable(symbol) and symbol.name not in params
+
+def is_param(symbol: Symbol, params: ParametersT):
+    return is_variable(symbol) and symbol.name in params
+
+def simple_raw_print(symbol: Symbol, params: ParametersT ={}):
+    info = { "op": 0, "param": 0 }
+    op_names = set()
+    def _simple_visit(sym: Symbol):
+        if is_param(sym, params):
+            info["param"] += product(params[sym.name].shape)
+
+        info["op"] += is_operator(sym)
+        op_names.add(sym.op_name)
+        print(sym.raw_str())
+    transform(symbol, _simple_visit)
+    print("="*50)
+    print("Operators: {} | Parameters: {}".format(
+        info["op"], info["param"]))
+    print(", ".join(op_names))
+    print("="*50)
 
 Visitor = typing.Callable[[Symbol, ParametersT], None]
 Transformer = typing.Callable[[Symbol, ParametersT], typing.Optional[Symbol]]
@@ -36,12 +66,10 @@ class Trace:
             if is_input(sym, self.params):
                 self.sym_inputs.append(sym)
             elif is_param(sym, self.params):
-                sym_shape = list(sym.attrs["shape"])
-                param_shape = self.params[sym.name].shape
-                assert sym_shape == list(param_shape), (
+                pshape = list(self.params[sym.name].shape)
+                assert sym.shape == pshape, (
                     "param:{} shape inconsistent: {} vs. {}"
-                ).format(sym.name, sym_shape, param_shape)
-                # sym.attrs["shape"] = self.params[sym.name].shape
+                ).format(sym.name, sym.shape, pshape)
                 self.sym_params.append(sym)
         visit(self.symbol, _init)
 
@@ -161,17 +189,32 @@ class Trace:
     def print(self):
         simple_raw_print(self.symbol, self.params)
 
+    def print_ops(self, *op_names):
+        print("=" * 50)
+        print("Collect operators in [{}]".format(
+            ", ".join(op_names)))
+        print("=" * 50)
+
+        @filter_operators(*op_names)
+        def _cond_print(sym: Symbol, params: ParametersT):
+            print(sym.raw_str())
+        self.visit(_cond_print)
+
     def visit(self, callback: Visitor):
         def _visitor(sym: Symbol):
             callback(sym, self.params)
-        visit(self.symbol, _visitor)
+
+        with N(callback.__name__):
+            visit(self.symbol, _visitor)
 
     def transform(self, callback: Transformer) -> Trace:
         new_params = {k: v for k, v in self.params.items()}
         def _tfm(sym: Symbol):
             return callback(sym, new_params)
-        return Trace(callback.__name__,
-                transform(self.symbol, _tfm), new_params)
+
+        with N(callback.__name__):
+            new_symbol = transform(self.symbol, _tfm)
+        return Trace(callback.__name__, new_symbol, new_params)
 
     def to_expr(self, expr_map={}) -> ir.RelayExpr:
         return symbol2expr(self.symbol, expr_map)

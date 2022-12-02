@@ -56,10 +56,12 @@ class N:
         N.__GLOBAL_INSTANCE__ = ins
 
     @staticmethod
-    def n(prefix="%", suffix=""):
+    def n(prefix=None, suffix=None):
         ins = N.__GLOBAL_INSTANCE__
         if ins is None:
             raise RuntimeError("Namescope not specified")
+        prefix = "%" if prefix is None else prefix
+        suffix = "" if suffix is None else suffix
         return ins._alloc_name(prefix, suffix)
 
     @staticmethod

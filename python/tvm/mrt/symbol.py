@@ -1,35 +1,18 @@
 from __future__ import annotations
 import typing
 
-from dataclasses import dataclass, fields, is_dataclass
-from functools import wraps
 import json
-
-import tvm
-from tvm import relay, ir
-from tvm.ir.expr import *
-from tvm.relay.expr import *
+from functools import wraps
+from dataclasses import dataclass, fields, is_dataclass
 
 from .utils import *
 from .types import *
 
-VAR_NAME = "var"
-TUPLE_GET_ITEM_NAME = "TupleGetItem"
-TUPLE_NAME = "Tuple"
-CONV2D = "nn.conv2d"
-BATCH_NORM = "nn.batch_norm"
-
-def is_operator(symbol: Symbol, params: ParametersT = {}):
-    return symbol.op_name != VAR_NAME
-
-def is_variable(symbol: Symbol, params: ParametersT = {}):
-    return symbol.op_name == VAR_NAME
-
-def is_input(symbol: Symbol, params: ParametersT):
-    return is_variable(symbol) and symbol.name not in params
-
-def is_param(symbol: Symbol, params: ParametersT):
-    return is_variable(symbol) and symbol.name in params
+__ALL__ = [
+        "Symbol",
+        "visit", "transform",
+        "filter_operators",
+        ]
 
 _CopyAttrsT = typing.Union[typing.List[str], str]
 
@@ -55,20 +38,10 @@ class Symbol:
     args: typing.List[Symbol]
     attrs: typing.Dict[str, typing.Any]
 
+    # TODO: validate variable name has name_hint attribute.
+
     def __hash__(self) -> int:
         return hash(str(self))
-
-    def as_parameter(self) -> Symbol:
-        var = self.clone()
-
-        var.op_name = VAR_NAME
-        var.args = []
-        var.attrs = {
-            "shape": self.shape,
-            "dtype": self.dtype,
-            "name_hint": self.name,
-        }
-        return var
 
     def is_op(self, op_name):
         return self.op_name == op_name
@@ -90,14 +63,16 @@ class Symbol:
         try:
             new = cls(**data)
         except Exception as e:
+            if "params" in data:
+                del data["params"]
             print("clone failed: ", cls.__name__,
-                    self, list(data.keys()))
+                    self, "\n{}".format(data))
             raise e
         return new
 
     @property
-    def shape(self):
-        return self.attrs["shape"]
+    def shape(self) -> ShapeT:
+        return list(self.attrs["shape"])
 
     @property
     def dtype(self):
@@ -106,14 +81,23 @@ class Symbol:
     def __eq__(self, other: Symbol):
         return self.args == other.args and hash(self) == hash(other)
 
-    def __str__(self):
+    def __repr__(self) -> str:
         args_info= ["{}@{}".format(
-            i.name, i.attrs.get("shape", None)) \
-            for i in self.args ]
+            i.name, i.shape) for i in self.args ]
         return "{} = {}({}) /* attrs */ \t{}".format(
             self.name, self.op_name,
-            ", ".join(args_info),
-            self.attrs)
+            ", ".join(args_info), self.attrs)
+
+    def raw_str(self) -> str:
+        shape = ",".join([str(s) for s in self.shape])
+        args_info = "({})".format(
+                ", ".join([i.name for i in self.args]))
+        skips = [ "shape", "dtype", "name_hint" ]
+        attrs = {k: self.attrs[k] \
+                for k in self.attrs if k not in skips}
+        return "{:30} = {:>15}{:30} /* attrs */ {}".format(
+                "{}@({})".format(self.name, shape),
+                self.op_name, args_info, attrs or "")
 
 
 def _topo_sort(symbol: Symbol, sym_list: typing.List[Symbol]):
@@ -163,122 +147,9 @@ def transform(symbol: Symbol, callback: _TransformerT) -> Symbol:
 def filter_operators(*op_names: typing.List[str]):
     def _pass(f):
         @wraps(f)
-        def _wrapper(sym: Symbol) -> typing.Any:
+        def _wrapper(sym: Symbol, *args, **kw) -> typing.Any:
             if any([ sym.is_op(n) for n in op_names ]):
-                return f(sym)
+                return f(sym, *args, **kw)
         return _wrapper
     return _pass
-
-def simple_raw_print(symbol: Symbol, params: ParametersT ={}):
-    info = { "op": 0, "param": 0 }
-    def _simple_visit(sym):
-        if is_param(sym, params):
-            info["param"] += product(params[sym.name].shape)
-
-        info["op"] += is_operator(sym)
-        print("{:30} = {:>15}{:30} /* attrs */ {}".format(
-            sym.name, sym.op_name,
-            "(" + ", ".join([i.name for i in sym.args]) + ")",
-            sym.attrs,
-        ))
-    transform(symbol, _simple_visit)
-    print("="*50)
-    print("Operators: {} | Parameters: {}".format(
-        info["op"], info["param"]))
-    print("="*50)
-
-# ==============================================================
-# API from relay.Function to Symbol.
-# ==============================================================
-
-SUPPORTED_EXPR_TYPE = (
-        relay.expr.Var,
-        ir.op.Op, # Op are wrapped by Call.
-        relay.expr.Call,
-        relay.expr.TupleGetItem,
-        )
-
-def expr_type(checked_type: ir.type.Type, key):
-    if isinstance(checked_type, ir.type.TupleType):
-        return [expr_type(f, key) for f in checked_type.fields]
-    return getattr(checked_type, key)
-
-def expr2symbol(expr: RelayExpr) -> Symbol:
-    mod = relay.transform.InferType()(ir.IRModule.from_expr(expr))
-    expr = mod["main"].body
-
-    symbol_map = {}
-    def _cast_expr(node: RelayExpr):
-        if not isinstance(node, SUPPORTED_EXPR_TYPE):
-            raise RuntimeError(
-                "MRT not support expr type:{}".format(type(node)))
-
-        if isinstance(node, ir.op.Op):
-            return
-
-        if isinstance(node, relay.Var):
-            name = node.name_hint or N.n(prefix="input_")
-            symbol_map[node] = Symbol(name, VAR_NAME, [], {})
-        elif isinstance(node, relay.Call):
-            args = [symbol_map[i] for i in node.args]
-            attrs = node.attrs or {}
-            attrs = {k: attrs[k] for k in attrs.keys()}
-            symbol_map[node] = Symbol(N.n(), node.op.name,
-                    args, attrs)
-        elif isinstance(node, relay.TupleGetItem):
-            args = [ symbol_map[node.tuple_value], ]
-            symbol_map[node] = Symbol(N.n(), TUPLE_GET_ITEM_NAME,
-                    args, { "index": node.index })
-        elif isinstance(node, relay.Tuple):
-            args = [ symbol_map[f] for f in node.fields ]
-            symbol_map[node] = Symbol(N.n(), TUPLE_NAME,
-                    args, {})
-
-        dtype = expr_type(node.checked_type, "dtype")
-        shape = expr_type(node.checked_type, "concrete_shape")
-        #  print(dtype, shape, type(shape))
-        symbol_map[node].attrs.update({
-            "shape": list(shape),
-            "dtype": dtype,
-        })
-
-    with N():
-        relay.analysis.post_order_visit(expr, _cast_expr)
-    return symbol_map[expr]
-
-def symbol2expr(symbol: Symbol, expr_map={}) -> RelayExpr:
-    # operator creator don't need shape or dtype attrs,
-    #   except for the variable.
-    def _remove_type(sym: Symbol):
-        if is_variable(sym):
-            return
-
-        if "shape" in sym.attrs:
-            del sym.attrs["shape"]
-        if "dtype" in sym.attrs:
-            del sym.attrs["dtype"]
-        return sym
-    symbol = transform(symbol, _remove_type)
-
-    expr_map.clear()
-    def _cast_symbol(sym: Symbol):
-        args = [expr_map[i] for i in sym.args]
-        if sym.is_op(TUPLE_NAME):
-            out = relay.Tuple(args)
-        else:
-            try:
-                out = eval("relay." + sym.op_name)(*args, **sym.attrs)
-            except Exception as e:
-                print(sym, [type(a) for a in args])
-                raise e
-
-        if isinstance(out, relay.TupleWrapper):
-            out = out.tuple_value
-        # relay.transform.InferTypeLocal(out)
-        expr_map[sym] = out
-
-    _ = transform(symbol, _cast_symbol)
-    return expr_map[symbol]
-
-
 

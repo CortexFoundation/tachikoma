@@ -86,15 +86,6 @@ from tvm.mrt import trace
 from tvm.mrt.symbol import *
 tr = trace.Trace.from_expr(expr, params)
 
-@filter_operators(TUPLE_GET_ITEM_NAME)
-def fuse_batch_norm(expr: relay.expr.Call, params: ParametersT):
-    if extool.op_name(expr.tuple_value) == "nn.batch_norm":
-        return expr.tuple_value.args[0]
-    assert False
-
-#  tr = tr.transform(fuse_batch_norm)
-
-
 tvm.nd.NDArray
 tr.print()
 #  from tvm.mrt.calibrate import Calibrator
@@ -107,8 +98,12 @@ tr.print()
 #  sys.exit(1)
 # ctx = tvm.runtime.cuda(1)
 
-from tvm.mrt.fuse import FusionOp
-fuse_tr = tr.transform(FusionOp.apply())
+from tvm.mrt.fuse import FuseBatchNorm
+from tvm.mrt import op
+fuse_tr = tr.transform(FuseBatchNorm.apply())
+
+fuse_tr.print()
+fuse_tr.print_ops(op.ADD)
 
 sys.exit(1)
 

@@ -1,7 +1,10 @@
 from functools import wraps
 from dataclasses import dataclass, fields
 
+import tvm
+
 from .types import *
+from .op import *
 
 @dataclass
 class _BaseAttrs:
@@ -11,7 +14,12 @@ class _BaseAttrs:
     @classmethod
     def parse(cls, attrs: AttrsT):
         fkeys = [f.name for f in fields(cls) ]
-        data = {k: attrs[k] for k in fkeys}
+        try:
+            data = {k: attrs[k] for k in fkeys}
+        except Exception as e:
+            print("Attr parsed error, expect: {}, get {}.".format(
+                fkeys, attrs.keys()))
+            raise e
         return cls(**data)
 
 _ALL_ATTRS = {}
@@ -25,13 +33,22 @@ def register_attrs(op_name):
 def parse_attrs(op_name, attrs) -> _BaseAttrs:
     if op_name in _ALL_ATTRS:
         return _ALL_ATTRS[op_name].parse(attrs)
-    return None
+    return _BaseAttrs.parse(attrs)
 
 def _format_as_tuple(attrs: AttrsT, *keys):
     for k in keys:
-        if not isinstance(attrs[k], (list, tuple)):
-            attrs[k] = [ attrs[k], attrs[k] ]
+        if k not in attrs:
+            continue
+        val = attrs[k]
+        if not isinstance(val,
+                (list, tuple, tvm.ir.container.Array)):
+            attrs[k] = [ val, val ]
     return attrs
+
+@dataclass
+@register_attrs(TUPLE_GET_ITEM_NAME)
+class TupleGetItemAttrs(_BaseAttrs):
+    index: int
 
 @dataclass
 @register_attrs(CONV2D)
@@ -50,7 +67,7 @@ class Conv2DAttrs(_BaseAttrs):
     out_dtype (Optional[str]) – Specifies the output data type for mixed precision conv2d.
     """
     strides: typing.Tuple[int, int]
-    padding: typing.Tuple[int, int]
+    padding: typing.Tuple[int, int, int, int]
     dilation: typing.Tuple[int, int]
     groups: int
     channels: int
@@ -62,9 +79,13 @@ class Conv2DAttrs(_BaseAttrs):
 
     @classmethod
     def parse(cls, attrs: AttrsT):
-        return super().parse(_format_as_tuple(attrs,
-            "strides", "padding",
-            "dilation", "kernel_size"))
+        attrs = _format_as_tuple(attrs,
+                "strides", "dilation", "kernel_size")
+        padding = attrs["padding"]
+        if isinstance(padding, int):
+            padding = [ padding ] * 4
+        attrs["padding"] = padding
+        return super().parse(attrs)
 
 @dataclass
 @register_attrs(BATCH_NORM)
