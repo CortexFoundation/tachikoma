@@ -8,6 +8,7 @@ AttrsT = typing.Dict[str, typing.Any]
 
 ShapeT = typing.Union[typing.List[int], typing.Tuple[int]]
 """ shape type, tuple of int, such as (1, 3, 34, 34). """
+DTypeT = str
 
 DataLabelT = typing.Tuple[np.ndarray, typing.Any]
 """ a (data, label) representation. """

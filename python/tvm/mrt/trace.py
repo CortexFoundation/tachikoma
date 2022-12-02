@@ -167,10 +167,11 @@ class Trace:
         visit(self.symbol, _visitor)
 
     def transform(self, callback: Transformer) -> Trace:
+        new_params = {k: v for k, v in self.params.items()}
         def _tfm(sym: Symbol):
-            return callback(sym, self.params)
+            return callback(sym, new_params)
         return Trace(callback.__name__,
-                transform(self.symbol, _tfm), self.params)
+                transform(self.symbol, _tfm), new_params)
 
     def to_expr(self, expr_map={}) -> ir.RelayExpr:
         return symbol2expr(self.symbol, expr_map)

@@ -13,19 +13,11 @@ from tvm.relay.expr import *
 from .utils import *
 from .types import *
 
-# __all__ = [
-#         "Symbol", "ParametersT",
-#         "is_operator", "is_variable", "is_input", "is_param",
-#         # symbol pass wrapper and some help functions
-#         "transform", "filter_operators", "visit",
-#         "simple_raw_print",
-#         # API with expr
-#         "expr2symbol", "symbol2expr",
-#         ]
-
 VAR_NAME = "var"
 TUPLE_GET_ITEM_NAME = "TupleGetItem"
 TUPLE_NAME = "Tuple"
+CONV2D = "nn.conv2d"
+BATCH_NORM = "nn.batch_norm"
 
 def is_operator(symbol: Symbol, params: ParametersT = {}):
     return symbol.op_name != VAR_NAME
@@ -66,14 +58,16 @@ class Symbol:
     def __hash__(self) -> int:
         return hash(str(self))
 
-    @staticmethod
-    def variable(name):
-        return Symbol(name, VAR_NAME, [], { "name_hint": name })
-
     def as_parameter(self) -> Symbol:
-        var = Symbol.variable(self.name)
-        var.attrs["shape"] = self.shape
-        var.attrs["dtype"] = self.dtype
+        var = self.clone()
+
+        var.op_name = VAR_NAME
+        var.args = []
+        var.attrs = {
+            "shape": self.shape,
+            "dtype": self.dtype,
+            "name_hint": self.name,
+        }
         return var
 
     def is_op(self, op_name):
@@ -224,7 +218,7 @@ def expr2symbol(expr: RelayExpr) -> Symbol:
 
         if isinstance(node, relay.Var):
             name = node.name_hint or N.n(prefix="input_")
-            symbol_map[node] = Symbol.variable(name)
+            symbol_map[node] = Symbol(name, VAR_NAME, [], {})
         elif isinstance(node, relay.Call):
             args = [symbol_map[i] for i in node.args]
             attrs = node.attrs or {}
