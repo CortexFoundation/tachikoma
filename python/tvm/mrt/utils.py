@@ -20,12 +20,6 @@ MRT_DATASET_ROOT = path.expanduser("~/.mxnet/datasets")
 if not path.exists(MRT_DATASET_ROOT):
     os.makedirs(MRT_DATASET_ROOT)
 
-def product(shape: ShapeT):
-    total = 1
-    for s in shape:
-        total *= s
-    return total
-
 class N:
     def __init__(self, name=""):
         self.counter = 0

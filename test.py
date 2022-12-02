@@ -98,12 +98,13 @@ tr.print()
 #  sys.exit(1)
 # ctx = tvm.runtime.cuda(1)
 
-from tvm.mrt.fuse import FuseBatchNorm
+from tvm.mrt import fuse
 from tvm.mrt import op
-fuse_tr = tr.transform(FuseBatchNorm.apply())
+tr = tr.transform(fuse.FuseBatchNorm.apply())
+tr = tr.transform(fuse.FuseAvgPool2D.apply())
 
-fuse_tr.print()
-fuse_tr.print_ops(op.ADD)
+tr.print()
+tr.print_ops(op.SQUEEZE)
 
 sys.exit(1)
 

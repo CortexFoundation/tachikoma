@@ -9,16 +9,9 @@ from tvm.ir.expr import *
 from tvm.relay.expr import *
 
 from .symbol import *
-from .op import *
+from . import op
 
 __ALL__ = [ "expr2symbol", "symbol2expr", ]
-
-SUPPORTED_EXPR_TYPE = (
-        relay.expr.Var,
-        ir.op.Op, # Op are wrapped by Call.
-        relay.expr.Call,
-        relay.expr.TupleGetItem,
-        )
 
 def _expr_type(checked_type: ir.type.Type, key):
     if isinstance(checked_type, ir.type.TupleType):
@@ -31,38 +24,36 @@ def expr2symbol(expr: RelayExpr) -> Symbol:
 
     symbol_map = {}
     def _cast_expr(node: RelayExpr):
-        if not isinstance(node, SUPPORTED_EXPR_TYPE):
-            raise RuntimeError(
-                "MRT not support expr type:{}".format(type(node)))
-
         if isinstance(node, ir.op.Op):
             return
 
-        if isinstance(node, relay.Var):
-            name = node.name_hint or N.n(prefix="input_")
-            symbol_map[node] = Symbol(name, VAR_NAME, [], {})
-        elif isinstance(node, relay.Call):
-            args = [symbol_map[i] for i in node.args]
-            attrs = node.attrs or {}
-            attrs = {k: attrs[k] for k in attrs.keys()}
-            symbol_map[node] = Symbol(N.n(), node.op.name,
-                    args, attrs)
-        elif isinstance(node, relay.TupleGetItem):
-            args = [ symbol_map[node.tuple_value], ]
-            symbol_map[node] = Symbol(N.n(), TUPLE_GET_ITEM_NAME,
-                    args, { "index": node.index })
-        elif isinstance(node, relay.Tuple):
-            args = [ symbol_map[f] for f in node.fields ]
-            symbol_map[node] = Symbol(N.n(), TUPLE_NAME,
-                    args, {})
-
+        name, op_name, args = None, None, []
         dtype = _expr_type(node.checked_type, "dtype")
         shape = _expr_type(node.checked_type, "concrete_shape")
-        #  print(dtype, shape, type(shape))
-        symbol_map[node].attrs.update({
-            "shape": list(shape),
-            "dtype": dtype,
-        })
+        attrs = { "shape": shape, "dtype": dtype, }
+
+        if isinstance(node, relay.Var):
+            name = node.name_hint or N.n(prefix="input_")
+            symbol_map[node] = op.variable(name, shape, dtype)
+        elif isinstance(node, relay.Call):
+            args = [symbol_map[i] for i in node.args]
+            nattrs = node.attrs or {}
+            attrs.update({k: nattrs[k] for k in nattrs.keys()})
+            symbol_map[node] = op._new_op(
+                    node.op.name, *args, **attrs)
+        elif isinstance(node, relay.TupleGetItem):
+            args = [ symbol_map[node.tuple_value], ]
+            attrs['index'] = node.index
+            symbol_map[node] = op._new_op(
+                    op.TUPLE_GET_ITEM, *args, **attrs)
+        elif isinstance(node, relay.Tuple):
+            args = [ symbol_map[f] for f in node.fields ]
+            symbol_map[node] = op._new_op(
+                    op.TUPLE, *args, **attrs)
+        else:
+            raise RuntimeError(
+                "MRT not support expr type:{}".format(type(node)))
+
 
     with N():
         relay.analysis.post_order_visit(expr, _cast_expr)
@@ -72,7 +63,7 @@ def symbol2expr(symbol: Symbol, expr_map={}) -> RelayExpr:
     # operator creator don't need shape or dtype attrs,
     #   except for the variable.
     def _remove_type(sym: Symbol):
-        if is_variable(sym):
+        if op.is_variable(sym):
             return
 
         if "shape" in sym.attrs:

@@ -27,6 +27,7 @@ class Transformer(Symbol):
         return super().__repr__()
 
     def __post_init__(self):
+        # print(self)
         self.parsed = parse_attrs(self.op_name, self.attrs)
 
     def ndarray(self) -> tvm.nd.NDArray:
@@ -46,8 +47,8 @@ class Transformer(Symbol):
     ) -> Transformer:
         new_name = N.n(prefix=prefix)
         self.params[new_name] = tvm.nd.array(data)
-        return op.variable(self, new_name,
-                data.shape, data.dtype.name)
+        return op.variable(new_name,
+                data.shape, data.dtype.name).like(self)
 
     def is_input(self) -> bool:
         return is_input(self, self.params)
@@ -61,8 +62,12 @@ class Transformer(Symbol):
     @classmethod
     def apply(cls, *args, **kw):
         def _tfm(symbol: Symbol, params: ParametersT):
-            ins = symbol.clone(cls, params=params)
-            return ins(*args, **kw) or ins
+            data = symbol.to_dict()
+            data["params"] = params
+            ins = cls(**data)
+            out = ins(*args, **kw) or ins
+            return out.like(ins)
+
         _tfm.__name__ = cls.__name__
         return _tfm
 

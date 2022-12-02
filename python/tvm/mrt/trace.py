@@ -10,39 +10,10 @@ from tvm import relay, ir
 from tvm.contrib import graph_executor as graph
 
 from .symbol import *
+from .op import *
 from .sym_expr import *
 from .types import *
-from . import topi
 from . import runtime
-
-def is_operator(symbol: Symbol, params: ParametersT = {}):
-    return symbol.op_name != VAR_NAME
-
-def is_variable(symbol: Symbol, params: ParametersT = {}):
-    return symbol.op_name == VAR_NAME
-
-def is_input(symbol: Symbol, params: ParametersT):
-    return is_variable(symbol) and symbol.name not in params
-
-def is_param(symbol: Symbol, params: ParametersT):
-    return is_variable(symbol) and symbol.name in params
-
-def simple_raw_print(symbol: Symbol, params: ParametersT ={}):
-    info = { "op": 0, "param": 0 }
-    op_names = set()
-    def _simple_visit(sym: Symbol):
-        if is_param(sym, params):
-            info["param"] += product(params[sym.name].shape)
-
-        info["op"] += is_operator(sym)
-        op_names.add(sym.op_name)
-        print(sym.raw_str())
-    transform(symbol, _simple_visit)
-    print("="*50)
-    print("Operators: {} | Parameters: {}".format(
-        info["op"], info["param"]))
-    print(", ".join(op_names))
-    print("="*50)
 
 Visitor = typing.Callable[[Symbol, ParametersT], None]
 Transformer = typing.Callable[[Symbol, ParametersT], typing.Optional[Symbol]]
@@ -187,18 +158,35 @@ class Trace:
        return Trace.from_expr(symbol2expr(symbol), self.params)
 
     def print(self):
-        simple_raw_print(self.symbol, self.params)
+        info = { "op": 0, "param": 0 }
+        op_names = set()
+
+        def _simple_visit(sym: Symbol, params: ParametersT):
+            if is_param(sym, params):
+                info["param"] += np.product(sym.shape)
+
+            info["op"] += is_operator(sym)
+            op_names.add(sym.op_name)
+            print(sym.raw_str())
+        self.transform(_simple_visit)
+
+        print("="*50)
+        print("Operators: {} | Parameters: {}".format(
+            info["op"], int(info["param"])))
+        print(", ".join(op_names))
+        print("="*50)
 
     def print_ops(self, *op_names):
         print("=" * 50)
         print("Collect operators in [{}]".format(
             ", ".join(op_names)))
-        print("=" * 50)
 
         @filter_operators(*op_names)
         def _cond_print(sym: Symbol, params: ParametersT):
-            print(sym.raw_str())
+            print(">", sym.raw_str())
         self.visit(_cond_print)
+
+        print("=" * 50)
 
     def visit(self, callback: Visitor):
         def _visitor(sym: Symbol):

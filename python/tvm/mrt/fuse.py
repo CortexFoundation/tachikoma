@@ -3,11 +3,11 @@ from collections import namedtuple
 
 import numpy as np
 
-from .symbol import *
 from . import op
-from .attrs import BatchNormAttrs
-from .transform import Transformer
+from .symbol import *
+from .attrs import *
 from .utils import N
+from .transform import Transformer
 
 class FuseBatchNorm(Transformer):
     @filter_operators(op.BATCH_NORM)
@@ -39,10 +39,12 @@ class FuseBatchNorm(Transformer):
             # (A * W) * gamma - bias
             # A * (W * gamma) - bias
             W_data = W.numpy() * gamma.reshape(K, 1, 1, 1)
-            W = self.from_np_data(W_data, "weight_")
             W.update_data(W_data)
 
             B = self.from_np_data(-bias)
+
+            # out = op(op.BIAS_ADD, X, B, axis=parsed.axis)
+            # out = X.bind(op.BIAS_ADD, B, axis=parsed.axis)
             out = op.bias_add(X, B, axis=parsed.axis)
         else:
             assert False
@@ -51,6 +53,14 @@ class FuseBatchNorm(Transformer):
 class FuseAvgPool2D(Transformer):
     @filter_operators(op.AVG_POOL2D)
     def __call__(self):
-        pass
+        X = self.args[0]
+        parsed: AvgPool2DAttrs = self.parsed
+
+        assert len(X.shape) == 4
+        assert all([s == 1 for s in parsed.output_size])
+        assert parsed.layout == "NCHW"
+        scale = 1 / np.product(X.shape[-2:])
+        scale = self.from_np_data(scale.astype(X.dtype))
+        return op.mul(X, scale)
 
 
