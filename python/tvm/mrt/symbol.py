@@ -51,19 +51,32 @@ class Symbol:
         data.update(self.to_dict())
         return type(other)(**data)
 
-    def bind(self, cls: typing.Type[Symbol]) -> Symbol:
-        """ cast symbol to specific type. """
-        return cls(**self.to_dict())
+    @classmethod
+    def base(cls, symbol: Symbol, **kwargs):
+        """ create current class instance based on another.
+
+            Enable the inherit class to override.
+        """
+        return cls.from_dict(symbol.to_dict(), **kwargs)
 
     def infer_type(self, callback):
         self.attrs.update(callback(self))
 
-    def to_dict(self) -> dict:
-        return dict((f.name, getattr(self, f.name)) \
+    def to_dict(self, **kwargs) -> dict:
+        data = dict((f.name, getattr(self, f.name)) \
                 for f in fields(self))
+        data.update(**kwargs)
+        return data
+
+    @classmethod
+    def from_dict(cls, data: dict, **kwargs):
+        data.update(kwargs)
+        fnames = [f.name for f in fields(cls)]
+        data = {k: data[k] for k in data if k in fnames}
+        return cls(**data)
 
     def copy(self, **kw) -> typing.Type[Symbol]:
-        """ clone current symbol or inherit class. """
+        """ clone current symbol. """
         data = self.to_dict()
         # update mutable types
         data["args"] = [a for a in self.args]

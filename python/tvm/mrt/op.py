@@ -68,16 +68,16 @@ class BroadcastInferType(InferType):
 def _new_op(op_name, *args, **attrs) -> Symbol:
     return Symbol(N.n(), op_name, args, attrs)
 
-def bias_add(X: Symbol, B: Symbol, axis) -> Symbol:
-    return _new_op(BIAS_ADD, X, B, axis=axis).bind(
-            FirstLikeInferType)
+def _register_op(op_name, infer_type: typing.Type[InferType]):
+    def _op(*args, **attrs) -> Symbol:
+        op = _new_op(op_name, *args, **attrs)
+        return infer_type.base(op)
+    return _op
 
-def add(A: Symbol, B: Symbol) -> Symbol:
-    return _new_op(ADD, A, B).bind(BroadcastInferType)
-def sub(A: Symbol, B: Symbol) -> Symbol:
-    return _new_op(SUB, A, B).bind(BroadcastInferType)
-def mul(A: Symbol, B: Symbol) -> Symbol:
-    return _new_op(MUL, A, B).bind(BroadcastInferType)
+bias_add = _register_op(BIAS_ADD, FirstLikeInferType)
+add = _register_op(ADD, BroadcastInferType)
+sub = _register_op(SUB, BroadcastInferType)
+mul = _register_op(MUL, BroadcastInferType)
 
 def variable(name, shape, dtype) -> Symbol:
     """ Create varible for symbol. """

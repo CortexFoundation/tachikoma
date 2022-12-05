@@ -88,6 +88,9 @@ tr = trace.Trace.from_expr(expr, params)
 
 tvm.nd.NDArray
 tr.print()
+
+from tvm.mrt.quantize import Quantizer
+
 #  from tvm.mrt.calibrate import Calibrator
 #  calibrate_tr = tr.transform(Calibrator.apply())
 

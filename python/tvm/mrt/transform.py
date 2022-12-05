@@ -15,20 +15,11 @@ from .attrs import _BaseAttrs, parse_attrs
 
 from .utils import N
 
-@dataclass
+@dataclass(repr=False)
 class Transformer(Symbol):
     """ Type TransformerT for Trace """
-
-    args: typing.List[Transformer]
+    parsed: _BaseAttrs
     params: ParametersT
-    parsed: typing.Type[_BaseAttrs] = field(default_factory=dict)
-
-    def __repr__(self):
-        return super().__repr__()
-
-    def __post_init__(self):
-        # print(self)
-        self.parsed = parse_attrs(self.op_name, self.attrs)
 
     def ndarray(self) -> tvm.nd.NDArray:
         assert self.is_param(), (
@@ -61,10 +52,9 @@ class Transformer(Symbol):
 
     @classmethod
     def apply(cls, *args, **kw):
-        def _tfm(symbol: Symbol, params: ParametersT):
-            data = symbol.to_dict()
-            data["params"] = params
-            ins = cls(**data)
+        def _tfm(sym: Symbol, params: ParametersT):
+            ins = cls.base(sym, params=params,
+                    parsed=parse_attrs(sym.op_name, sym.attrs))
             out = ins(*args, **kw) or ins
             return out.like(ins)
 

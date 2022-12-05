@@ -43,8 +43,6 @@ class FuseBatchNorm(Transformer):
 
             B = self.from_np_data(-bias)
 
-            # out = op(op.BIAS_ADD, X, B, axis=parsed.axis)
-            # out = X.bind(op.BIAS_ADD, B, axis=parsed.axis)
             out = op.bias_add(X, B, axis=parsed.axis)
         else:
             assert False
