@@ -51,6 +51,8 @@ class Calibrator(Transformer):
     def run(self, args_data: typing.Dict[str, tvm.nd.NDArray]):
         if self.is_op(TUPLE_GET_ITEM_NAME):
             return self.args[0].flat_nd_data[self.parsed.index]
+        elif self.is_op(REQUANT):
+            return self.args[0].flat_nd_data
 
         args = [ a.as_parameter() for a in self.args]
         sym = self.clone(Symbol, args=args)

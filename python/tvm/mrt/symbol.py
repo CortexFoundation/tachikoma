@@ -40,8 +40,8 @@ class Symbol:
 
     # TODO: validate variable name has name_hint attribute.
 
-    def is_op(self, op_name) -> bool:
-        return self.op_name == op_name
+    def is_op(self, *op_names) -> bool:
+        return self.op_name in op_names
 
     def like(self, other: Symbol) -> Symbol:
         """ cast current symbol to child class. """
@@ -49,7 +49,7 @@ class Symbol:
             return self
         data = other.to_dict()
         data.update(self.to_dict())
-        return type(other)(**data)
+        return type(other).from_dict(data)
 
     @classmethod
     def base(cls, symbol: Symbol, **kwargs):
@@ -59,30 +59,43 @@ class Symbol:
         """
         return cls.from_dict(symbol.to_dict(), **kwargs)
 
-    def infer_type(self, callback):
-        self.attrs.update(callback(self))
+    def copy(self, **kwargs) -> typing.Type[Symbol]:
+        """ clone current symbol. """
+        return type(self).from_dict(
+                self.to_dict( # update mutable types
+                    args=[a for a in self.args],
+                    attrs={k: v for k, v in self.attrs.items()}),
+                **kwargs) # kwargs override self
 
     def to_dict(self, **kwargs) -> dict:
-        data = dict((f.name, getattr(self, f.name)) \
-                for f in fields(self))
+        data = dataclass_to_dict(self)
         data.update(**kwargs)
         return data
 
     @classmethod
-    def from_dict(cls, data: dict, **kwargs):
+    def from_dict(cls, d: dict, **kwargs):
+        data = cls.default_dict()
+        data.update(d)
         data.update(kwargs)
+        data = cls.update_dict(data)
         fnames = [f.name for f in fields(cls)]
         data = {k: data[k] for k in data if k in fnames}
-        return cls(**data)
+        try:
+            out = cls(**data)
+        except Exception as e:
+            print(cls, data.keys())
+            raise e
+        return out
 
-    def copy(self, **kw) -> typing.Type[Symbol]:
-        """ clone current symbol. """
-        data = self.to_dict()
-        # update mutable types
-        data["args"] = [a for a in self.args]
-        data["attrs"] = {k: v for k, v in self.attrs.items()}
-        data.update(kw)
-        return type(self)(**data)
+    @classmethod
+    def default_dict(cls, **kwargs) -> dict:
+        """ possible dict to initialize symbol class. """
+        return kwargs
+
+    @classmethod
+    def update_dict(cls, data: dict, **kwargs) -> dict:
+        data.update(kwargs)
+        return data
 
     @property
     def shape(self) -> ShapeT:
@@ -91,9 +104,6 @@ class Symbol:
     @property
     def dtype(self):
         return self.attrs["dtype"]
-
-    # def __eq__(self, other: Symbol):
-    #     return hash(self) == hash(other)
 
     def __repr__(self) -> str:
         args_info= ["{}@{}".format(
@@ -105,13 +115,13 @@ class Symbol:
     def __hash__(self) -> int:
         return hash(str(self))
 
-    def raw_str(self) -> str:
+    def raw_str(self, **attrs) -> str:
         shape = ",".join([str(s) for s in self.shape])
         args_info = "({})".format(
                 ", ".join([i.name for i in self.args]))
+        attrs.update(self.attrs)
         skips = [ "shape", "dtype", "name_hint" ]
-        attrs = {k: self.attrs[k] \
-                for k in self.attrs if k not in skips}
+        attrs = {k: attrs[k] for k in attrs if k not in skips}
         return "{:30} = {:>15}{:30} /* attrs */ {}".format(
                 "{}@({})".format(self.name, shape),
                 self.op_name, args_info, attrs or "")
@@ -123,6 +133,40 @@ def _topo_sort(symbol: Symbol, sym_list: typing.List[Symbol]):
     for c in symbol.args:
         _topo_sort(c, sym_list)
     sym_list.append(symbol)
+
+_SymbolNodesT = typing.List[typing.Dict[str, typing.Any]]
+_SymbolJsonT = typing.Dict[str, typing.Any]
+
+def _class_name(o):
+    klass = o.__class__
+    module = klass.__module__
+    if module == 'builtins':
+        return klass.__qualname__ # avoid outputs like 'builtins.str'
+    return module + '.' + klass.__qualname__
+
+
+def dump_json(symbol: Symbol) -> _SymbolJsonT:
+    nodes = []
+    def _to_json(sym: Symbol):
+        node = dataclass_to_dict(sym, check_repr=True)
+        node.update({
+            "args": [a.name for a in node["args"]],
+            "_class_type": _class_name(sym),
+            })
+        nodes.append(node)
+    visit(symbol, _to_json)
+    return { "nodes": nodes, }
+
+def load_json(data: _SymbolJsonT, **extra_attrs) -> Symbol:
+    nodes: _SymbolNodesT = data["nodes"]
+
+    sym_map = {}
+    for node in nodes:
+        args = [sym_map[a] for a in node["args"]]
+        sym_type: typing.Type[Symbol] = eval(node["_class_type"])
+        sym = sym_type.from_dict(node, args=args, **extra_attrs)
+        sym_map[sym.name] = sym
+    return sym_map[nodes[-1]["name"]]
 
 _VisitorT = typing.Callable[[Symbol], None]
 _TransformerT = typing.Callable[[Symbol], typing.Optional[Symbol]]
@@ -158,6 +202,14 @@ def transform(symbol: Symbol, callback: _TransformerT) -> Symbol:
         assert isinstance(out, Symbol)
         sym_map[sym.name] = out
     return sym_map[symbol.name]
+
+def raw_print(symbol: Symbol):
+    msg = "{f} Raw Print {f}".format(f = "="*25)
+    print(msg)
+    def _print(sym: Symbol):
+        print(sym.raw_str())
+    visit(symbol, _print)
+    print("=" * len(msg))
 
 def filter_operators(*op_names: typing.List[str]):
     def _pass(f):

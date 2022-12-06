@@ -82,32 +82,44 @@ ir.type.TupleType
 
 #  tr = api.Trace("init", expr, params).infer_type()
 
-from tvm.mrt import trace
+from tvm.mrt.trace import Trace
 from tvm.mrt.symbol import *
-tr = trace.Trace.from_expr(expr, params)
+tr = Trace.from_expr(expr, params)
 
 tvm.nd.NDArray
 tr.print()
 
-from tvm.mrt.quantize import Quantizer
-
 #  from tvm.mrt.calibrate import Calibrator
 #  calibrate_tr = tr.transform(Calibrator.apply())
 
-#  print("\n\n\n")
-#  def _cast(sym: Calibrator, params: ParametersT):
-#      print("cast: ", sym.output[0].shape)
-#  calibrate_tr.transform(_cast)
-#  sys.exit(1)
-# ctx = tvm.runtime.cuda(1)
-
 from tvm.mrt import fuse
 from tvm.mrt import op
-tr = tr.transform(fuse.FuseBatchNorm.apply())
-tr = tr.transform(fuse.FuseAvgPool2D.apply())
+fuse_path = "data/fuse.mrt"
+if True or not path.exists(fuse_path):
+    tr = tr.transform(fuse.FuseBatchNorm.apply())
+    tr = tr.transform(fuse.FuseAvgPool2D.apply())
+    # with open(fuse_path, "w") as f:
+    #     f.write(json.dumps(dump_json(tr.symbol)))
+    tr.dump(fuse_path)
+tr = Trace.load(fuse_path)
+
+from tvm.mrt.precision import Annotate, InferPrecision, WithPrecision
+from tvm.mrt.quantize import Quantizer
+
+# data = tr.symbol.to_dict()
+# p = InferPrecision.from_dict(data)
+print(InferPrecision.default_dict(attr=10))
+print(Quantizer.update_dict(tr.symbol.to_dict()).keys())
+print(Annotate.__mro__)
+
+# ip = InferPrecision.base(tr.symbol)
+tr = tr.transform(Quantizer.apply())
+# tr = tr.transform(Annotate.apply())
+# tr.print(view_layers=4)
+# tr = tr.transform(InferPrecision.apply())
 
 tr.print()
-tr.print_ops(op.SQUEEZE)
+tr.print_ops("nn.max_pool2d")
 
 sys.exit(1)
 

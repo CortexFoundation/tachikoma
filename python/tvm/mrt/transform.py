@@ -16,10 +16,15 @@ from .attrs import _BaseAttrs, parse_attrs
 from .utils import N
 
 @dataclass(repr=False)
-class Transformer(Symbol):
+class WithParameters(Symbol):
     """ Type TransformerT for Trace """
-    parsed: _BaseAttrs
-    params: ParametersT
+    parsed: _BaseAttrs = field(repr=False)
+    params: ParametersT = field(repr=False)
+
+    @classmethod
+    def update_dict(cls, data: dict) -> dict:
+        return super().update_dict(data,
+            parsed=parse_attrs(data["op_name"], data["attrs"]))
 
     def ndarray(self) -> tvm.nd.NDArray:
         assert self.is_param(), (
@@ -50,11 +55,14 @@ class Transformer(Symbol):
     def is_operator(self) -> bool:
         return is_operator(self, self.params)
 
+
+@dataclass(repr=False)
+class Transformer(WithParameters):
+    """ Type TransformerT for Trace """
     @classmethod
     def apply(cls, *args, **kw):
         def _tfm(sym: Symbol, params: ParametersT):
-            ins = cls.base(sym, params=params,
-                    parsed=parse_attrs(sym.op_name, sym.attrs))
+            ins = cls.base(sym, params=params)
             out = ins(*args, **kw) or ins
             return out.like(ins)
 
@@ -62,11 +70,45 @@ class Transformer(Symbol):
         return _tfm
 
     def __call__(self, *args, **kw) -> Symbol:
-        return self
+        raise NotImplementedError()
+
+PassFuncT = typing.Callable[[Symbol], typing.Any]
+
+@dataclass(repr=False)
+class Pass(WithParameters):
+    """ check every operator to be examined in pass. """
+    OP_REGISTRY: typing.ClassVar[typing.Dict[str, PassFuncT]] = {}
+
+    @classmethod
+    def test(cls, *op_names):
+        def _func(f, *args, **kw):
+            def _wrapper(sym: Symbol):
+                return f(sym, *args, **kw)
+            for opn in op_names:
+                cls.OP_REGISTRY[opn] = _wrapper
+            return f
+        return _func
+
+    @typing.final
+    def __post_init__(self):
+        for opn, reg in self.OP_REGISTRY.items():
+            if self.is_op(opn):
+                reg(self)
+                return
+
+        assert False, "{} don't supported op:{}".format(
+                type(self), self.op_name)
 
 
-class Validator(Transformer):
-    pass
+    @staticmethod
+    def _pass_identity(*args, **kw):
+        pass
+
+    @classmethod
+    def ignore(cls, *op_names):
+        for opn in op_names:
+            cls.OP_REGISTRY[opn] = cls._pass_identity
+        return cls._pass_identity
 
 class Quantizer(Transformer):
     def expect_max_precision(self, max_prec) -> Quantizer:

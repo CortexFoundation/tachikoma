@@ -1,26 +1,14 @@
+from __future__ import annotations
+
 import math
 import typing
 
-from dataclasses import dataclass, field, InitVar
+from dataclasses import dataclass, field, InitVar, asdict
 
 from .symbol import *
 from .transform import Transformer
 from .calibrate import Calibrator
-
-#  @dataclass
-#  class Scaler:
-#      sym: InitVar[Calibrator]
-
-#      data: typing.Any = field(init=False)
-#      """ basic data information scaler must know. """
-#      scale: typing.Any = 1
-#      precision: int = -1
-
-#      def max_prec(self, prec: int) -> Scaler:
-#          raise NotImplementedError()
-
-#      def at_scale(self, scale: float) -> Scaler:
-#          return self
+from .precision import *
 
 def number_to_bits(number: float):
     """ Return the integer bits to represent number.
@@ -40,54 +28,65 @@ def number_to_bits(number: float):
     number = math.floor(number + 0.5)
     return 1 + math.ceil(math.log2(number + 1))
 
-class Scaler:
-    pass
+class Requantizer(Transformer):
+    def __call__(self, expected: Precision):
+        if self.is_input():
+            return self.requantize_input(expected)
+        elif self.is_param():
+            return self.requantize_param()
+        self.requantize_operator()
 
-@dataclass
-class SymmetricMinMaxScaler(Scaler):
-    sym: InitVar[Calibrator]
-    data: float = field(init=False)
-    """ threshold for calib data. """
-
-    scale: typing.Any = 1
-    precision: int = 0
-
-    def __post_init__(self, sym: Calibrator):
-        self.data = sym.np_data.abs().max().scalar()
-        if self.precision > 0:
-            prec_max = 2 ** (self.precision - 1) - 1
-            self.scale = self.prec_max / self.data
-        elif self.scale != 1:
-            real_max = self.data * self.scale
-            self.precision = number_to_bits(real_max)
+    # def requantize_input(self):
+    #     return Requantizer.
 
 
 @dataclass(repr=False)
-class Quantizer(Transformer):
+class Quantizer(Transformer, WithPrecision):
     """ Scale current operator into integer range.
 
     """
-    origin: Symbol
-    """ original symbol data. """
+    # scaler: Scaler
 
-    max_bit: int = 32
+    MAX_BIT: typing.ClassVar[int] = 32
     """ maximum bit for quantization. """
-    #  precision: int = -1
-    #  arg_precs: typing.List[int]
-    cached_prec_args: typing.Dict[int, Scaler] = field(default=dict)
 
-    @classmethod
-    def base(cls, symbol: Symbol, **kwargs):
-        return cls.from_dict(
-                symbol.to_dict(**kwargs),
-                origin=symbol)
+    tight_precision: Quantizer | None = None
+    cached_requant: typing.Dict[int, Scaler] = field(default=dict)
 
-    def __call__(self, max_bit: int):
-        self.max_bit = max_bit
-        self.arg_precs = self.calc_args_prec()
-        assert len(arg_precs) == len(self.args)
+    # @property
+    # def scale(self):
+    #     return selc.scaler.scale
 
-        args = [ a.max_prec() for a in self.args ]
+    # @classmethod
+    # def base(cls, symbol: Calibrator, **kwargs):
+    #     assert isinstance(sym, Calibrator)
+    #     scaler = SymmetricMinMaxScaler.base(symbol)
+    #     return cls.from_dict(
+    #             symbol.to_dict(**kwargs),
+    #             scaler=SymmetricMinMaxScaler.base(symbol))
+
+    def __call__(self,
+            scaler_type: typing.Type[Scaler] = SymmetricMinMaxScaler):
+        anno: Annotate = Annotate.base(self)
+
+        for i in range(len(self.args)):
+            expected = anno.arg_precisions[i]
+            self.args[i] = self.args[i].tight_precision
+            self.args[i] = self.args[i].requantize(expected)
+
+        ip = InferPrecision.base(self)
+        sc = InferScale.base(self)
+        print(ip.raw_str(), sc.scale)
+        # self = Rewriter.base(self)()
+        self.require_tight_prec(scaler_type(sc.scale))
+
+        return self
+
+    def require_tight_prec(self, scale):
+        self.tight_precision = self.copy(
+            scaler=self.scaler.copy(scale=scale))
+
+    def requantize(self):
         return self
 
     def calc_args_prec(self) -> typing.List[int]:

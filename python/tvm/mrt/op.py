@@ -12,15 +12,22 @@ TUPLE = "Tuple"
 TUPLE_GET_ITEM = "TupleGetItem"
 
 CONV2D = "nn.conv2d"
-BIAS_ADD = "nn.bias_add"
+DENSE = "nn.dense"
 BATCH_NORM = "nn.batch_norm"
+BIAS_ADD = "nn.bias_add"
+RELU = "nn.relu"
 AVG_POOL2D = "nn.adaptive_avg_pool2d"
+MAX_POOL2D = "nn.max_pool2d"
 
 SQUEEZE = "squeeze"
+RESHAPE = "reshape"
 
 ADD = "add"
 SUB = "sub"
 MUL = "multiply"
+
+# ======= mrt requant op ==========
+REQUANT = "mrt.requant"
 
 
 @dataclass
@@ -78,6 +85,8 @@ bias_add = _register_op(BIAS_ADD, FirstLikeInferType)
 add = _register_op(ADD, BroadcastInferType)
 sub = _register_op(SUB, BroadcastInferType)
 mul = _register_op(MUL, BroadcastInferType)
+
+requant = _register_op(REQUANT, FirstLikeInferType)
 
 def variable(name, shape, dtype) -> Symbol:
     """ Create varible for symbol. """

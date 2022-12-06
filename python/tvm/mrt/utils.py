@@ -81,3 +81,15 @@ def extend_fname(prefix, with_ext=False):
     if with_ext:
         ret.append("%s.ext"%prefix)
     return tuple(ret)
+
+def dataclass_to_dict(dc: dataclass, check_repr=False) -> dict:
+    from dataclasses import dataclass, fields, Field
+    def _check(f: Field):
+        checked = True
+        if check_repr:
+            checked = checked and f.repr
+        return checked
+    return {f.name: getattr(dc, f.name) \
+            for f in fields(dc) if _check(f)}
+    # return dict((f.name, getattr(dc, f.name)) \
+    #         for f in fields(dc))

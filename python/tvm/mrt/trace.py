@@ -1,9 +1,10 @@
 from __future__ import annotations
 import typing
 
-from dataclasses import dataclass, field
-from functools import wraps
+import pickle
 import numpy as np
+from functools import wraps
+from dataclasses import dataclass, field
 
 import tvm
 from tvm import relay, ir
@@ -157,24 +158,34 @@ class Trace:
        symbol = transform(self.symbol, _set_shape)
        return Trace.from_expr(symbol2expr(symbol), self.params)
 
-    def print(self):
+    def print(self, view_layers=0, till_layer=None):
         info = { "op": 0, "param": 0 }
         op_names = set()
 
         def _simple_visit(sym: Symbol, params: ParametersT):
+            if view_layers and info["op"] > view_layers-1:
+                return
+            if info.get("skip", False):
+                return
+            if till_layer and till_layer in [
+                    sym.name, sym.op_nameA ]:
+                info["skip"] = True
+
             if is_param(sym, params):
                 info["param"] += np.product(sym.shape)
 
             info["op"] += is_operator(sym)
+
             op_names.add(sym.op_name)
             print(sym.raw_str())
         self.transform(_simple_visit)
 
-        print("="*50)
+        msg = "{f} {s} {f}".format(f="=" * 25, s=self.name)
+        print(msg)
         print("Operators: {} | Parameters: {}".format(
             info["op"], int(info["param"])))
         print(", ".join(op_names))
-        print("="*50)
+        print("=" * len(msg))
 
     def print_ops(self, *op_names):
         print("=" * 50)
@@ -194,6 +205,27 @@ class Trace:
 
         with N(callback.__name__):
             visit(self.symbol, _visitor)
+
+    def dump(self, trace_path: str):
+        data = dump_json(self.symbol)
+        data.update({
+            "_trace_name": self.name,
+            "params": {k: v.numpy() \
+                    for k, v in self.params.items()},
+        })
+        with open(trace_path, "wb") as f:
+            pickle.dump(data, f)
+
+    @staticmethod
+    def load(trace_path: str) -> Trace:
+        with open(trace_path, "rb") as f:
+            data = pickle.load(f)
+
+        name = data["_trace_name"]
+        params = {k: tvm.nd.array(v) \
+                for k, v in data["params"].items()}
+        symbol = load_json(data, params=params)
+        return Trace(name, symbol, params)
 
     def transform(self, callback: Transformer) -> Trace:
         new_params = {k: v for k, v in self.params.items()}
