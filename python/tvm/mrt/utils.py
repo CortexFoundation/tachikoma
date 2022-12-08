@@ -34,7 +34,7 @@ class N:
     def __exit__(self, *args):
         self._set_name_scope(self.last_scope)
 
-    def _alloc_name(self, prefix, suffix):
+    def _alloc_name(self, prefix, suffix) -> str:
         with self.lock:
             index = self.counter
             self.counter += 1
@@ -50,7 +50,7 @@ class N:
         N.__GLOBAL_INSTANCE__ = ins
 
     @staticmethod
-    def n(prefix=None, suffix=None):
+    def n(prefix=None, suffix=None) -> str:
         ins = N.__GLOBAL_INSTANCE__
         if ins is None:
             raise RuntimeError("Namescope not specified")

@@ -43,13 +43,11 @@ class Symbol:
     def is_op(self, *op_names) -> bool:
         return self.op_name in op_names
 
-    def like(self, other: Symbol) -> Symbol:
+    def like(self, other: Symbol, **kwargs) -> Symbol:
         """ cast current symbol to child class. """
-        if type(self) == type(other):
-            return self
         data = other.to_dict()
         data.update(self.to_dict())
-        return type(other).from_dict(data)
+        return type(other).from_dict(data, **kwargs)
 
     @classmethod
     def base(cls, symbol: Symbol, **kwargs):
@@ -83,7 +81,6 @@ class Symbol:
         try:
             out = cls(**data)
         except Exception as e:
-            print(cls, data.keys())
             raise e
         return out
 
@@ -93,38 +90,45 @@ class Symbol:
         return kwargs
 
     @classmethod
-    def update_dict(cls, data: dict, **kwargs) -> dict:
-        data.update(kwargs)
-        return data
+    def update_dict(cls, data_dict: dict, **kwargs) -> dict:
+        data_dict.update(kwargs)
+        return data_dict
 
     @property
     def shape(self) -> ShapeT:
         return list(self.attrs["shape"])
+        # return list(self.attrs.get("shape", ()))
 
     @property
     def dtype(self):
         return self.attrs["dtype"]
+        # return self.attrs.get("dtype", None)
 
-    def __repr__(self) -> str:
-        args_info= ["{}@{}".format(
-            i.name, i.shape) for i in self.args ]
-        return "{} = {}({}) /* attrs */ \t{}".format(
-            self.name, self.op_name,
-            ", ".join(args_info), self.attrs)
+    def __repr__(self, **attrs) -> str:
+        return self.raw_str(**attrs)
+        # args_info= ["{}@({})".format(
+        #     i.name,
+        #     ",".join([str(s) for s in i.shape])
+        # ) for i in self.args ]
+
+        # attrs.update(self.attrs)
+        # attr_info = ", ".join([k+"="+str(v) \
+        #         for k, v in attrs.items()])
+        # return "{} = {}({}) // {}".format(
+        #     self.name, self.op_name,
+        #     ", ".join(args_info), attr_info)
 
     def __hash__(self) -> int:
         return hash(str(self))
 
     def raw_str(self, **attrs) -> str:
-        shape = ",".join([str(s) for s in self.shape])
         args_info = "({})".format(
                 ", ".join([i.name for i in self.args]))
         attrs.update(self.attrs)
-        skips = [ "shape", "dtype", "name_hint" ]
+        skips = [ "dtype", "name_hint" ]
         attrs = {k: attrs[k] for k in attrs if k not in skips}
         return "{:30} = {:>15}{:30} /* attrs */ {}".format(
-                "{}@({})".format(self.name, shape),
-                self.op_name, args_info, attrs or "")
+                self.name, self.op_name, args_info, attrs)
 
 
 def _topo_sort(symbol: Symbol, sym_list: typing.List[Symbol]):
@@ -200,6 +204,7 @@ def transform(symbol: Symbol, callback: _TransformerT) -> Symbol:
         sym = sym.copy(args=args)
         out = callback(sym) or sym
         assert isinstance(out, Symbol)
+        assert sym.name not in sym_map
         sym_map[sym.name] = out
     return sym_map[symbol.name]
 
@@ -207,7 +212,7 @@ def raw_print(symbol: Symbol):
     msg = "{f} Raw Print {f}".format(f = "="*25)
     print(msg)
     def _print(sym: Symbol):
-        print(sym.raw_str())
+        print(sym)
     visit(symbol, _print)
     print("=" * len(msg))
 

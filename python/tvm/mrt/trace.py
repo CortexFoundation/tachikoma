@@ -1,6 +1,7 @@
 from __future__ import annotations
 import typing
 
+import os
 import pickle
 import numpy as np
 from functools import wraps
@@ -28,6 +29,7 @@ class Trace:
     symbol: Symbol
     params: ParametersT
 
+    _loaded: bool = False
     sym_inputs: typing.List[Symbol] = field(init=False)
     sym_params: typing.List[Symbol] = field(init=False)
 
@@ -44,6 +46,9 @@ class Trace:
                 ).format(sym.name, sym.shape, pshape)
                 self.sym_params.append(sym)
         visit(self.symbol, _init)
+
+        self.params = {s.name: self.params[s.name] \
+                for s in self.sym_params}
 
     @property
     def input_names(self) -> typing.List[str]:
@@ -177,8 +182,8 @@ class Trace:
             info["op"] += is_operator(sym)
 
             op_names.add(sym.op_name)
-            print(sym.raw_str())
-        self.transform(_simple_visit)
+            print(sym)
+        self.visit(_simple_visit)
 
         msg = "{f} {s} {f}".format(f="=" * 25, s=self.name)
         print(msg)
@@ -187,17 +192,30 @@ class Trace:
         print(", ".join(op_names))
         print("=" * len(msg))
 
-    def print_ops(self, *op_names):
+    def print_ops(self, *op_names: str):
         print("=" * 50)
         print("Collect operators in [{}]".format(
             ", ".join(op_names)))
 
         @filter_operators(*op_names)
         def _cond_print(sym: Symbol, params: ParametersT):
-            print(">", sym.raw_str())
+            print(">", sym)
         self.visit(_cond_print)
 
         print("=" * 50)
+
+    def subgraph(self, inames=[], onames=[]) -> Trace:
+        out = []
+        def _find(sym: Symbol, params: ParametersT):
+            if sym.name in inames:
+                return op.variable(sym.name, sym.shape, sym.dtype)
+            elif sym.name  in onames:
+                out.append(sym)
+
+        tr = self.transform(_find)
+        out = out or [ tr.symbol ]
+        out = out[0] if len(out) else op.tuple(*out)
+        return Trace("subgraph", out, self.params)
 
     def visit(self, callback: Visitor):
         def _visitor(sym: Symbol):
@@ -213,8 +231,13 @@ class Trace:
             "params": {k: v.numpy() \
                     for k, v in self.params.items()},
         })
-        with open(trace_path, "wb") as f:
-            pickle.dump(data, f)
+        try:
+            with open(trace_path, "wb") as f:
+                pickle.dump(data, f)
+        except Exception as e:
+            # clean generated empty path
+            os.remove(trace_path)
+            raise e
 
     @staticmethod
     def load(trace_path: str) -> Trace:
@@ -225,16 +248,57 @@ class Trace:
         params = {k: tvm.nd.array(v) \
                 for k, v in data["params"].items()}
         symbol = load_json(data, params=params)
-        return Trace(name, symbol, params)
+        return Trace(name, symbol, params, _loaded=True)
 
-    def transform(self, callback: Transformer) -> Trace:
+    def checkpoint_transform(self,
+            *callbacks: Transformer,
+            tr_name: str = None,
+            base_dir = "./data",
+            force = False,
+            **kwargs):
+        """ Apply transform in current trace for checkpoint.
+
+            If current trace is not loaded, than force to
+                apply transformers.
+        """
+        assert len(callbacks) > 0
+        os.makedirs(base_dir, exist_ok=True)
+
+        if not self._loaded:
+            force = True
+
+        tr_name = tr_name or callbacks[-1].__name__
+        tr_path = os.path.join(base_dir, tr_name + ".trace")
+        if force or not path.exists(tr_path):
+            tr = self
+            for cb in callbacks:
+                tr = tr.transform(cb, **kwargs)
+            tr.dump(tr_path)
+            return tr
+        tr = Trace.load(tr_path)
+        print("Loaded checkpoint: {:20} from {}".format(
+            tr_name, tr_path))
+        return tr
+
+    def transform(self,
+            callback: Transformer,
+            tr_name: str = None,
+            print_bf: bool = False,
+            print_af: bool = False,
+        ) -> Trace:
+        tr_name = tr_name or callback.__name__
         new_params = {k: v for k, v in self.params.items()}
         def _tfm(sym: Symbol):
-            return callback(sym, new_params)
+            print_bf and print("[{}]<< {}".format(tr_name, sym))
+            out = callback(sym, new_params)
+            print_af and print("[{}]>> {}".format(tr_name, out))
+            return out
 
-        with N(callback.__name__):
+        with N(tr_name):
             new_symbol = transform(self.symbol, _tfm)
-        return Trace(callback.__name__, new_symbol, new_params)
+        # raw_print(new_symbol)
+        print("Applied transform: {}".format(tr_name))
+        return Trace(tr_name, new_symbol, new_params)
 
     def to_expr(self, expr_map={}) -> ir.RelayExpr:
         return symbol2expr(self.symbol, expr_map)

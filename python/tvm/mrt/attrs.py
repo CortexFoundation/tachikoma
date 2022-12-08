@@ -46,8 +46,8 @@ def _format_as_tuple(attrs: AttrsT, *keys):
     return attrs
 
 @dataclass
-@register_attrs(AVG_POOL2D)
-class AvgPool2DAttrs(_BaseAttrs):
+@register_attrs(GLOBAL_AVG_POOL2D)
+class GlobalAvgPool2DAttrs(_BaseAttrs):
     output_size: typing.Tuple[int, int]
     layout: str
     out_layout: str

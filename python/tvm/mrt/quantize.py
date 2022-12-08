@@ -5,89 +5,92 @@ import typing
 
 from dataclasses import dataclass, field, InitVar, asdict
 
+from .utils import *
 from .symbol import *
+from . import op
 from .transform import Transformer
 from .calibrate import Calibrator
+from .scale import *
 from .precision import *
 
-def number_to_bits(number: float):
-    """ Return the integer bits to represent number.
-        precision bit: 1
-        number bits:
-            [ 0-0 ] => 0, skip
-            [ 1-1 ] => 1, ceil(log2(i+1)) = 1
-            [ 2-3 ] => 2, ceil(log2(i+1)) = 2
-            [ 4-7 ] => 3, ceil(log2(i+1)) = 3
-            ...
-
-        return 1 + ceil(log2(number + 1))
-
-        note: consider the abs round int for number.
-    """
-    number = math.fabs(number)
-    number = math.floor(number + 0.5)
-    return 1 + math.ceil(math.log2(number + 1))
-
-class Requantizer(Transformer):
-    def __call__(self, expected: Precision):
-        if self.is_input():
-            return self.requantize_input(expected)
-        elif self.is_param():
-            return self.requantize_param()
-        self.requantize_operator()
-
-    # def requantize_input(self):
-    #     return Requantizer.
-
-
 @dataclass(repr=False)
-class Quantizer(Transformer, WithPrecision):
+class Quantizer(Transformer):
     """ Scale current operator into integer range.
 
     """
-    # scaler: Scaler
+    scaler: Scaler
 
-    MAX_BIT: typing.ClassVar[int] = 32
+    # MAX_BIT: typing.ClassVar[int] = 32
     """ maximum bit for quantization. """
 
-    tight_precision: Quantizer | None = None
-    cached_requant: typing.Dict[int, Scaler] = field(default=dict)
+    tight_precision: Quantizer | None
+    requants: typing.Dict[int, Quantizer]
 
-    # @property
-    # def scale(self):
-    #     return selc.scaler.scale
+    @property
+    def scale(self):
+        return self.scaler.scale
+    @property
+    def precision(self):
+        return self.scaler.precision
 
-    # @classmethod
-    # def base(cls, symbol: Calibrator, **kwargs):
-    #     assert isinstance(sym, Calibrator)
-    #     scaler = SymmetricMinMaxScaler.base(symbol)
-    #     return cls.from_dict(
-    #             symbol.to_dict(**kwargs),
-    #             scaler=SymmetricMinMaxScaler.base(symbol))
+    @classmethod
+    def default_dict(cls) -> dict:
+        return super().default_dict(
+            tight_precision = None,
+            requants = {})
 
-    def __call__(self,
-            scaler_type: typing.Type[Scaler] = SymmetricMinMaxScaler):
-        anno: Annotate = Annotate.base(self)
+    def __repr__(self):
+        return super().__repr__(
+                precision=self.precision,
+                scale=self.scale)
+
+    @classmethod
+    def base(cls, symbol: Scaler, **kwargs):
+        assert isinstance(symbol, Scaler), type(symbol)
+        return cls.from_dict(
+                symbol.to_dict(**kwargs),
+                scaler=symbol)
+
+    def __call__(self):
+        scalers: AnnotateT = Annotate.bind(self)
 
         for i in range(len(self.args)):
-            expected = anno.arg_precisions[i]
-            self.args[i] = self.args[i].tight_precision
-            self.args[i] = self.args[i].requantize(expected)
+            arg  = self.args[i].tight_precision
+            self.args[i] = arg.requantize(scalers[i])
+            print("arg: ", i, self.args[i])
 
-        ip = InferPrecision.base(self)
-        sc = InferScale.base(self)
-        print(ip.raw_str(), sc.scale)
+
+        ip = InferPrecision.bind(self)
+        sc = InferScale.bind(self)
+        self.scaler.set(sc, ip)
+        # print(ip.raw_str(), sc.scale)
         # self = Rewriter.base(self)()
-        self.require_tight_prec(scaler_type(sc.scale))
 
+        self.examine_precision()
+        # print("> [quantized]", self)
         return self
 
-    def require_tight_prec(self, scale):
-        self.tight_precision = self.copy(
-            scaler=self.scaler.copy(scale=scale))
+    def examine_precision(self):
+        new_scaler: Scaler = self.scaler.copy()
+        new_scaler.examine()
 
-    def requantize(self):
-        return self
+        out = self
+        if self.scaler.precision > new_scaler.precision:
+            out = op.pclip(out, precision=new_scaler.precision)
+        self.tight_precision = out.like(self, scaler=new_scaler)
+
+    def requantize(self, new_scaler: Scaler) -> Requantizer:
+        """ if set scale, use scale to calculate prec. """
+        # new_scaler: Scaler = self.scaler.copy()
+        # new_scaler.examine(scale, prec)
+        key = new_scaler.hash()
+        if key in self.requants:
+            return self.requants[key]
+
+        out = new_scaler.rescale(self.scaler, self)
+        out = out.like(self, scaler=new_scaler)
+        self.requants[key] = out
+        return out
 
     def calc_args_prec(self) -> typing.List[int]:
         raise NotImplementedError()

@@ -9,6 +9,7 @@ from tvm.ir.expr import *
 from tvm.relay.expr import *
 
 from .symbol import *
+from .opns import *
 from . import op
 
 __ALL__ = [ "expr2symbol", "symbol2expr", ]
@@ -59,11 +60,11 @@ def expr2symbol(expr: RelayExpr) -> Symbol:
             args = [ symbol_map[node.tuple_value], ]
             attrs['index'] = node.index
             symbol_map[node] = op._new_op(
-                    op.TUPLE_GET_ITEM, *args, **attrs)
+                    TUPLE_GET_ITEM, *args, **attrs)
         elif isinstance(node, relay.Tuple):
             args = [ symbol_map[f] for f in node.fields ]
             symbol_map[node] = op._new_op(
-                    op.TUPLE, *args, **attrs)
+                    TUPLE, *args, **attrs)
         else:
             raise RuntimeError(
                 "MRT not support expr type:{}".format(type(node)))
@@ -90,7 +91,7 @@ def symbol2expr(symbol: Symbol, expr_map={}) -> RelayExpr:
     expr_map.clear()
     def _cast_symbol(sym: Symbol):
         args = [expr_map[i] for i in sym.args]
-        if sym.is_op(TUPLE_NAME):
+        if sym.is_op(TUPLE):
             out = relay.Tuple(args)
         else:
             try:

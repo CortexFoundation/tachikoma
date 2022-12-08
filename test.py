@@ -83,43 +83,62 @@ ir.type.TupleType
 #  tr = api.Trace("init", expr, params).infer_type()
 
 from tvm.mrt.trace import Trace
+from tvm.mrt.opns import *
 from tvm.mrt.symbol import *
 tr = Trace.from_expr(expr, params)
+tr.dump("./data/init.trace")
 
 tvm.nd.NDArray
-tr.print()
-
-#  from tvm.mrt.calibrate import Calibrator
-#  calibrate_tr = tr.transform(Calibrator.apply())
+# tr.print()
 
 from tvm.mrt import fuse
 from tvm.mrt import op
-fuse_path = "data/fuse.mrt"
-if True or not path.exists(fuse_path):
-    tr = tr.transform(fuse.FuseBatchNorm.apply())
-    tr = tr.transform(fuse.FuseAvgPool2D.apply())
-    # with open(fuse_path, "w") as f:
-    #     f.write(json.dumps(dump_json(tr.symbol)))
-    tr.dump(fuse_path)
-tr = Trace.load(fuse_path)
+fuse_tr = tr.checkpoint_transform(
+        fuse.FuseTupleGetItem.apply(),
+        fuse.FuseBatchNorm.apply(),
+        fuse.FuseAvgPool2D.apply(),
+        tr_name = "fuse",
+        force=True,
+        )
 
-from tvm.mrt.precision import Annotate, InferPrecision, WithPrecision
-from tvm.mrt.quantize import Quantizer
+from tvm.mrt.calibrate import Calibrator, SymmetricMinMaxSampling
+
+calib_tr = fuse_tr.checkpoint_transform(
+        Calibrator.apply(),
+        # print_af=True
+)
+calib_tr = calib_tr.checkpoint_transform(
+        SymmetricMinMaxSampling.apply())
+# calib_tr.print()
+# print(type(calib_tr.symbol))
+
+# from tvm.mrt.precision import Annotate, InferPrecision
+# from tvm.mrt.quantize import Quantizer
+from tvm.mrt import discrete as dt
 
 # data = tr.symbol.to_dict()
 # p = InferPrecision.from_dict(data)
-print(InferPrecision.default_dict(attr=10))
-print(Quantizer.update_dict(tr.symbol.to_dict()).keys())
-print(Annotate.__mro__)
+# print(InferPrecision.default_dict(attr=10))
+# print(Quantizer.update_dict(tr.symbol.to_dict()).keys())
+# print(Annotate.__mro__)
 
+# calib_tr.print()
+
+# calib_tr = calib_tr.subgraph(onames=["%5"])
+dt_tr = calib_tr.transform(dt.SymmetricLinearDiscretor.apply())
+dt_tr = dt_tr.checkpoint_transform(
+        dt.Quantizer.apply(),
+        # print_af=True
+)
+# dt_tr = dt_tr.transform(dt.Quantizer.apply(), print_af=True)
 # ip = InferPrecision.base(tr.symbol)
-tr = tr.transform(Quantizer.apply())
+# calib_tr = calib_tr.transform(Quantizer.apply(), print_af=True)
 # tr = tr.transform(Annotate.apply())
 # tr.print(view_layers=4)
 # tr = tr.transform(InferPrecision.apply())
 
-tr.print()
-tr.print_ops("nn.max_pool2d")
+# dt_tr.print()
+# dt_tr.print_ops("nn.max_pool2d")
 
 sys.exit(1)
 

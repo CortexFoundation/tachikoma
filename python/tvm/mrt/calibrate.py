@@ -8,15 +8,28 @@ import tvm
 from dataclasses import dataclass, field, InitVar
 
 from .symbol import *
+from . import op
+from .sym_expr import *
 from . import runtime
 from .transform import Transformer
 from .types import *
 
-@dataclass
+@dataclass(repr=False)
 class Calibrator(Transformer):
     is_nd: bool = False
-    nd_data: typing.List[tvm.nd.NDArray] = field(default_factory=list)
-    np_data: typing.List[np.ndarray] = field(default_factory=list)
+    nd_data: typing.List[tvm.nd.NDArray] = field(
+            repr=False, default_factory=list)
+    """ not to dump, and restore from np_data. """
+    data: typing.List[np.ndarray] = field(default_factory=list)
+
+    @classmethod
+    def update_dict(cls, data_dict, **kwargs):
+        np_data = data_dict.get("data", None)
+        nd_data = data_dict.get("nd_data", None)
+        if np_data is not None and nd_data is None:
+            nd_data = [ tvm.nd.array(d) for d in np_data ]
+            data_dict["nd_data"] = nd_data
+        return super().update_dict(data_dict, **kwargs)
 
     def __call__(self,
             data: tvm.nd.NDArray | None =None,
@@ -46,16 +59,15 @@ class Calibrator(Transformer):
             self._assert([o.dtype for o in out], self.dtype)
             self._assert([o.shape for o in out], self.shape)
 
-        self.np_data = [ d.numpy() for d in self.nd_data ]
+        self.data = [ d.numpy() for d in self.nd_data ]
 
     def run(self, args_data: typing.Dict[str, tvm.nd.NDArray]):
-        if self.is_op(TUPLE_GET_ITEM_NAME):
-            return self.args[0].flat_nd_data[self.parsed.index]
+        if self.is_op(TUPLE_GET_ITEM):
+            return self.args[0].nd_data[self.parsed.index]
         elif self.is_op(REQUANT):
             return self.args[0].flat_nd_data
 
-        args = [ a.as_parameter() for a in self.args]
-        sym = self.clone(Symbol, args=args)
+        sym: Symbol = op.retrieve_operator(self)
         expr = symbol2expr(sym)
         return runtime.infer(expr, args_data)
 
@@ -71,3 +83,41 @@ class Calibrator(Transformer):
                 self._assert(v, e)
             return
         assert val == expect, "{} vs. {}".format(val, expect)
+
+
+@dataclass(repr=False)
+class Sampling(Transformer):
+    data: typing.Any
+
+    @classmethod
+    def update_dict(cls, data_dict: dict, **kwargs) -> dict:
+        data_dict.update(kwargs)
+        data = data_dict.get("data", None)
+        origin: Calibrator = data_dict.get("origin", None)
+        if isinstance(origin, Calibrator):
+            data = cls.sampling(origin.data)
+        assert data is not None
+        return super().update_dict(data_dict, data=data)
+
+    @classmethod
+    def sampling(cls, np_data: np.ndarray) -> typing.Any:
+        raise NotImplementedError()
+
+    def __call__(self, *args, **kw):
+        return self
+
+@dataclass(repr=False)
+class SymmetricMinMaxSampling(Sampling):
+    data: float
+
+    def __repr__(self, **attrs):
+        attrs.setdefault("threshold", self.data)
+        return super().__repr__(**attrs)
+
+    @classmethod
+    def sampling(cls, data: np.ndarray) -> float:
+        if isinstance(data, list):
+            return max([cls.sampling(d) for d in data])
+        return float(np.abs(data).max())
+
+

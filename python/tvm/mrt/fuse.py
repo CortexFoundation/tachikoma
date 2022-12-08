@@ -4,13 +4,14 @@ from collections import namedtuple
 import numpy as np
 
 from . import op
+from .opns import *
 from .symbol import *
 from .attrs import *
 from .utils import N
 from .transform import Transformer
 
 class FuseBatchNorm(Transformer):
-    @filter_operators(op.BATCH_NORM)
+    @filter_operators(BATCH_NORM)
     def __call__(self):
         X, gamma, beta, mean, var = self.args
         parsed: BatchNormAttrs = self.parsed
@@ -28,7 +29,7 @@ class FuseBatchNorm(Transformer):
         bias: np.ndarray = beta - mean * gamma
         # X * gamma - bias
 
-        if X.is_op(op.CONV2D):
+        if X.is_op(CONV2D):
             A, W = X.args
             conv_parsed: Conv2DAttrs = X.parsed
 
@@ -48,8 +49,15 @@ class FuseBatchNorm(Transformer):
             assert False
         return out
 
+class FuseTupleGetItem(Transformer):
+    @filter_operators(TUPLE_GET_ITEM)
+    def __call__(self):
+        X = self.args[0]
+        assert X.is_op(BATCH_NORM)
+        return X
+
 class FuseAvgPool2D(Transformer):
-    @filter_operators(op.AVG_POOL2D)
+    @filter_operators(GLOBAL_AVG_POOL2D)
     def __call__(self):
         X = self.args[0]
         parsed: AvgPool2DAttrs = self.parsed
@@ -58,7 +66,9 @@ class FuseAvgPool2D(Transformer):
         assert all([s == 1 for s in parsed.output_size])
         assert parsed.layout == "NCHW"
         scale = 1 / np.product(X.shape[-2:])
+        out = op.sum(X, axis=list(range(4))[-2:],
+                keepdims=True, exclude=False)
         scale = self.from_np_data(scale.astype(X.dtype))
-        return op.mul(X, scale)
+        return op.mul(out, scale)
 
 

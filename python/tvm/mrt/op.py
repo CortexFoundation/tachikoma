@@ -5,39 +5,39 @@ from dataclasses import dataclass
 
 from .symbol import *
 from .utils import *
+from .opns import *
 
-VAR = "var"
+def retrieve_operator(symbol: Symbol) -> Symbol:
+    args = [ variable(a.name, a.shape, a.dtype) \
+            for a in symbol.args ]
+    return Symbol.base(symbol, args=args)
 
-TUPLE = "Tuple"
-TUPLE_GET_ITEM = "TupleGetItem"
+def infer_type(symbol: Symbol) -> Symbol:
+    from tvm import relay, ir
+    from tvm.mrt import sym_expr
 
-CONV2D = "nn.conv2d"
-DENSE = "nn.dense"
-BATCH_NORM = "nn.batch_norm"
-BIAS_ADD = "nn.bias_add"
-RELU = "nn.relu"
-AVG_POOL2D = "nn.adaptive_avg_pool2d"
-MAX_POOL2D = "nn.max_pool2d"
+    expr = sym_expr.symbol2expr(symbol)
+    mod = relay.transform.InferType()(ir.IRModule.from_expr(expr))
+    expr = mod["main"].body
+    return sym_expr.expr2symbol(expr)
 
-SQUEEZE = "squeeze"
-RESHAPE = "reshape"
-
-ADD = "add"
-SUB = "sub"
-MUL = "multiply"
-
-# ======= mrt requant op ==========
-REQUANT = "mrt.requant"
-
-
-@dataclass
+@dataclass(repr=False)
 class InferType(Symbol):
     def __post_init__(self):
         assert is_operator(self)
-        self.attrs.update({
-            "shape": self._infer_shape(),
-            "dtype": self._infer_type(),
-        })
+
+        if type(self) is InferType:
+            sym = retrieve_operator(self)
+            sym = infer_type(sym)
+            self.attrs.update({
+                "shape": sym.shape,
+                "dtype": sym.dtype,
+            })
+        else:
+            self.attrs.update({
+                "shape": self._infer_shape(),
+                "dtype": self._infer_type(),
+            })
 
     def _infer_type(self):
         assert all([self.args[0].dtype == a.dtype \
@@ -47,46 +47,31 @@ class InferType(Symbol):
     def _infer_shape(self) -> ShapeT:
         raise NotImplementedError("")
 
+@dataclass(repr=False)
 class FirstLikeInferType(InferType):
-    def _infer_shape(self):
+    def _infer_shape(self) -> ShapeT:
         return self.args[0].shape
-
-class BroadcastInferType(InferType):
-    def _infer_shape(self):
-        assert len(self.args) == 2
-        A, B = self.args
-        ashp, bshp = A.shape, B.shape
-        alen, blen = len(ashp), len(bshp)
-        olen = max(alen, blen)
-        ashp = [1] * olen + list(ashp)
-        bshp = [1] * olen + list(bshp)
-
-        oshp = [1] * olen
-        for i in range(olen):
-            adim = ashp[i-olen]
-            bdim = bshp[i-olen]
-            if adim == 1 or bdim == 1:
-                oshp[i] = max(adim, bdim)
-            else:
-                assert adim == bdim
-                oshp[i] = adim
-        return oshp
 
 def _new_op(op_name, *args, **attrs) -> Symbol:
     return Symbol(N.n(), op_name, args, attrs)
 
-def _register_op(op_name, infer_type: typing.Type[InferType]):
+def _register_op(op_name,
+        infer_type: typing.Type[InferType] = InferType):
     def _op(*args, **attrs) -> Symbol:
         op = _new_op(op_name, *args, **attrs)
         return infer_type.base(op)
     return _op
 
-bias_add = _register_op(BIAS_ADD, FirstLikeInferType)
-add = _register_op(ADD, BroadcastInferType)
-sub = _register_op(SUB, BroadcastInferType)
-mul = _register_op(MUL, BroadcastInferType)
+tuple = _register_op(TUPLE)
+bias_add = _register_op(BIAS_ADD)
+add = _register_op(ADD)
+sub = _register_op(SUB)
+mul = _register_op(MUL)
+sum = _register_op(SUM)
 
 requant = _register_op(REQUANT, FirstLikeInferType)
+pclip = _register_op(PCLIP, FirstLikeInferType)
+rs_pclip = _register_op(RS_PCLIP, FirstLikeInferType)
 
 def variable(name, shape, dtype) -> Symbol:
     """ Create varible for symbol. """

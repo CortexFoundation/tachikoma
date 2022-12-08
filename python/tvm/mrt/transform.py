@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import typing
+from functools import wraps
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -22,9 +23,16 @@ class WithParameters(Symbol):
     params: ParametersT = field(repr=False)
 
     @classmethod
-    def update_dict(cls, data: dict) -> dict:
-        return super().update_dict(data,
-            parsed=parse_attrs(data["op_name"], data["attrs"]))
+    def update_dict(cls, data_dict: dict, **kwargs) -> dict:
+        data_dict.update(kwargs)
+        parsed = parse_attrs(
+                data_dict["op_name"], data_dict["attrs"])
+        return super().update_dict(data_dict, parsed=parsed)
+
+    def __repr__(self, **attrs):
+        if self.is_param() and self.shape == []:
+            attrs["scalar"] = float(self.numpy())
+        return super().__repr__(**attrs)
 
     def ndarray(self) -> tvm.nd.NDArray:
         assert self.is_param(), (
@@ -56,59 +64,108 @@ class WithParameters(Symbol):
         return is_operator(self, self.params)
 
 
+PassFuncT = typing.Callable[[Symbol], typing.Any]
+OpRegistryT = typing.Dict[str, PassFuncT]
+ClsRegistryT = typing.Dict[typing.Type, OpRegistryT]
+
+_PASS_REGISTRY: ClsRegistryT = {}
+@dataclass(repr=False)
+class Pass(WithParameters):
+    """ check every operator to be examined in pass. """
+    origin: Transformer
+
+    @classmethod
+    def _register_op(cls, f, *op_names, callback=None):
+        _PASS_REGISTRY.setdefault(cls, {})
+        op_registry = _PASS_REGISTRY[cls]
+        for opn in op_names:
+            callback and callback(opn, op_registry)
+            _PASS_REGISTRY[cls][opn] = f
+
+    @classmethod
+    def test(cls, *op_names):
+        def check_non_override(opn, op_registry):
+            assert opn not in op_registry, (
+                "Registry for {}:{} is overrided"
+            ).format(cls.__name, opn)
+
+        def _func(f, *args, **kw):
+            @wraps(f)
+            def _wrapper(sym: Symbol):
+                return f(sym, *args, **kw)
+            cls._register_op(_wrapper, *op_names,
+                    callback=check_non_override)
+            return f
+        return _func
+
+    @classmethod
+    def test_all(cls, f, *args, **kw):
+        @wraps(f)
+        def _wrapper(sym: Symbol):
+            return f(sym, *args, **kw)
+        cls._register_op(_wrapper, "*")
+        return f
+
+    @classmethod
+    def replace(cls, *op_names):
+        def check_non_override(opn, op_registry):
+            assert opn in op_registry, (
+                "Registry for {}:{} is not exists"
+            ).format(cls.__name, opn)
+
+        def _func(f, *args, **kw):
+            @wraps(f)
+            def _wrapper(sym: Symbol):
+                return f(sym, *args, **kw)
+            cls._register_op(_wrapper, *op_names,
+                    callback=check_non_override)
+            return f
+        return _func
+
+
+    # TODO: add unmount and unmount all function
+
+    @classmethod
+    def bind(cls, symbol: Symbol):
+        self = cls.base(symbol)
+
+        op_registry = _PASS_REGISTRY[cls]
+        for opn, reg in op_registry.items():
+            if self.is_op(opn):
+                return reg(self)
+
+        if "*" in op_registry:
+            return op_registry["*"](self)
+
+        assert False, "{} don't supported op:{}".format(
+                cls.__name__, self.op_name)
+
+
 @dataclass(repr=False)
 class Transformer(WithParameters):
     """ Type TransformerT for Trace """
+
+    def to_dict(self, **kwargs):
+        """ override to dict, since transformer may want to
+                access the previous tfm. Thus, the next
+                update_dict has the `origin` key by default.
+        """
+        return super().to_dict(origin=self, **kwargs)
+
     @classmethod
     def apply(cls, *args, **kw):
         def _tfm(sym: Symbol, params: ParametersT):
             ins = cls.base(sym, params=params)
             out = ins(*args, **kw) or ins
-            return out.like(ins)
+            if not isinstance(out, cls):
+                out = out.like(ins)
+            return out
 
         _tfm.__name__ = cls.__name__
         return _tfm
 
     def __call__(self, *args, **kw) -> Symbol:
         raise NotImplementedError()
-
-PassFuncT = typing.Callable[[Symbol], typing.Any]
-
-@dataclass(repr=False)
-class Pass(WithParameters):
-    """ check every operator to be examined in pass. """
-    OP_REGISTRY: typing.ClassVar[typing.Dict[str, PassFuncT]] = {}
-
-    @classmethod
-    def test(cls, *op_names):
-        def _func(f, *args, **kw):
-            def _wrapper(sym: Symbol):
-                return f(sym, *args, **kw)
-            for opn in op_names:
-                cls.OP_REGISTRY[opn] = _wrapper
-            return f
-        return _func
-
-    @typing.final
-    def __post_init__(self):
-        for opn, reg in self.OP_REGISTRY.items():
-            if self.is_op(opn):
-                reg(self)
-                return
-
-        assert False, "{} don't supported op:{}".format(
-                type(self), self.op_name)
-
-
-    @staticmethod
-    def _pass_identity(*args, **kw):
-        pass
-
-    @classmethod
-    def ignore(cls, *op_names):
-        for opn in op_names:
-            cls.OP_REGISTRY[opn] = cls._pass_identity
-        return cls._pass_identity
 
 class Quantizer(Transformer):
     def expect_max_precision(self, max_prec) -> Quantizer:
