@@ -123,7 +123,7 @@ dt_tr = dt_tr.checkpoint_transform(
 # tr = tr.transform(InferPrecision.apply())
 
 dt_tr.print(short=True, suffix_layers=10)
-dt_tr.print(selects=["nn.max_pool2d"])
+# dt_tr.print(selects=["nn.max_pool2d"])
 
 sys.exit(1)
 

@@ -84,6 +84,11 @@ class Pass(WithParameters):
             _PASS_REGISTRY[cls][opn] = f
 
     @classmethod
+    def unmount_all(cls):
+        _PASS_REGISTRY.setdefault(cls, {})
+        _PASS_REGISTRY[cls].clear()
+
+    @classmethod
     def test(cls, *op_names):
         def check_non_override(opn, op_registry):
             assert opn not in op_registry, (

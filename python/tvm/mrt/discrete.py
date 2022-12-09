@@ -106,6 +106,7 @@ class InferPrecision(Pass):
         add_bits = count_to_bits(add_count)
         return self._infer_mul() + add_bits
 
+# default InferPrecision
 InferPrecision.test(VAR)(lambda x: None)
 InferPrecision.test(TUPLE)(InferPrecision._infer_max)
 @InferPrecision.test(TUPLE_GET_ITEM)
@@ -129,21 +130,10 @@ InferPrecision.test(MUL)(InferPrecision._infer_mul)
 
 @dataclass(repr=False)
 class InferDiscretor(Pass):
+    """ Discretization Information Inference with Operator """
     @property
     def arg_infos(self):
         return [a.dt.info for a in self.args]
-
-    def infer_index(self, index):
-        return self.arg_infos[index]
-
-    def first_like(self):
-        infos = self.arg_infos
-        assert infos.count(infos[0]) == len(infos), infos
-        return self.infer_index(0)
-
-    def infer_mul(self):
-        """ only SymmetricLinearDiscretor """
-        return np.product(self.arg_infos)
 
 @dataclass(repr=False)
 class InferOperator(Pass):

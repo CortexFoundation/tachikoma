@@ -16,6 +16,7 @@ class Quantizer(Transformer):
 
         Lose the discretor information if dump.
     """
+    summary: str | None
     dt: Discretor | None = field(repr=False)
     revised: Quantizer | None = field(repr=False)
     requants: typing.Dict[str, Quantizer] = field(repr=False)
@@ -23,11 +24,12 @@ class Quantizer(Transformer):
     @classmethod
     def default_dict(cls, **kwargs) -> dict:
         return super().default_dict(
-                dt = None, revised = None,
+                dt = None, summary=None,
+                revised = None,
                 requants = {}, **kwargs)
 
     def __repr__(self, **attrs):
-        attrs.setdefault("info", self.dt.summary())
+        attrs.setdefault("summary", self.summary)
         return super().__repr__(**attrs)
 
     @classmethod
@@ -37,11 +39,9 @@ class Quantizer(Transformer):
         if dt is None and "origin" in data_dict:
             dt : Discretor = data_dict["origin"]
             assert isinstance(dt, Discretor)
+        if dt is not None:
+            data_dict["summary"] = dt.summary()
         return super().update_dict(data_dict, dt=dt)
-
-    def __repr__(self):
-        return super().__repr__(
-                info=self.dt and self.dt.summary())
 
     def __call__(self):
         arg_dts: typing.List[Discretor] = ArgAnnotator.bind(self)
@@ -54,6 +54,7 @@ class Quantizer(Transformer):
         if self.is_operator():
             self.dt.info = InferDiscretor.bind(self)
             self.dt.precision = InferPrecision.bind(self)
+            self.summary = self.dt.summary()
             self.examine_precision()
         return InferOperator.bind(self)
 

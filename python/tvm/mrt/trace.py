@@ -173,7 +173,8 @@ class Trace:
             till_layer=None,
             selects: typing.List[str] =[]
     ):
-        msg = "{f} {s} {f}".format(f="=" * 25, s=self.name)
+        msg = "{f} {s} View {f}".format(
+                f="=" * 25, s=self.name)
         print(msg)
 
         info = {
@@ -207,9 +208,7 @@ class Trace:
             if layer >= till_layer:
                 return False
             if layer < prefix_layers or layer >= suffix_layers:
-                selected = sym.name in selects
-                selected = selected or (sym.op_name in selects)
-                return selected
+                return True
             return False
 
         def _print(sym: Symbol, params: ParametersT):
@@ -218,9 +217,13 @@ class Trace:
                 print("\t......\n\t{{skip {} layers}}".format(
                     suffix_layers - prefix_layers))
 
-            if _check(sym):
-                print(sym)
+            checked = _check(sym)
             info["layers"] += 1
+            selected = sym.name in selects
+            selected = selected or (sym.op_name in selects)
+            checked = checked and selected
+
+            checked and print(sym)
 
         self.visit(_print)
 
@@ -304,6 +307,8 @@ class Trace:
             for cb in callbacks:
                 tr = tr.transform(cb, **kwargs)
             tr.dump(tr_path)
+            print("Dumped checkpoint: {:20} into {}".format(
+                tr_name, tr_path))
             return tr
         tr = Trace.load(tr_path)
         print("Loaded checkpoint: {:20} from {}".format(
