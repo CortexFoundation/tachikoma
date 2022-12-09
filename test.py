@@ -103,24 +103,16 @@ calib_tr = calib_tr.checkpoint_transform(
 # calib_tr.print()
 # print(type(calib_tr.symbol))
 
-# from tvm.mrt.precision import Annotate, InferPrecision
-# from tvm.mrt.quantize import Quantizer
-from tvm.mrt import discrete as dt
-
-# data = tr.symbol.to_dict()
-# p = InferPrecision.from_dict(data)
-# print(InferPrecision.default_dict(attr=10))
-# print(Quantizer.update_dict(tr.symbol.to_dict()).keys())
-# print(Annotate.__mro__)
-
-# calib_tr.print()
+from tvm.mrt.rules import symmetric_linear_minmax as dt
+from tvm.mrt.quantize import Quantizer
 
 # calib_tr = calib_tr.subgraph(onames=["%5"])
 dt_tr = calib_tr.checkpoint_transform(
         dt.SymmetricLinearDiscretor.apply(),
-        force=True)
+        # force=True,
+        )
 dt_tr = dt_tr.checkpoint_transform(
-        dt.Quantizer.apply(),
+        Quantizer.apply(),
         # print_af=True
 )
 # dt_tr = dt_tr.transform(dt.Quantizer.apply(), print_af=True)
@@ -130,8 +122,8 @@ dt_tr = dt_tr.checkpoint_transform(
 # tr.print(view_layers=4)
 # tr = tr.transform(InferPrecision.apply())
 
-dt_tr.print()
-dt_tr.print_ops("nn.max_pool2d")
+dt_tr.print(short=True, suffix_layers=10)
+dt_tr.print(selects=["nn.max_pool2d"])
 
 sys.exit(1)
 

@@ -1,11 +1,14 @@
-""" op names and helper function
+""" op helper function
+
+This module should not be imported with *, since this
+    overrides many common builtins' type.
 """
 
 from dataclasses import dataclass
 
-from .symbol import *
-from .utils import *
 from .opns import *
+from .utils import *
+from .symbol import *
 
 def retrieve_operator(symbol: Symbol) -> Symbol:
     args = [ variable(a.name, a.shape, a.dtype) \
@@ -88,8 +91,4 @@ def is_input(symbol: Symbol, params: ParametersT):
     return is_variable(symbol) and symbol.name not in params
 def is_param(symbol: Symbol, params: ParametersT):
     return is_variable(symbol) and symbol.name in params
-
-relay.sum
-relay.add
-
 

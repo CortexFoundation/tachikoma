@@ -12,7 +12,7 @@ from tvm import relay, ir
 from tvm.contrib import graph_executor as graph
 
 from .symbol import *
-from .op import *
+from . import op
 from .sym_expr import *
 from .types import *
 from . import runtime
@@ -40,9 +40,9 @@ class Trace:
         self.sym_inputs = []
         self.sym_params = []
         def _init(sym: Symbol):
-            if is_input(sym, self.params):
+            if op.is_input(sym, self.params):
                 self.sym_inputs.append(sym)
-            elif is_param(sym, self.params):
+            elif op.is_param(sym, self.params):
                 pshape = list(self.params[sym.name].shape)
                 assert sym.shape == pshape, (
                     "param:{} shape inconsistent: {} vs. {}"
@@ -166,46 +166,71 @@ class Trace:
        symbol = transform(self.symbol, _set_shape)
        return Trace.from_expr(symbol2expr(symbol), self.params)
 
-    def print(self, view_layers=0, till_layer=None):
-        info = { "op": 0, "param": 0 }
-        op_names = set()
-
-        def _simple_visit(sym: Symbol, params: ParametersT):
-            if view_layers and info["op"] > view_layers-1:
-                return
-            if info.get("skip", False):
-                return
-            if till_layer and till_layer in [
-                    sym.name, sym.op_nameA ]:
-                info["skip"] = True
-
-            if is_param(sym, params):
-                info["param"] += np.product(sym.shape)
-
-            info["op"] += is_operator(sym)
-
-            op_names.add(sym.op_name)
-            print(sym)
-        self.visit(_simple_visit)
-
+    def print(self,
+            prefix_layers=0,
+            suffix_layers=0,
+            short: bool = False,
+            till_layer=None,
+            selects: typing.List[str] =[]
+    ):
         msg = "{f} {s} {f}".format(f="=" * 25, s=self.name)
         print(msg)
-        print("Operators: {} | Parameters: {}".format(
-            info["op"], int(info["param"])))
-        print(", ".join(op_names))
+
+        info = {
+                "ops": 0, "params": 0,
+                "op_names": set(),
+                "layers": 0, "total_layers": 0,
+        }
+        def _calc(sym: Symbol, params: ParametersT):
+            info["total_layers"] += 1
+            info["op_names"].add(sym.op_name)
+
+            if op.is_param(sym, params):
+                info["params"] += np.product(sym.shape)
+            info["ops"] += op.is_operator(sym)
+
+        self.visit(_calc)
+
+        if short:
+            prefix_layers = prefix_layers or 5
+            suffix_layers = suffix_layers or 5
+        prefix_layers = prefix_layers or info["total_layers"]
+        suffix_layers = suffix_layers or info["total_layers"]
+        suffix_layers = info["total_layers"] - suffix_layers
+        till_layer = till_layer or info["total_layers"]
+
+        user_select = bool(selects)
+        selects = selects or info["op_names"]
+        # print(prefix_layers, suffix_layers, till_layer)
+        def _check(sym: Symbol):
+            layer = info["layers"]
+            if layer >= till_layer:
+                return False
+            if layer < prefix_layers or layer >= suffix_layers:
+                selected = sym.name in selects
+                selected = selected or (sym.op_name in selects)
+                return selected
+            return False
+
+        def _print(sym: Symbol, params: ParametersT):
+            if suffix_layers > prefix_layers and \
+                    info["layers"] == suffix_layers:
+                print("\t......\n\t{{skip {} layers}}".format(
+                    suffix_layers - prefix_layers))
+
+            if _check(sym):
+                print(sym)
+            info["layers"] += 1
+
+        self.visit(_print)
+
+        print("_" * len(msg))
+        user_select and print("Collect operators in [{}]".format(
+            ", ".join(selects)))
+        print("Layers: {} | Operators: {} | Parameters: {}".format(
+            info["total_layers"], info["ops"], int(info["params"])))
+        print("Operator Names:", ", ".join(info["op_names"]))
         print("=" * len(msg))
-
-    def print_ops(self, *op_names: str):
-        print("=" * 50)
-        print("Collect operators in [{}]".format(
-            ", ".join(op_names)))
-
-        @filter_operators(*op_names)
-        def _cond_print(sym: Symbol, params: ParametersT):
-            print(">", sym)
-        self.visit(_cond_print)
-
-        print("=" * 50)
 
     def subgraph(self, inames=[], onames=[]) -> Trace:
         out = []

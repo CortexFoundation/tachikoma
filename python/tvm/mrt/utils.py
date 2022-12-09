@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+import os
+import math
 import typing
 import threading
-import os
 from os import path
-
-from tvm import relay, ir
 
 from .types import *
 
@@ -93,3 +92,33 @@ def dataclass_to_dict(dc: dataclass, check_repr=False) -> dict:
             for f in fields(dc) if _check(f)}
     # return dict((f.name, getattr(dc, f.name)) \
     #         for f in fields(dc))
+
+def number_to_bits(number: float) -> int:
+    """ Return the integer bits to represent number.
+        precision bit: 1
+        number bits:
+            [ 0-0 ] => 0, skip
+            [ 1-1 ] => 1, ceil(log2(i+1)) = 1
+            [ 2-3 ] => 2, ceil(log2(i+1)) = 2
+            [ 4-7 ] => 3, ceil(log2(i+1)) = 3
+            ...
+
+        return 1 + ceil(log2(number + 1))
+
+        note: consider the abs round int for number.
+    """
+    number = math.fabs(number)
+    number = math.floor(number + 0.5)
+    return 1 + math.ceil(math.log2(number + 1))
+
+def count_to_bits(count: int):
+    """
+    # get_bit_cnt (mrt) should be consistent with
+    # GetReduceSumBit (cvm-runtime)
+
+    """
+    prec = 0
+    while count != 0:
+        prec += 1
+        count >>= 1
+    return prec
