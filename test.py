@@ -89,7 +89,7 @@ fuse_tr = tr.checkpoint_transform(
         fuse.FuseBatchNorm.apply(),
         fuse.FuseAvgPool2D.apply(),
         tr_name = "fuse",
-        force=True,
+        # force=True,
         )
 
 from tvm.mrt.calibrate import Calibrator, SymmetricMinMaxSampling
