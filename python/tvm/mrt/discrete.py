@@ -115,7 +115,8 @@ class SymmetricLinearDiscretor(
 
     @classmethod
     def update_dict(cls, data_dict, **kwargs) -> dict:
-        assert isinstance(
+        if "origin" in data_dict:
+            assert isinstance(
                 data_dict["origin"], SymmetricMinMaxSampling), \
                 type(data_dict["origin"])
         assert isinstance(data_dict["data"], float), \
@@ -208,15 +209,17 @@ class Quantizer(Transformer):
         return super().__repr__(**attrs)
 
     @classmethod
-    def update_dict(cls, d: dict, **kwargs) -> dict:
-        dt = d.get("dt", None)
-        if dt is None:
-            dt : Discretor = d["origin"]
+    def update_dict(cls, data_dict, **kwargs) -> dict:
+        data_dict.update(kwargs)
+        dt = data_dict.get("dt", None)
+        if dt is None and "origin" in data_dict:
+            dt : Discretor = data_dict["origin"]
             assert isinstance(dt, Discretor)
-        return super().update_dict(d, dt=dt, **kwargs)
+        return super().update_dict(data_dict, dt=dt)
 
     def __repr__(self):
-        return super().__repr__(info=self.dt.summary())
+        return super().__repr__(
+                info=self.dt and self.dt.summary())
 
     def __call__(self):
         arg_dts: typing.List[Discretor] = ArgDiscretor.bind(self)

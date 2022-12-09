@@ -30,8 +30,11 @@ class Trace:
     params: ParametersT
 
     _loaded: bool = False
+    _model_name: str = "unknown-model"
     sym_inputs: typing.List[Symbol] = field(init=False)
     sym_params: typing.List[Symbol] = field(init=False)
+
+    BASE_DIR: typing.ClassVar[str] = "./data"
 
     def __post_init__(self):
         self.sym_inputs = []
@@ -215,7 +218,9 @@ class Trace:
         tr = self.transform(_find)
         out = out or [ tr.symbol ]
         out = out[0] if len(out) else op.tuple(*out)
-        return Trace("subgraph", out, self.params)
+        return Trace("subgraph", out, self.params,
+                _loaded=self._loaded,
+                _model_name=self._model_name)
 
     def visit(self, callback: Visitor):
         def _visitor(sym: Symbol):
@@ -223,62 +228,6 @@ class Trace:
 
         with N(callback.__name__):
             visit(self.symbol, _visitor)
-
-    def dump(self, trace_path: str):
-        data = dump_json(self.symbol)
-        data.update({
-            "_trace_name": self.name,
-            "params": {k: v.numpy() \
-                    for k, v in self.params.items()},
-        })
-        try:
-            with open(trace_path, "wb") as f:
-                pickle.dump(data, f)
-        except Exception as e:
-            # clean generated empty path
-            os.remove(trace_path)
-            raise e
-
-    @staticmethod
-    def load(trace_path: str) -> Trace:
-        with open(trace_path, "rb") as f:
-            data = pickle.load(f)
-
-        name = data["_trace_name"]
-        params = {k: tvm.nd.array(v) \
-                for k, v in data["params"].items()}
-        symbol = load_json(data, params=params)
-        return Trace(name, symbol, params, _loaded=True)
-
-    def checkpoint_transform(self,
-            *callbacks: Transformer,
-            tr_name: str = None,
-            base_dir = "./data",
-            force = False,
-            **kwargs):
-        """ Apply transform in current trace for checkpoint.
-
-            If current trace is not loaded, than force to
-                apply transformers.
-        """
-        assert len(callbacks) > 0
-        os.makedirs(base_dir, exist_ok=True)
-
-        if not self._loaded:
-            force = True
-
-        tr_name = tr_name or callbacks[-1].__name__
-        tr_path = os.path.join(base_dir, tr_name + ".trace")
-        if force or not path.exists(tr_path):
-            tr = self
-            for cb in callbacks:
-                tr = tr.transform(cb, **kwargs)
-            tr.dump(tr_path)
-            return tr
-        tr = Trace.load(tr_path)
-        print("Loaded checkpoint: {:20} from {}".format(
-            tr_name, tr_path))
-        return tr
 
     def transform(self,
             callback: Transformer,
@@ -298,12 +247,87 @@ class Trace:
             new_symbol = transform(self.symbol, _tfm)
         # raw_print(new_symbol)
         print("Applied transform: {}".format(tr_name))
-        return Trace(tr_name, new_symbol, new_params)
+        return Trace(tr_name, new_symbol, new_params,
+                _loaded=False,
+                _model_name=self._model_name)
+
+    def _get_checkpoint_path(self, tr_name):
+        base_dir = os.path.join(self.BASE_DIR, self._model_name)
+        os.makedirs(base_dir, exist_ok=True)
+
+        tr_name = tr_name or self.name
+        return os.path.join(base_dir, tr_name + ".trace")
+
+    def checkpoint_transform(self,
+            *callbacks: Transformer,
+            tr_name: str = None,
+            force = False,
+            **kwargs):
+        """ Apply transform in current trace for checkpoint.
+
+            If current trace is not loaded, than force to
+                apply transformers.
+        """
+        assert len(callbacks) > 0
+        if not self._loaded:
+            force = True
+
+        tr_name = tr_name or callbacks[-1].__name__
+        tr_path = self._get_checkpoint_path(tr_name)
+        if force or not path.exists(tr_path):
+            tr = self
+            for cb in callbacks:
+                tr = tr.transform(cb, **kwargs)
+            tr.dump(tr_path)
+            return tr
+        tr = Trace.load(tr_path)
+        print("Loaded checkpoint: {:20} from {}".format(
+            tr_name, tr_path))
+        return tr
+
+    def checkpoint(self, tr_name: str = None):
+        tr_path = self._get_checkpoint_path(tr_name)
+        self.dump(tr_path)
+
+    def dump(self, trace_path: str):
+        data = dump_json(self.symbol)
+        data.update({
+            "_trace_name": self.name,
+            "_model_name": self._model_name,
+            "params": {k: v.numpy() \
+                    for k, v in self.params.items()},
+        })
+        try:
+            with open(trace_path, "wb") as f:
+                pickle.dump(data, f)
+        except Exception as e:
+            # clean generated empty path
+            os.remove(trace_path)
+            raise e
+
+    @staticmethod
+    def load(trace_path: str) -> Trace:
+        with open(trace_path, "rb") as f:
+            data = pickle.load(f)
+
+        name = data["_trace_name"]
+        model_name = data["_model_name"]
+        params = {k: tvm.nd.array(v) \
+                for k, v in data["params"].items()}
+        symbol = load_json(data, params=params)
+        return Trace(name, symbol, params,
+                _loaded=True,
+                _model_name=model_name)
 
     def to_expr(self, expr_map={}) -> ir.RelayExpr:
         return symbol2expr(self.symbol, expr_map)
 
     @staticmethod
-    def from_expr(expr: RelayExpr, params: ParametersT) -> Trace:
-        return Trace("init", expr2symbol(expr), params)
+    def from_expr(
+            expr: RelayExpr,
+            params: ParametersT,
+            model_name="unknown-model") -> Trace:
+        return Trace("init", expr2symbol(expr), params,
+                _loaded=True,
+                _model_name=model_name)
 

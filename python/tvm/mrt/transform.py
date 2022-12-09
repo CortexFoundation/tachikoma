@@ -9,9 +9,10 @@ import numpy as np
 import tvm
 from tvm import relay, ir
 
-from . import transformers, op
+# from .trace import *
 from .symbol import *
-from .trace import *
+
+from . import op
 from .attrs import _BaseAttrs, parse_attrs
 
 from .utils import N
@@ -55,13 +56,13 @@ class WithParameters(Symbol):
                 data.shape, data.dtype.name).like(self)
 
     def is_input(self) -> bool:
-        return is_input(self, self.params)
+        return op.is_input(self, self.params)
     def is_param(self) -> bool:
-        return is_param(self, self.params)
+        return op.is_param(self, self.params)
     def is_variable(self) -> bool:
-        return is_variable(self, self.params)
+        return op.is_variable(self, self.params)
     def is_operator(self) -> bool:
-        return is_operator(self, self.params)
+        return op.is_operator(self, self.params)
 
 
 PassFuncT = typing.Callable[[Symbol], typing.Any]

@@ -3,8 +3,8 @@ from tvm import relay, ir
 from tvm.relay import testing
 from tvm.mrt.utils import *
 
-from tvm.mrt import api, runtime, image, extool, data
-from tvm.mrt import stats, dataset
+from tvm.mrt import runtime
+from tvm.mrt import stats
 from tvm.mrt import utils
 
 import sys
@@ -73,20 +73,11 @@ relay.expr.TupleWrapper
 ir.tensor_type.TensorType
 ir.type.TupleType
 
-# mrt_model = model.from_mod(mod, params)
-# mrt_model = mrt_model.set_input_shape((16,) + image_shape)
-# mrt_model.print()
-# mod = mrt_model.to_mod()
-# mod: tvm.IRModule = relay.transform.InferType()(mod)
-# print(mod.astext(show_meta_data=False))
-
-#  tr = api.Trace("init", expr, params).infer_type()
-
 from tvm.mrt.trace import Trace
 from tvm.mrt.opns import *
 from tvm.mrt.symbol import *
-tr = Trace.from_expr(expr, params)
-tr.dump("./data/init.trace")
+tr = Trace.from_expr(expr, params, model_name="resnet18_v1")
+tr.checkpoint("init")
 
 tvm.nd.NDArray
 # tr.print()
@@ -98,7 +89,7 @@ fuse_tr = tr.checkpoint_transform(
         fuse.FuseBatchNorm.apply(),
         fuse.FuseAvgPool2D.apply(),
         tr_name = "fuse",
-        force=True,
+        # force=True,
         )
 
 from tvm.mrt.calibrate import Calibrator, SymmetricMinMaxSampling
@@ -125,7 +116,9 @@ from tvm.mrt import discrete as dt
 # calib_tr.print()
 
 # calib_tr = calib_tr.subgraph(onames=["%5"])
-dt_tr = calib_tr.transform(dt.SymmetricLinearDiscretor.apply())
+dt_tr = calib_tr.checkpoint_transform(
+        dt.SymmetricLinearDiscretor.apply(),
+        force=True)
 dt_tr = dt_tr.checkpoint_transform(
         dt.Quantizer.apply(),
         # print_af=True
@@ -137,8 +130,8 @@ dt_tr = dt_tr.checkpoint_transform(
 # tr.print(view_layers=4)
 # tr = tr.transform(InferPrecision.apply())
 
-# dt_tr.print()
-# dt_tr.print_ops("nn.max_pool2d")
+dt_tr.print()
+dt_tr.print_ops("nn.max_pool2d")
 
 sys.exit(1)
 
