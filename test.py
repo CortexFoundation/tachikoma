@@ -89,7 +89,7 @@ fuse_tr = tr.checkpoint_transform(
         fuse.FuseBatchNorm.apply(),
         fuse.FuseAvgPool2D.apply(),
         tr_name = "fuse",
-        # force=True,
+        force=True,
         )
 
 from tvm.mrt.calibrate import Calibrator, SymmetricMinMaxSampling
@@ -98,8 +98,6 @@ calib_tr = fuse_tr.checkpoint_transform(
         Calibrator.apply(),
         # print_af=True
 )
-calib_tr = calib_tr.checkpoint_transform(
-        SymmetricMinMaxSampling.apply())
 # calib_tr.print()
 # print(type(calib_tr.symbol))
 
@@ -108,22 +106,33 @@ from tvm.mrt.quantize import Quantizer
 
 # calib_tr = calib_tr.subgraph(onames=["%5"])
 dt_tr = calib_tr.checkpoint_transform(
+        SymmetricMinMaxSampling.apply(),
         dt.SymmetricLinearDiscretor.apply(),
         # force=True,
         )
 dt_tr = dt_tr.checkpoint_transform(
         Quantizer.apply(),
-        # print_af=True
+        # print_af=True,
 )
-# dt_tr = dt_tr.transform(dt.Quantizer.apply(), print_af=True)
-# ip = InferPrecision.base(tr.symbol)
-# calib_tr = calib_tr.transform(Quantizer.apply(), print_af=True)
-# tr = tr.transform(Annotate.apply())
-# tr.print(view_layers=4)
-# tr = tr.transform(InferPrecision.apply())
-
-dt_tr.print(short=True, suffix_layers=10)
+# dt_tr.print()
+# dt_tr.print(short=True, suffix_layers=10)
 # dt_tr.print(selects=["nn.max_pool2d"])
+
+from tvm.mrt.fixed_point import FixPoint
+# qt_tr = dt_tr.checkpoint_transform(
+#         MapRequant.apply(),
+#         force=True)
+
+qt_tr = dt_tr.checkpoint_transform(
+        FixPoint.apply(),
+        # print_bf = True, print_af = True,
+        # force=True,
+)
+
+qt_tr.print(short=True)
+
+qt_expr = qt_tr.to_expr()
+# print(qt_expr.astext(show_meta_data=False))
 
 sys.exit(1)
 

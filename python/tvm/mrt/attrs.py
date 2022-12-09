@@ -18,7 +18,8 @@ class _BaseAttrs:
             data = {k: attrs[k] for k in fkeys}
         except Exception as e:
             print("Attr parsed error, expect: {}, get {}.".format(
-                fkeys, attrs.keys()))
+                fkeys, list(attrs.keys())
+            ))
             raise e
         return cls(**data)
 
@@ -44,6 +45,16 @@ def _format_as_tuple(attrs: AttrsT, *keys):
                 (list, tuple, tvm.ir.container.Array)):
             attrs[k] = [ val, val ]
     return attrs
+
+@dataclass
+@register_attrs(PCLIP)
+class PClipAttrs(_BaseAttrs):
+    precision: int
+
+@dataclass
+@register_attrs(REQUANT)
+class RequantAttrs(PClipAttrs):
+    rescale: float
 
 @dataclass
 @register_attrs(GLOBAL_AVG_POOL2D)

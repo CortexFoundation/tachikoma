@@ -47,7 +47,7 @@ class FuseBatchNorm(Transformer):
             out = op.bias_add(X, B, axis=parsed.axis)
         else:
             assert False
-        return out
+        return out.like(self)
 
 class FuseTupleGetItem(Transformer):
     @filter_operators(TUPLE_GET_ITEM)
@@ -69,6 +69,6 @@ class FuseAvgPool2D(Transformer):
         out = op.sum(X, axis=list(range(4))[-2:],
                 keepdims=True, exclude=False)
         scale = self.from_np_data(scale.astype(X.dtype))
-        return op.mul(out, scale)
+        return op.mul(out, scale).like(self)
 
 

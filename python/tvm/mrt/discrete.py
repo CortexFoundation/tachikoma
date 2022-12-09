@@ -32,13 +32,17 @@ class Discretor(Sampling, WithPrecision):
 
     @classmethod
     def default_dict(cls, **kwargs) -> dict:
-        return super().default_dict(
-                info=None, _checked=False, **kwargs)
+        kwargs.setdefault("info", None)
+        return super().default_dict(**kwargs)
 
-    def __repr__(self, **attrs):
-        if self.info is not None:
-            attrs.setdefault("discrete_info", self.info)
-        return super().__repr__(**attrs)
+    def to_dict(self, **kwargs) -> dict:
+        kwargs.setdefault("dt", self)
+        return super().to_dict(**kwargs)
+
+    # def __repr__(self, **attrs):
+    #     if self.info is not None:
+    #         attrs.setdefault("discrete_info", self.info)
+    #     return super().__repr__(**attrs)
 
     # ======== Annotate Functions ==========
     def same(self, other: Discretor) -> Discretor:
@@ -81,6 +85,10 @@ class Discretor(Sampling, WithPrecision):
 
 @dataclass(repr=False)
 class InferPrecision(Pass):
+    """ Infer Precision Pass
+
+        This inference should be consistent with cvm-runtime.
+    """
     @property
     def arg_precisions(self):
         return [a.dt.precision for a in self.args]

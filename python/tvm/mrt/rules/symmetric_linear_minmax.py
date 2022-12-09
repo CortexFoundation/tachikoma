@@ -8,29 +8,28 @@ from ..utils import *
 from .. import op
 from ..transform import Pass
 from ..discrete import Discretor, InferDiscretor
-from ..calibrate import SymmetricMinMaxSampling
 
 @dataclass(repr=False)
-class SymmetricLinearDiscretor(
-        Discretor, SymmetricMinMaxSampling):
+class SymmetricLinearDiscretor(Discretor):
+    data: float
     info: float | None
     """ symmetric linear scale to precision integer. """
     precision: int | None
 
     @classmethod
+    def default_dict(cls, **kwargs):
+        kwargs.setdefault("precision", None)
+        return super().default_dict(**kwargs)
+
+    @classmethod
     def update_dict(cls, data_dict, **kwargs) -> dict:
-        if "origin" in data_dict:
-            assert isinstance(
-                data_dict["origin"], SymmetricMinMaxSampling), \
-                type(data_dict["origin"])
         assert isinstance(data_dict["data"], float), \
                 type(data_dict["data"])
         return super().update_dict(data_dict, **kwargs)
 
     def summary(self) -> str:
-        return "T({:.3f})|S({:.2f})|P({})".format(
-                self.data or 0, self.info or 0,
-                self.precision or 0)
+        return "T({:.3f})|S({:.2f})".format(
+                self.data or 0, self.info or 0)
 
     def _mapping(self, sym: Symbol) -> Quantizer:
         out: Quantizer = sym.copy(name=N.n())
@@ -38,7 +37,7 @@ class SymmetricLinearDiscretor(
 
         # params out of precision will be cliped
         #   in cvm-runtime.
-        check = self.sampling(out.numpy())
+        check = float(np.abs(out.numpy()).max())
         checked_bit = number_to_bits(check)
         assert checked_bit <= self.precision
         return out

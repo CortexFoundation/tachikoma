@@ -46,14 +46,21 @@ class WithParameters(Symbol):
     def update_data(self, data: np.ndarray):
         self.params[self.name] = tvm.nd.array(data)
 
+    def from_const_data(self, data: int) -> Symbol:
+        assert int(data) == data, data
+        data = np.array(int(data), dtype=self.dtype)
+        name = "const_{}".format(data)
+        if name not in self.params:
+            self.params[name] = tvm.nd.array(data)
+        return op.variable(name, data.shape, data.dtype.name)
+
     def from_np_data(self,
             data: np.ndarray,
             prefix=None,
-    ) -> Transformer:
-        new_name = N.n(prefix=prefix)
-        self.params[new_name] = tvm.nd.array(data)
-        return op.variable(new_name,
-                data.shape, data.dtype.name).like(self)
+    ) -> Symbol:
+        name = N.n(prefix=prefix)
+        self.params[name] = tvm.nd.array(data)
+        return op.variable(name, data.shape, data.dtype.name)
 
     def is_input(self) -> bool:
         return op.is_input(self, self.params)
@@ -163,8 +170,9 @@ class Transformer(WithParameters):
         def _tfm(sym: Symbol, params: ParametersT):
             ins = cls.base(sym, params=params)
             out = ins(*args, **kw) or ins
-            if not isinstance(out, cls):
-                out = out.like(ins)
+            assert isinstance(out, cls), (
+                "expected {}, but get {}"
+                    ).format(cls, type(out))
             return out
 
         _tfm.__name__ = cls.__name__

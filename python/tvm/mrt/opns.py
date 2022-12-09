@@ -13,9 +13,12 @@ RELU = "nn.relu"
 GLOBAL_AVG_POOL2D = "nn.adaptive_avg_pool2d"
 MAX_POOL2D = "nn.max_pool2d"
 
+SUM = "sum"
 SQUEEZE = "squeeze"
 RESHAPE = "reshape"
-SUM = "sum"
+
+CLIP = "clip"
+RIGHT_SHIFT = "right_shift"
 
 ADD = "add"
 SUB = "sub"

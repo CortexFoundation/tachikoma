@@ -26,6 +26,11 @@ def infer_type(symbol: Symbol) -> Symbol:
 
 @dataclass(repr=False)
 class InferType(Symbol):
+    def __repr__(self, **attrs):
+        attrs.setdefault("tinfer", self.dtype)
+        attrs.setdefault("sinfer", self.shape)
+        return super().__repr__(**attrs)
+
     def __post_init__(self):
         assert is_operator(self)
 
@@ -67,10 +72,14 @@ def _register_op(op_name,
 
 tuple = _register_op(TUPLE)
 bias_add = _register_op(BIAS_ADD)
+
+sum = _register_op(SUM)
+clip = _register_op(CLIP)
+right_shift = _register_op(RIGHT_SHIFT)
+
 add = _register_op(ADD)
 sub = _register_op(SUB)
 mul = _register_op(MUL)
-sum = _register_op(SUM)
 
 requant = _register_op(REQUANT, FirstLikeInferType)
 pclip = _register_op(PCLIP, FirstLikeInferType)

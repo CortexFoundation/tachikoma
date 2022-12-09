@@ -271,10 +271,10 @@ class Trace:
             print_af and print("[{}]>> {}".format(tr_name, out))
             return out
 
+        print("Apply transformer: {}".format(tr_name))
         with N(tr_name):
             new_symbol = transform(self.symbol, _tfm)
         # raw_print(new_symbol)
-        print("Applied transform: {}".format(tr_name))
         return Trace(tr_name, new_symbol, new_params,
                 _loaded=False,
                 _model_name=self._model_name)

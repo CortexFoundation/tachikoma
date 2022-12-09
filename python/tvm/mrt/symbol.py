@@ -96,40 +96,23 @@ class Symbol:
 
     @property
     def shape(self) -> ShapeT:
-        return list(self.attrs["shape"])
-        # return list(self.attrs.get("shape", ()))
+        return list(self.attrs.get("shape", None))
 
     @property
     def dtype(self):
-        return self.attrs["dtype"]
-        # return self.attrs.get("dtype", None)
+        return self.attrs.get("dtype", None)
 
     def __repr__(self, **attrs) -> str:
-        return self.raw_str(**attrs)
-        # args_info= ["{}@({})".format(
-        #     i.name,
-        #     ",".join([str(s) for s in i.shape])
-        # ) for i in self.args ]
-
-        # attrs.update(self.attrs)
-        # attr_info = ", ".join([k+"="+str(v) \
-        #         for k, v in attrs.items()])
-        # return "{} = {}({}) // {}".format(
-        #     self.name, self.op_name,
-        #     ", ".join(args_info), attr_info)
-
-    def __hash__(self) -> int:
-        return hash(str(self))
-
-    def raw_str(self, **attrs) -> str:
         args_info = "({})".format(
                 ", ".join([i.name for i in self.args]))
         attrs.update(self.attrs)
-        skips = [ "dtype", "name_hint" ]
+        skips = [ "shape", "dtype", "name_hint" ]
         attrs = {k: attrs[k] for k in attrs if k not in skips}
         return "{:30} = {:>15}{:30} /* attrs */ {}".format(
                 self.name, self.op_name, args_info, attrs)
 
+    def __hash__(self) -> int:
+        return hash(str(self))
 
 def _topo_sort(symbol: Symbol, sym_list: typing.List[Symbol]):
     if sym_list.count(symbol) > 0:

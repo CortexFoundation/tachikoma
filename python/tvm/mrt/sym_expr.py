@@ -75,35 +75,29 @@ def expr2symbol(expr: RelayExpr) -> Symbol:
     return symbol_map[expr]
 
 def symbol2expr(symbol: Symbol, expr_map={}) -> RelayExpr:
-    # operator creator don't need shape or dtype attrs,
-    #   except for the variable.
-    def _remove_type(sym: Symbol):
-        if op.is_variable(sym):
-            return
-
-        if "shape" in sym.attrs:
-            del sym.attrs["shape"]
-        if "dtype" in sym.attrs:
-            del sym.attrs["dtype"]
-        return sym
-    symbol = transform(symbol, _remove_type)
-
     expr_map.clear()
     def _cast_symbol(sym: Symbol):
-        args = [expr_map[i] for i in sym.args]
+        args = [expr_map[i.name] for i in sym.args]
+
+        attrs = {k: v for k, v in sym.attrs.items()}
+        # operator creator don't need shape or dtype attrs,
+        #   except for the variable.
+        if op.is_operator(sym):
+            skips = [ "shape", "dtype" ]
+            attrs = {k: attrs[k] for k in attrs if k not in skips}
+
         if sym.is_op(TUPLE):
             out = relay.Tuple(args)
         else:
             try:
-                out = eval("relay." + sym.op_name)(*args, **sym.attrs)
+                out = eval("relay." + sym.op_name)(*args, **attrs)
             except Exception as e:
                 print(sym, [type(a) for a in args])
                 raise e
 
         if isinstance(out, relay.TupleWrapper):
             out = out.tuple_value
-        # relay.transform.InferTypeLocal(out)
-        expr_map[sym] = out
+        expr_map[sym.name] = out
 
-    _ = transform(symbol, _cast_symbol)
-    return expr_map[symbol]
+    visit(symbol, _cast_symbol)
+    return expr_map[symbol.name]

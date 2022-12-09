@@ -5,58 +5,68 @@ from dataclasses import dataclass, field
 
 from . import op
 from .discrete import *
+from .precision import WithPrecision
 from .transform import Transformer
 from .annotate import ArgAnnotator
 
 __ALL__ = [ "Quantizer" ]
 
 @dataclass(repr=False)
-class Quantizer(Transformer):
+class QuantizedInfo(WithPrecision):
+    dt_info: str
+
+    def __repr__(self, **attrs):
+        attrs["dt_info"] = self.dt_info
+        return super().__repr__(**attrs)
+
+@dataclass(repr=False)
+class Quantizer(Transformer, QuantizedInfo):
     """ MRT quantization class.
 
         Lose the discretor information if dump.
     """
-    summary: str | None
     dt: Discretor | None = field(repr=False)
     revised: Quantizer | None = field(repr=False)
     requants: typing.Dict[str, Quantizer] = field(repr=False)
 
     @classmethod
     def default_dict(cls, **kwargs) -> dict:
-        return super().default_dict(
-                dt = None, summary=None,
-                revised = None,
-                requants = {}, **kwargs)
-
-    def __repr__(self, **attrs):
-        attrs.setdefault("summary", self.summary)
-        return super().__repr__(**attrs)
+        kwargs.setdefault("dt", None)
+        kwargs.setdefault("revised", None)
+        kwargs.setdefault("requants", {})
+        return super().default_dict(**kwargs)
 
     @classmethod
     def update_dict(cls, data_dict, **kwargs) -> dict:
         data_dict.update(kwargs)
         dt = data_dict.get("dt", None)
-        if dt is None and "origin" in data_dict:
-            dt : Discretor = data_dict["origin"]
-            assert isinstance(dt, Discretor)
+        assert dt is None or isinstance(dt, Discretor)
         if dt is not None:
-            data_dict["summary"] = dt.summary()
-        return super().update_dict(data_dict, dt=dt)
+            data_dict["precision"] = dt.precision
+            data_dict["dt_info"] = dt.summary()
+        return super().update_dict(data_dict)
+
+    def __repr__(self, **attrs):
+        # attrs.setdefault("dt", self.dt.summary())
+        return super().__repr__(**attrs)
 
     def __call__(self):
-        arg_dts: typing.List[Discretor] = ArgAnnotator.bind(self)
+        if self.is_variable():
+            return self
 
+        arg_dts: typing.List[Discretor] = ArgAnnotator.bind(self)
         for i in range(len(self.args)):
-            arg: Quantizer = self.args[i].revised
+            arg: Quantizer = self.args[i]
+            if arg.revised is not None:
+                arg = arg.revised
             self.args[i] = arg.requantize(arg_dts[i])
 
-        self.revised = self
-        if self.is_operator():
-            self.dt.info = InferDiscretor.bind(self)
-            self.dt.precision = InferPrecision.bind(self)
-            self.summary = self.dt.summary()
-            self.examine_precision()
-        return InferOperator.bind(self)
+        self.dt.info = InferDiscretor.bind(self)
+        self.dt.precision = InferPrecision.bind(self)
+        self = self.copy() # update info
+        self.examine_precision()
+        # print("[ Quantize]", self)
+        return InferOperator.bind(self).like(self)
 
     def examine_precision(self):
         """ set revised target with discretor examine.
@@ -85,6 +95,7 @@ class Quantizer(Transformer):
         else:
             out = new_dt.remapping(self.dt, self)
         out = out.like(self, dt=new_dt)
+        # out.is_op(REQUANT) and print("[  Requant]>> {}".format(out))
         self.requants[key] = out
         return out
 
