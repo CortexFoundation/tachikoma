@@ -15,6 +15,19 @@ def retrieve_operator(symbol: Symbol) -> Symbol:
             for a in symbol.args ]
     return Symbol.base(symbol, args=args)
 
+def subgraph(symbol: Symbol, inames=[], onames=[]):
+    out = []
+    def _find(sym: Symbol):
+        if sym.name in inames:
+            return variable(sym.name, sym.shape, sym.dtype)
+        elif sym.name in onames:
+            out.append(sym)
+
+    def_out = transform(symbol, _find)
+    out = out or [ def_out, ]
+    out = out[0] if len(out) else tuple(*out)
+    return out
+
 def infer_type(symbol: Symbol) -> Symbol:
     from tvm import relay, ir
     from tvm.mrt import sym_expr
@@ -70,12 +83,18 @@ def _register_op(op_name,
         return infer_type.base(op)
     return _op
 
-tuple = _register_op(TUPLE)
+Tuple = _register_op(TUPLE)
+TupleGetItem = _register_op(TUPLE_GET_ITEM)
+
+nn_conv2d = _register_op(CONV2D)
+nn_dense = _register_op(DENSE)
+nn_batch_norm = _register_op(BATCH_NORM)
 bias_add = _register_op(BIAS_ADD)
 
 sum = _register_op(SUM)
 clip = _register_op(CLIP)
 right_shift = _register_op(RIGHT_SHIFT)
+astype = _register_op(AS_TYPE)
 
 add = _register_op(ADD)
 sub = _register_op(SUB)

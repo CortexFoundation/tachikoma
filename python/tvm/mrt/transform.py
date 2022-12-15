@@ -52,7 +52,8 @@ class WithParameters(Symbol):
         name = "const_{}".format(data)
         if name not in self.params:
             self.params[name] = tvm.nd.array(data)
-        return op.variable(name, data.shape, data.dtype.name)
+        return op.variable(name,
+                data.shape, data.dtype.name).like(self)
 
     def from_np_data(self,
             data: np.ndarray,
@@ -140,18 +141,20 @@ class Pass(WithParameters):
 
     @classmethod
     def bind(cls, symbol: Symbol):
-        self = cls.base(symbol)
+        return cls.base(symbol)()
 
-        op_registry = _PASS_REGISTRY[cls]
+    def __call__(self, *args, **kw):
+        op_registry = _PASS_REGISTRY[type(self)]
         for opn, reg in op_registry.items():
             if self.is_op(opn):
-                return reg(self)
+                return reg(self, *args, **kw)
 
         if "*" in op_registry:
-            return op_registry["*"](self)
+            return op_registry["*"](self, *args, **kw)
 
         assert False, "{} don't supported op:{}".format(
-                cls.__name__, self.op_name)
+                type(self).__name__, self.op_name)
+
 
 
 @dataclass(repr=False)

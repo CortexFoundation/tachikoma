@@ -113,6 +113,7 @@ dt_tr = calib_tr.checkpoint_transform(
 dt_tr = dt_tr.checkpoint_transform(
         Quantizer.apply(),
         # print_af=True,
+        force=True,
 )
 # dt_tr.print()
 # dt_tr.print(short=True, suffix_layers=10)
@@ -125,13 +126,15 @@ from tvm.mrt.fixed_point import FixPoint
 
 qt_tr = dt_tr.checkpoint_transform(
         FixPoint.apply(),
-        # print_bf = True, print_af = True,
-        # force=True,
+        print_bf = True, print_af = True,
+        force=True,
 )
 
-qt_tr.print(short=True)
+qt_tr.print(short=True, prefix_layers=20)
 
 qt_expr = qt_tr.to_expr()
+relay.expr.Call.astype
+# print(qt_expr)
 # print(qt_expr.astext(show_meta_data=False))
 
 sys.exit(1)

@@ -236,17 +236,9 @@ class Trace:
         print("=" * len(msg))
 
     def subgraph(self, inames=[], onames=[]) -> Trace:
-        out = []
-        def _find(sym: Symbol, params: ParametersT):
-            if sym.name in inames:
-                return op.variable(sym.name, sym.shape, sym.dtype)
-            elif sym.name  in onames:
-                out.append(sym)
-
-        tr = self.transform(_find)
-        out = out or [ tr.symbol ]
-        out = out[0] if len(out) else op.tuple(*out)
-        return Trace("subgraph", out, self.params,
+        out = op.subgraph(self.symbol, iname, onames)
+        return Trace("subgraph",
+                out, self.params,
                 _loaded=self._loaded,
                 _model_name=self._model_name)
 
@@ -290,7 +282,7 @@ class Trace:
             *callbacks: Transformer,
             tr_name: str = None,
             force = False,
-            **kwargs):
+            **kwargs) -> Trace:
         """ Apply transform in current trace for checkpoint.
 
             If current trace is not loaded, than force to

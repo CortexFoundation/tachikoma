@@ -3,6 +3,8 @@
 API from relay.Function to Symbol.
 ==============================================================
 """
+import typing
+from dataclasses import dataclass
 
 from tvm import relay, ir, tir
 from tvm.ir.expr import *
@@ -86,8 +88,10 @@ def symbol2expr(symbol: Symbol, expr_map={}) -> RelayExpr:
             skips = [ "shape", "dtype" ]
             attrs = {k: attrs[k] for k in attrs if k not in skips}
 
-        if sym.is_op(TUPLE):
+        if sym.is_op(op.TUPLE):
             out = relay.Tuple(args)
+        elif sym.is_op(op.AS_TYPE):
+            out = args[0].astype(attrs["target"])
         else:
             try:
                 out = eval("relay." + sym.op_name)(*args, **attrs)
@@ -100,4 +104,5 @@ def symbol2expr(symbol: Symbol, expr_map={}) -> RelayExpr:
         expr_map[sym.name] = out
 
     visit(symbol, _cast_symbol)
+
     return expr_map[symbol.name]

@@ -5,19 +5,11 @@ from dataclasses import dataclass, field
 
 from . import op
 from .discrete import *
-from .precision import WithPrecision
+from .precision import *
 from .transform import Transformer
 from .annotate import ArgAnnotator
 
 __ALL__ = [ "Quantizer" ]
-
-@dataclass(repr=False)
-class QuantizedInfo(WithPrecision):
-    dt_info: str
-
-    def __repr__(self, **attrs):
-        attrs["dt_info"] = self.dt_info
-        return super().__repr__(**attrs)
 
 @dataclass(repr=False)
 class Quantizer(Transformer, QuantizedInfo):

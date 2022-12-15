@@ -84,59 +84,6 @@ class Discretor(Sampling, WithPrecision):
         raise NotImplementedError()
 
 @dataclass(repr=False)
-class InferPrecision(Pass):
-    """ Infer Precision Pass
-
-        This inference should be consistent with cvm-runtime.
-    """
-    @property
-    def arg_precisions(self):
-        return [a.dt.precision for a in self.args]
-
-    def _infer_index(self, index):
-        return self.arg_precisions[index]
-
-    def _infer_max(self):
-        return max(self.arg_precisions)
-
-    def _infer_mul(self):
-        return sum(self.arg_precisions)
-
-    def _first_like(self):
-        return self._infer_index(0)
-
-    def _infer_add(self):
-        return self._infer_max() + 1
-
-    def _infer_nn(self):
-        W = self.args[1]
-        add_count = np.product(W.shape[1:])
-        add_bits = count_to_bits(add_count)
-        return self._infer_mul() + add_bits
-
-# default InferPrecision
-InferPrecision.test(VAR)(lambda x: None)
-InferPrecision.test(TUPLE)(InferPrecision._infer_max)
-@InferPrecision.test(TUPLE_GET_ITEM)
-def _infer_tuple_get_item(self: InferPrecision):
-    return self._infer_index(self.parsed.index)
-InferPrecision.test(CONV2D, DENSE)(InferPrecision._infer_nn)
-InferPrecision.test(BIAS_ADD)(InferPrecision._infer_add)
-InferPrecision.test(RELU, MAX_POOL2D)(InferPrecision._first_like)
-InferPrecision.test(SQUEEZE, RESHAPE)(InferPrecision._first_like)
-@InferPrecision.test(SUM)
-def _infer_sum_prec(self: InferPrecision):
-    input_len = np.product(self.args[0].shape)
-    output_len = np.product(self.shape)
-    assert input_len % output_len == 0
-    count = int(input_len / output_len)
-    sum_bit = count_to_bits(count)
-    return self._infer_max() + sum_bit
-InferPrecision.test(ADD, SUB)(InferPrecision._infer_add)
-InferPrecision.test(MUL)(InferPrecision._infer_mul)
-# InferPrecision.test(REQUANT)(InferPrecision._first_like)
-
-@dataclass(repr=False)
 class InferDiscretor(Pass):
     """ Discretization Information Inference with Operator """
     @property

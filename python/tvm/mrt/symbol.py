@@ -81,6 +81,7 @@ class Symbol:
         try:
             out = cls(**data)
         except Exception as e:
+            print(cls, list(data.keys()))
             raise e
         return out
 
@@ -187,7 +188,9 @@ def transform(symbol: Symbol, callback: _TransformerT) -> Symbol:
         sym = sym.copy(args=args)
         out = callback(sym) or sym
         assert isinstance(out, Symbol)
-        assert sym.name not in sym_map
+        # default const_ prefix symbol means parameters
+        assert sym.name.startswith("const_") or \
+                sym.name not in sym_map, sym.name
         sym_map[sym.name] = out
     return sym_map[symbol.name]
 
