@@ -10,11 +10,6 @@ from .opns import *
 from .utils import *
 from .symbol import *
 
-def retrieve_operator(symbol: Symbol) -> Symbol:
-    args = [ variable(a.name, a.shape, a.dtype) \
-            for a in symbol.args ]
-    return Symbol.base(symbol, args=args)
-
 def subgraph(symbol: Symbol, inames=[], onames=[]):
     out = []
     def _find(sym: Symbol):
@@ -27,6 +22,12 @@ def subgraph(symbol: Symbol, inames=[], onames=[]):
     out = out or [ def_out, ]
     out = out[0] if len(out) else tuple(*out)
     return out
+
+def retrieve_operator(symbol: Symbol) -> Symbol:
+    args = [ variable(a.name, a.shape, a.dtype) \
+            for a in symbol.args ]
+    return Symbol.base(symbol, args=args)
+
 
 def infer_type(symbol: Symbol) -> Symbol:
     from tvm import relay, ir

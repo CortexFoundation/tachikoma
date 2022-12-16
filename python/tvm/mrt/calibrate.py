@@ -31,16 +31,34 @@ class Calibrator(Transformer):
             data_dict["nd_data"] = nd_data
         return super().update_dict(data_dict, **kwargs)
 
+    def __repr__(self, **extra_attrs):
+        if type(self) == Calibrator:
+            extra_attrs["shp"] = self.shape
+            extra_attrs["typ"] = self.dtype
+        return super().__repr__(**extra_attrs)
+
+    def _rand_data(self,
+            enabled: bool = False,
+            absmax: float | None = None,
+    ):
+        assert enabled, "symbol:{} don't have data".format(
+                self.name)
+        out = np.random.randn(*self.shape)
+        out = out.astype(self.dtype)
+        if absmax is not None:
+            assert absmax > 0
+            norm = np.abs(out).max()
+            out = out * absmax / norm
+        return tvm.nd.array(out)
+
     def __call__(self,
-            data: tvm.nd.NDArray | None =None,
-            data_dict: ParametersT = {}):
+            data: tvm.nd.NDArray | None = None,
+            data_dict: ParametersT = {},
+            random_config: typing.Dict[str, typing.Any] = {},
+    ):
         if self.is_input():
             out = data_dict.get(self.name, data)
-            if out is None:
-                # use random input data
-                out = np.random.randn(*self.shape)
-                out = out.astype(self.dtype)
-                out = tvm.nd.array(out)
+            out = out or self._rand_data(**random_config)
         elif self.is_param():
             out = self.params[self.name]
         else:

@@ -73,13 +73,17 @@ relay.expr.TupleWrapper
 ir.tensor_type.TensorType
 ir.type.TupleType
 
-from tvm.mrt.trace import Trace
+from tvm.mrt.trace import Trace, SetInputShape
 from tvm.mrt.opns import *
 from tvm.mrt.symbol import *
 tr = Trace.from_expr(expr, params, model_name="resnet18_v1")
 tr.checkpoint("init")
 
-tvm.nd.NDArray
+tr = tr.set_input_shape(
+        shape=(16, *data_shape[1:]),
+        checkpoint=True,)
+tr.print(short=True)
+
 # tr.print()
 
 from tvm.mrt import fuse
@@ -95,8 +99,10 @@ fuse_tr = tr.checkpoint_transform(
 from tvm.mrt.calibrate import Calibrator, SymmetricMinMaxSampling
 
 calib_tr = fuse_tr.checkpoint_transform(
-        Calibrator.apply(),
-        # print_af=True
+        Calibrator.apply(random_config={
+            "enabled": True,
+            "absmax": 1.0, }),
+        print_bf=True, print_af=True,
 )
 # calib_tr.print()
 # print(type(calib_tr.symbol))
@@ -113,7 +119,7 @@ dt_tr = calib_tr.checkpoint_transform(
 dt_tr = dt_tr.checkpoint_transform(
         Quantizer.apply(),
         # print_af=True,
-        force=True,
+        # force=True,
 )
 # dt_tr.print()
 # dt_tr.print(short=True, suffix_layers=10)
@@ -127,57 +133,86 @@ from tvm.mrt.fixed_point import FixPoint
 qt_tr = dt_tr.checkpoint_transform(
         FixPoint.apply(),
         print_bf = True, print_af = True,
-        force=True,
+        # force=True,
 )
 
 qt_tr.print(short=True, prefix_layers=20)
 
-qt_expr = qt_tr.to_expr()
-relay.expr.Call.astype
+# qt_expr = qt_tr.to_expr()
 # print(qt_expr)
 # print(qt_expr.astext(show_meta_data=False))
 
-sys.exit(1)
+from PIL import Image
+from tvm.contrib.download import download_testdata
+def get_real_image(im_height, im_width) -> np.ndarray:
+    repo_base = "https://github.com/dmlc/web-data/raw/main/tensorflow/models/InceptionV1/"
+    img_name = "elephant-299.jpg"
+    image_url = path.join(repo_base, img_name)
+    img_path = download_testdata(image_url, img_name, module="data")
+    image = Image.open(img_path).resize((im_height, im_width))
+    data = np.array(image).astype("float32")
+    data = np.reshape(data, (1, im_height, im_width, 3))
+    data = np.transpose(data, (0, 3, 1, 2))
+    data = data / 255.0
+    return data
 
-#  print("\n", expr.astext(show_meta_data=False))
-from torch.utils.data import DataLoader
+# test accuracy
+from tvm.mrt import dataset
+data = get_real_image(*image_shape[1:])
+res = tr.run(data,
+        device=tvm.runtime.cuda(1),
+        target=tvm.target.cuda(),
+)
+
+out = stats.ClassificationOutput()
+out.merge([res[0], np.array([0,])])
+imagenet = dataset.ImageNet()
+out.dl_info(imagenet.labels)
+
 import torch
-from torch.utils.data import Dataset
-from torchvision import datasets
-from torchvision.transforms import ToTensor
-import PIL
+from torch.utils.data import DataLoader
+import torchvision as tv
 
-def to_tensor(img: PIL.Image.Image):
+def to_tensor(img: Image.Image):
+    print(img.shape)
     img = img.resize(image_shape[1:])
     img = np.array(img).astype("float32")
+    # data = np.reshape(data, (1, im_height, im_width, 3))
     img = np.transpose(img, (2, 1, 0))
-    return img
+    return img / 255.0
 
-val_data = datasets.ImageFolder(
+val_data = tv.datasets.ImageFolder(
         path.join(utils.MRT_DATASET_ROOT, "imagenet/val"),
         transform=to_tensor)
 data_loader = DataLoader(val_data, batch_size=1)
+class TorchImageNet(dataset.ImageNet):
+    def __init__(self):
+        self.data_loader = data_loader
+        self._max = len(self.data_loader)
+        self.reset()
 
-#  class TorchImageNet(dataset.Dataset):
-#      def __init__(self):
-#          self.data_loader = data_loader
-#          self._max = len(self.data_loader)
-#          self.reset()
+    def reset(self):
+        self._iter = iter(self.data_loader)
 
-#      def reset(self):
-#          self._iter = iter(self.data_loader)
+    def next(self):
+        try:
+            data, label = next(self._iter)
+            return data.numpy(), label.numpy()
+        except Exception as e:
+            print(e)
+            return None, None
 
-#      def next(self):
-#          try:
-#              data, label = next(self._iter)
-#              return data.numpy(), label.numpy()
-#          except Exception as e:
-#              return None
+torch_dataset = TorchImageNet()
+data, label = torch_dataset.next()
+print(data.shape, label.shape)
+sys.exit(-1)
 
-#  data, label = next(iter(data_loader))
-#  data, label = data.numpy(), label.numpy()
-#  print(type(data), data.shape, type(label), label)
-#  sys.exit(1)
+tr_func = tr.populate()
+runtime.multiple_validate(
+        tr_func,
+        dataset=TorchImageNet(),
+        stats_type=stats.ClassificationOutput,
+)
 
 # tr.print()
 # outs = tr.calibrate()
@@ -186,18 +221,6 @@ data_loader = DataLoader(val_data, batch_size=1)
 # tr_eval = tr.eval(ctx)
 # runtime.multiple_validate(tr_eval, TorchImageNet(),
 #         stats.ClassificationOutput,)
-
-# test accuracy
-#  data = image.get_real_image(*image_shape[1:])
-res = tr.run(data, device=ctx)
-#  res = mrt_model.run(data)
-#  print(res.shape, res.dtype)
-# input_data = data.random_inputs(new_expr, params)
-# res = runtime.infer(new_expr, input_data)
-out = stats.ClassificationOutput()
-out.merge([res[0], [0,]])
-out.dl_info()
-print("labels: ", dataset.ImageNet().labels(out.dl_top5[0]))
 
 # fuse pass: fold_constant, fuse_batch_norm, quantize
 

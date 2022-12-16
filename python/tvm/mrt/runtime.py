@@ -15,24 +15,35 @@ from . import symbol
 __all__ = ["infer"]
 
 def create_executor(
-        expr: RelayExpr, params: ParametersT, device=runtime.cpu(0),
-        opt_level=0
-) -> relay.build_module.GraphExecutor:
+        expr: RelayExpr, params: ParametersT,
+        device: tvm.runtime.Device = tvm.runtime.cpu(),
+        target: tvm.target.Target = tvm.target.arm_cpu(),
+        opt_level=0,
+) -> graph_executor.GraphModule:
     target = "llvm"
     with tvm.transform.PassContext(opt_level=opt_level):
         lib = relay.build_module.build(
                 ir.IRModule.from_expr(expr),
                 target=target, params=params)
 
-    rt_mod: relay.build_module.GraphExecutor = \
+    rt_mod: graph_executor.GraphModule = \
             graph_executor.GraphModule(lib["default"](device))
     return rt_mod
+
+def run_executor(
+        rt_mod: graph_executor.GraphModule,
+        input_dict: ParametersT,
+        ) -> typing.List[np.ndarray]:
+    rt_mod.run(**input_dict)
+    return [ rt_mod.get_output(i).numpy() \
+            for i in range(rt_mod.get_num_outputs())]
 
 OutputDataType = typing.List[np.ndarray]
 
 def infer(expr: RelayExpr, params: ParametersT,
-        device=runtime.cpu(0)) -> OutputDataType:
-    # #  target = "llvm"
+        device: tvm.runtime.Device = tvm.runtime.cpu(),
+        target: tvm.target.Target = tvm.target.arm_cpu(),
+) -> OutputDataType:
     # target = tvm.target.cuda()
     # with tvm.transform.PassContext(opt_level=3):
     #     lib = relay.build_module.build(
@@ -48,12 +59,18 @@ def infer(expr: RelayExpr, params: ParametersT,
 
     result = tvm.relay.create_executor(
         "graph", mod=ir.IRModule.from_expr(expr),
-        device=device, target="llvm",
+        device=device, target=target,
     ).evaluate()(**params)
     return result
     # if isinstance(result, tvm.runtime.NDArray):
     #     result = [ result, ]
     # return [ r.numpy() for r in result ]
+
+def as_numpy(res) -> typing.List[tvm.nd.NDArray]:
+    if isinstance(res, tvm.nd.NDArray):
+        return [ res.numpy(), ]
+    else:
+        return [ o.numpy() for o in res ]
 
 
 def validator(expr: RelayExpr, params: ParametersT, name: str,
@@ -84,11 +101,12 @@ def validator(expr: RelayExpr, params: ParametersT, name: str,
     return _run
 
 
-ValidateFunctionT = typing.Callable[[DataLabelT], DataLabelT]
+ValidateFunctionT = typing.Callable[[np.ndarray], np.ndarray]
 
 def multiple_validate(
         base_func: ValidateFunctionT,
-        dataset: Dataset, stats_type: typing.Type[Statistics],
+        dataset: Dataset,
+        stats_type: typing.Type[Statistics],
         *comp_funcs: typing.List[ValidateFunctionT],
         max_iter_num: typing.Optional[int] = None,
 ):
@@ -98,13 +116,13 @@ def multiple_validate(
     log_str = "Iteration: {:3d} | "
     for func in all_funcs:
         log_str += func.__name__ + ": {} | "
-    for i in range(max_iter_num):
+    for i in range(max_iter_num or 99999999999999):
         dl = dataset.next()
         if dl is None:
             break
         for func, stats in zip(all_funcs, all_stats):
-            out_dl = func(dl)
-            stats.merge(out_dl)
+            out = func(dl[0])
+            stats.merge((out, dl[1]))
         msg = log_str.format(i, *[s.info() for s in all_stats])
         print(msg)
 

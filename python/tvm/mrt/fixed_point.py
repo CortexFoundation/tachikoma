@@ -46,7 +46,7 @@ class FixPoint(Transformer, QuantizedInfo):
         data.update(kwargs)
         # prec = InferPrecision.from_dict(data)()
         # data["precision"] = prec or data["precision"]
-        return data
+        return super().update_dict(data)
 
     def like(self, other: Symbol, copy=False, **kwargs):
         return super().like(other, copy=copy, **kwargs)

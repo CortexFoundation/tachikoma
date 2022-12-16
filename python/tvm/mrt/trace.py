@@ -11,14 +11,34 @@ import tvm
 from tvm import relay, ir
 from tvm.contrib import graph_executor as graph
 
-from .symbol import *
 from . import op
-from .sym_expr import *
-from .types import *
 from . import runtime
+from .transform import Transformer
+from .types import *
+from .symbol import *
+from .sym_expr import *
 
-Visitor = typing.Callable[[Symbol, ParametersT], None]
-Transformer = typing.Callable[[Symbol, ParametersT], typing.Optional[Symbol]]
+VisitorT = typing.Callable[[Symbol, ParametersT], None]
+TransformerT = typing.Callable[[Symbol, ParametersT], typing.Optional[Symbol]]
+
+@dataclass(repr=False)
+class SetInputShape(Transformer):
+    def __repr__(self, **extra_attrs):
+        extra_attrs["shp"] = self.shape
+        extra_attrs["typ"] = self.dtype
+        return super().__repr__(**extra_attrs)
+
+    def __call__(self, shape = None, shape_dict = {}):
+        if not self.is_input():
+            return
+
+        old_shape = self.shape
+        self.attrs["shape"] = shape_dict.get(
+                self.name, shape or old_shape)
+        if self.shape != old_shape:
+            print("change {}'s shape from {} into {}".format(
+                self.name, old_shape, self.shape))
+        return self
 
 @dataclass
 class Trace:
@@ -33,6 +53,7 @@ class Trace:
     _model_name: str = "unknown-model"
     sym_inputs: typing.List[Symbol] = field(init=False)
     sym_params: typing.List[Symbol] = field(init=False)
+    _executor: graph.GraphModule = field(init=False, default=None)
 
     BASE_DIR: typing.ClassVar[str] = "./data"
 
@@ -60,15 +81,6 @@ class Trace:
     @property
     def input_shapes(self) -> typing.List[ShapeT]:
         return [i.attrs["shape"] for i in self.sym_inputs]
-
-    def random_inputs(self) -> ParametersT:
-        data = {}
-        for sym in self.sym_inputs:
-            shape = sym.attrs["shape"]
-            dtype = sym.attrs["dtype"]
-            np_data = np.random.randn(*shape).astype(dtype)
-            data[sym.name] = tvm.nd.array(np_data)
-        return data
 
     def calibrate(self,
             data: typing.Optional[np.ndarray] = None,
@@ -124,26 +136,47 @@ class Trace:
         self.visit(_calibrate)
         return calibrate_outputs
 
+    def populate(self, **kwargs) -> runtime.ValidateFunctionT:
+        if self._executor is None:
+            self._executor = runtime.create_executor(
+                    self.to_expr(), self.params,
+                    **kwargs)
+
+        def _run(data: np.ndarray) -> np.ndarray:
+            data = self.as_input_dict(data)
+            res = runtime.run_executor(self._executor, data)
+            assert len(res) == 1
+            return res[0]
+        _run.__name__ = self.name
+        return _run
+
+    def as_input_dict(self,
+            data: typing.Optional[tvm.nd.NDArray] = None,
+            data_dict: ParametersT = {},
+            ) -> ParametersT:
+        input_dict = {}
+        for sym in self.sym_inputs:
+            val = data_dict.get(sym.name, data)
+            assert val is not None
+            val = tvm.nd.array(val)
+            assert sym.shape == list(val.shape), (
+                    "{}: {} vs. {}").format(
+                            sym.name, sym.shape, val.shape)
+            assert sym.dtype == val.dtype
+            input_dict[sym.name] = val
+        return input_dict
+
     def run(self,
             data: typing.Optional[tvm.nd.NDArray] = None,
             data_dict: ParametersT = {},
             device: tvm.runtime.Device = tvm.runtime.cpu(0),
+            target: tvm.target.Target = tvm.target.arm_cpu(),
     ) -> typing.List[np.ndarray]:
-        params = {k: v for k, v in self.params.items()}
-        for sym in self.sym_inputs:
-            val = data_dict.get(sym.name, data)
-            shape = sym.attrs["shape"]
-            dtype = sym.attrs["dtype"]
-            assert val is not None
-            assert shape == list(val.shape), (
-                    "{}: {} vs. {}").format(
-                            sym.name, shape, val.shape)
-            assert dtype == val.dtype
-            params[sym.name] = val
+        self.populate()
+        input_dict = self.as_input_dict(data, data_dict)
+        return runtime.run_executor(self._executor, input_dict)
 
-        return runtime.infer(self.to_mod(), params, device=device)
-
-    def random_run(self) -> typing.List[tvm.nd.NDArray]:
+    def random_run(self) -> typing.List[np.ndarray]:
         data = {}
         for sym in self.sym_inputs:
             shape = sym.attrs["shape"]
@@ -152,19 +185,34 @@ class Trace:
             data[sym.name] = tvm.nd.array(np_data)
         return self.run(data_dict=data)
 
-    def set_input_shape(self,
-            shape = None, shape_dict = {}) -> Trace:
-       shape_dict["common_shape"] = shape
-       def _set_shape(sym: Symbol):
-           if is_input(sym, self.params):
-               shape = shape_dict.get(
-                       sym.name, shape_dict["common_shape"])
-               if shape is not None:
-                   sym.attrs["shape"] = shape
-           return sym
+    def infer_type(self) -> Trace:
+        return Trace.from_expr(
+                self.to_expr(), self.params,
+                model_name=self._model_name)
 
-       symbol = transform(self.symbol, _set_shape)
-       return Trace.from_expr(symbol2expr(symbol), self.params)
+    def set_input_shape(self,
+            shape = None, shape_dict = {},
+            tr_name: str = "set_input_shape",
+            checkpoint: bool = False,
+    ) -> Trace:
+        tr_path = self._get_checkpoint_path(tr_name)
+        if checkpoint and path.exists(tr_path):
+            return Trace.load(tr_path)
+
+        shp_dict = {k: v for k, v in shape_dict.items()}
+        for sym in self.sym_inputs:
+            shp_dict.setdefault(sym.name, shape or sym.shape)
+            if list(shp_dict[sym.name]) != sym.shape:
+                print("change {}'s shape from {} into {}".format(
+                    sym.name, sym.shape, shp_dict[sym.name]))
+
+        def _set_shape(sym: Symbol, params: ParametersT):
+            if op.is_input(sym, params):
+                sym.attrs["shape"] = shp_dict[sym.name]
+            return sym
+        tr = self.transform(_set_shape)
+        tr = tr.infer_type()
+        return tr
 
     def print(self,
             prefix_layers=0,
@@ -242,7 +290,7 @@ class Trace:
                 _loaded=self._loaded,
                 _model_name=self._model_name)
 
-    def visit(self, callback: Visitor):
+    def visit(self, callback: VisitorT):
         def _visitor(sym: Symbol):
             callback(sym, self.params)
 
@@ -250,7 +298,7 @@ class Trace:
             visit(self.symbol, _visitor)
 
     def transform(self,
-            callback: Transformer,
+            callback: TransformerT,
             tr_name: str = None,
             print_bf: bool = False,
             print_af: bool = False,
@@ -279,7 +327,7 @@ class Trace:
         return os.path.join(base_dir, tr_name + ".trace")
 
     def checkpoint_transform(self,
-            *callbacks: Transformer,
+            *callbacks: TransformerT,
             tr_name: str = None,
             force = False,
             **kwargs) -> Trace:

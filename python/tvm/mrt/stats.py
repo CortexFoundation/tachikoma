@@ -85,22 +85,23 @@ class ClassificationOutput(Statistics):
         for d, l in zip(self.dl_top5, label):
             self.top5_hit += (int(l) in d)
 
-    def dl_info(self):
+    def dl_info(self, label_func):
         print("=" * 50)
         print("Batch: {}, Class Number: {}".format(
             self.batch, self.num_classes))
         top1, top1_raw = self.dl_top1, self.top1_raw
         top5, top5_raw = self.dl_top5, self.top5_raw
         for i in range(self.batch):
-            print("{:5} Top1: {:3} | Raw: {}".format(
+            print("{:5} Top1: {} | Raw: {}".format(
                 i, top1[i], top1_raw[i]))
             print("{:5} Top5: {} | Raw: {}".format(
                 i, top5[i], top5_raw[i]))
-            # print("{:5} Top1: {:3} | Top5: {}".format(
-            #     i, top1[i], top5[i]))
+            if label_func:
+                print("{:5} Lab5: {}".format(
+                    i, label_func(*self.dl_top5[i])))
         print("=" * 50)
 
     def info(self):
-        return "{},{}".format(
+        return "{:.3f},{.3f}".format(
                 (1. * self.top1_hit / self.dl_total),
                 (1. * self.top5_hit / self.dl_total))

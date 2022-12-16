@@ -15,6 +15,12 @@ class Dataset:
         """ reset dataset internal reader status. """
         raise RuntimeError("Base Dataset Error")
 
+    def label(self, index):
+        return index
+
+    def labels(self, *indexes):
+        return [ self.label(i) for i in indexes ]
+
 class ImageNet(Dataset):
     category_name = "imagenet_category.json"
 
@@ -26,9 +32,6 @@ class ImageNet(Dataset):
 
     def label(self, index):
         return self.synset.get(index, "unknown category")
-
-    def labels(self, indexes):
-        return [ self.label(i) for i in indexes ]
 
 
 class MemoryDataset(Dataset):
