@@ -194,6 +194,8 @@ class GraphModule(object):
                 val = self._get_input(k)
                 if val:
                     self._get_input(k).copyfrom(params[k])
+                else:
+                    print("!!!!! ERROR")
 
     def run(self, **input_dict):
         """Run forward execution of the graph

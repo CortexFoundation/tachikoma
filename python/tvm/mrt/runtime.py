@@ -20,7 +20,10 @@ def create_executor(
         target: tvm.target.Target = tvm.target.arm_cpu(),
         opt_level=0,
 ) -> graph_executor.GraphModule:
-    target = "llvm"
+    # print(ir.IRModule.from_expr(expr), "|", list(params.keys()))
+    for k, d in params.items():
+        if d.dtype == "float64":
+            print(k, d.dtype)
     with tvm.transform.PassContext(opt_level=opt_level):
         lib = relay.build_module.build(
                 ir.IRModule.from_expr(expr),
@@ -34,6 +37,8 @@ def run_executor(
         rt_mod: graph_executor.GraphModule,
         input_dict: ParametersT,
         ) -> typing.List[np.ndarray]:
+    # for n, d in input_dict.items():
+    #     print("executor input: ", n, np.abs(d.numpy()).max())
     rt_mod.run(**input_dict)
     return [ rt_mod.get_output(i).numpy() \
             for i in range(rt_mod.get_num_outputs())]

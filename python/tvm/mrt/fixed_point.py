@@ -11,36 +11,33 @@ from .symbol import filter_operators
 from .transform import Transformer, Pass
 
 @dataclass(repr=False)
-class MapMRTOp(Pass, QuantizedInfo):
-    def identity(self):
-        return self
+class MapMRTOp(Transformer, QuantizedInfo):
+    def map_requant(self):
+        X: MapMRTOp = self.args[0]
+        rescale = self.parsed.rescale
+        rescale = X.from_const_data(rescale)
+        out = op.mul(X, rescale).like(self,
+                extra_attrs=self.extra_attrs)
+        pos = self.int_max()
+        out = op.clip(out, a_min=-pos, a_max=pos).like(self,
+                extra_attrs=self.extra_attrs)
+        return out
 
     def map_pclip(self):
-        X: FixPoint = self.args[0]
-
+        X: MapMRTOp = self.args[0]
         pos = self.int_max()
-        out = op.clip(X, a_min=-pos, a_max=pos)
+        out = op.clip(X, a_min=-pos, a_max=pos).like(self)
         return out
 
-    def map_rs_pclip(self):
-        X, B = self.args
-        out = op.right_shift(X, B)
-        pos = self.int_max()
-        out = op.clip(out, a_min=-pos, a_max=pos)
-        return out
-
-MapMRTOp.test_all(MapMRTOp.identity)
-MapMRTOp.test(op.RS_PCLIP)(MapMRTOp.map_rs_pclip)
-MapMRTOp.test(op.PCLIP)(MapMRTOp.map_pclip)
+    def __call__(self):
+        if self.is_op(PCLIP):
+            return self.map_pclip()
+        elif self.is_op(REQUANT):
+            return self.map_requant()
 
 
 @dataclass(repr=False)
 class FixPoint(Transformer, QuantizedInfo):
-    def __repr__(self, **attrs):
-        attrs.setdefault("tinfer", self.dtype)
-        attrs.setdefault("sinfer", self.shape)
-        return super().__repr__(**attrs)
-
     def like(self, other: Symbol, copy=False, **kwargs):
         out = super().like(other, **kwargs)
         copy and out.set_extra_attrs(**other.extra_attrs)
@@ -88,8 +85,6 @@ class FixPoint(Transformer, QuantizedInfo):
 
     def __call__(self):
         self.validate_precision()
-
-        # print(self.precision, self.extra_attrs)
 
         self.set_dtype()
         out = self

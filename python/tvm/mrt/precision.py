@@ -20,11 +20,11 @@ class WithPrecision(Symbol):
     MAX_BIT: typing.ClassVar[int] = 32
 
     @property
-    def precision(self) -> int | None:
+    def precision(self) -> int:
         return self.extra_attrs["precision"]
     @precision.setter
     def precision(self, val):
-        assert val is None or self._validate(val), val
+        self._validate(val, str(self))
         self.set_extra_attrs(precision=val)
 
     @classmethod
@@ -38,34 +38,23 @@ class WithPrecision(Symbol):
 
     def validate_precision(self):
         self._validate(self.precision, msg=str(self))
-
     def int_max(self):
         return (2 ** (self.precision - 1)) - 1
-
-    @classmethod
-    def default_dict(cls, **kwargs):
-        cls.update_extra_attrs(kwargs, precision=None)
-        return super().default_dict(**kwargs)
 
 @dataclass(repr=False)
 class QuantizedInfo(WithPrecision):
     @property
-    def dt_type(self) -> str | None:
+    def dt_type(self) -> str:
         """ discretization method type. """
         return self.extra_attrs["dt_type"]
     @property
-    def dt_info(self) -> typing.Any | None:
+    def dt_info(self) -> typing.Any:
         """ discretization information. """
         return self.extra_attrs["dt_info"]
     @dt_info.setter
     def dt_info(self, val):
         assert val is not None
         self.set_extra_attrs(dt_info=val)
-
-    @classmethod
-    def default_dict(cls, **kwargs):
-        cls.update_extra_attrs(kwargs, dt_type=None, dt_info=None)
-        return super().default_dict(**kwargs)
 
 @dataclass(repr=False)
 class InferPrecision(Pass):

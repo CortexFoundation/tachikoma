@@ -23,6 +23,7 @@ class _BaseSymbol:
             precision, etc.
     """
     extra_attrs: typing.Dict[str, typing.Any]
+    """ extra attributes will be inherited automatically. """
 
     @classmethod
     def update_extra_attrs(cls, data_dict, **kwargs):
@@ -145,7 +146,8 @@ class Symbol(_BaseSymbol):
         args_info = "({})".format(
                 ", ".join([i.name for i in self.args]))
         attrs.update(self.attrs)
-        skips = [ "shape", "dtype", "name_hint" ]
+        # skips = [ "shape", "dtype", "name_hint" ]
+        skips = []
         attrs = {k: attrs[k] for k in attrs if k not in skips}
         return "{:30} = {:>15}{:30} /* attrs */ {} | {}".format(
                 self.name, self.op_name, args_info,

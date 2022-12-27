@@ -23,7 +23,6 @@ class Quantizer(QuantizedInfo, Transformer):
 
     @classmethod
     def default_dict(cls, **kwargs) -> dict:
-        # kwargs.setdefault("dt", None)
         kwargs.setdefault("revised", None)
         kwargs.setdefault("requants", {})
         return super().default_dict(**kwargs)
@@ -78,8 +77,7 @@ class Quantizer(QuantizedInfo, Transformer):
             out.update_data(dt.mapping(self.numpy()))
         else:
             out = dt.remapping(self.discretor, self)
-        out.assign(dt)
-        # out = out.like(self).assign(dt)
+        out = out.like(self).assign(dt)
         # out.is_op(REQUANT) and print("[  Requant]>> {}".format(out))
         # print("[  Requant]>> {}".format(out))
         self.requants[key] = out

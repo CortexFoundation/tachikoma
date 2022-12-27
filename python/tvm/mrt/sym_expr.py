@@ -87,6 +87,8 @@ def symbol2expr(symbol: Symbol, expr_map={}) -> RelayExpr:
         if op.is_operator(sym):
             skips = [ "shape", "dtype" ]
             attrs = {k: attrs[k] for k in attrs if k not in skips}
+        if op.is_variable(sym):
+            attrs["name_hint"] = sym.name
 
         if sym.is_op(op.TUPLE):
             out = relay.Tuple(args)

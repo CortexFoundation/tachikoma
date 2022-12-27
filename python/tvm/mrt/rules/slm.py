@@ -17,12 +17,14 @@ class SymmetricLinearDiscretor(Discretor):
     def data(self) -> float:
         return super().data
     @property
-    def info(self) -> float | None:
+    def dt_info(self) -> float:
         return super().dt_info
+    @dt_info.setter
+    def dt_info(self, val):
+        self.set_extra_attrs(dt_info=val)
 
     @classmethod
     def update_dict(cls, data_dict, **kwargs) -> dict:
-        data_dict.update(kwargs)
         data = data_dict["extra_attrs"]["data"]
         assert isinstance(data, float), type(data)
         return super().update_dict(data_dict, **kwargs)
@@ -42,10 +44,11 @@ class SymmetricLinearDiscretor(Discretor):
                 "[WARNING]: precision is out of bound"
                 ", expected {}, but get {}.").format(
                     self.precision, checked_bit))
-        return out
+        return out.astype("float32")
 
     def _restore(self, data: np.ndarray) -> np.ndarray:
-        return data / self.dt_info
+        out = data / self.dt_info
+        return out.astype("float32")
 
     def _remapping(self,
             base: SymmetricLinearDiscretor,

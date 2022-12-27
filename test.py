@@ -24,7 +24,7 @@ def get_real_image(im_height, im_width) -> np.ndarray:
     data = data / 255.0
     return data
 
-batch_size = 1
+batch_size = 16
 
 def load_model_from_mx() -> (ir.IRModule, ParametersT):
     import mxnet as mx
@@ -73,21 +73,7 @@ mod: tvm.IRModule = mod
 func: relay.function.Function = mod["main"]
 expr: ir.RelayExpr = func.body
 
-#  expr.simple_raw_print(mod["main"].body, params)
-
-
-relay.Var
-relay.var
-relay.nn.conv2d
-relay.nn.batch_flatten
-relay.nn.batch_norm
-relay.Tuple
-relay.TupleGetItem
-relay.expr.TupleWrapper
-ir.tensor_type.TensorType
-ir.type.TupleType
-
-from tvm.mrt.trace import Trace, SetInputShape
+from tvm.mrt.trace import Trace
 from tvm.mrt.opns import *
 from tvm.mrt.symbol import *
 tr = Trace.from_expr(expr, params, model_name="resnet18_v1")
@@ -124,52 +110,59 @@ from tvm.mrt.quantize import Quantizer
 dt_tr = calib_tr.checkpoint_transform(
         SymmetricMinMaxSampling.apply(),
         slm.SymmetricLinearDiscretor.apply(),
-        force=True,
         )
 # dt_tr.print(short=True)
 dt_tr = dt_tr.checkpoint_transform(
         Quantizer.apply(),
-        # print_bf=True, print_af=True,
+        # print_bf=True,
         # print_af=True,
-        # force=True,
+        force=True,
 )
 # dt_tr.print()
 # dt_tr.print(short=True, suffix_layers=10)
 # dt_tr.print(selects=["nn.max_pool2d"])
 
-from tvm.mrt.fixed_point import FixPoint
-# qt_tr = dt_tr.checkpoint_transform(
-#         MapRequant.apply(),
-#         force=True)
-
-qt_tr = dt_tr.checkpoint_transform(
-        FixPoint.apply(),
-        # print_bf = True,
-        # print_af = True,
+# TODO(wlt): add symbol extra attrs for name_hint to search
+#   in subgraph.
+# TODO: extra attrs copy and assign logic.
+from tvm.mrt.fixed_point import FixPoint, MapMRTOp
+# dt_tr.print(short=True, prefix_layers=20)
+# FuseBatchNorm.%1
+sim_tr = dt_tr.checkpoint_transform(
+        MapMRTOp.apply(),
         # force=True,
-)
-qt_tr.print(short=True, prefix_layers=20)
-sys.exit(-1)
+        )
+sim_tr.log()
 
-# data = get_real_image(*image_shape[1:])
-# res = tr.eval(data,
-#         device=tvm.runtime.cuda(1),
-#         target=tvm.target.cuda(),)
-# print(res[0].flatten()[:10])
-# res = fuse_tr.eval(data,
-#         device=tvm.runtime.cuda(1),
-#         target=tvm.target.cuda(),)
-# print(res[0].flatten()[:10])
+# qt_tr = dt_tr.checkpoint_transform(
+#         FixPoint.apply(),
+#         # print_bf = True,
+#         # print_af = True,
+#         # force=True,
+# )
+# qt_tr.print(short=True, prefix_layers=10)
+
+config = {
+        "device": tvm.runtime.cuda(1),
+        "target": tvm.target.cuda() }
+data = get_real_image(*image_shape[1:])
+# res = tr.eval(data, **config)
+# print("tr: ", res.flatten()[:5])
+# res = qt_tr.eval(data, **config)
+# print("qt tr: ", res.flatten()[:5])
+sys.exit(-1)
 
 from tvm.mrt.dataset_torch import TorchImageNet
 ds = TorchImageNet(
         batch_size=batch_size,
         img_size=image_shape[1:],)
 runtime.multiple_validate(
-        tr.populate(), fuse_tr.populate(),
-        qt_tr.populate(),
+        tr.populate(**config),
+        fuse_tr.populate(**config),
+        sim_tr.populate(**config),
         dataset=ds,
         stats_type=stats.ClassificationOutput,
+        max_iter_num=20,
 )
 sys.exit(-1)
 

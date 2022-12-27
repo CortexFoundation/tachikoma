@@ -117,7 +117,6 @@ class Sampling(Transformer):
             data = cls.sampling(origin.data)
             cls.update_extra_attrs(data_dict, data=data)
         return super().update_dict(data_dict)
-        # return super().update_dict(data_dict, data=data)
 
     @classmethod
     def sampling(cls, np_data: np.ndarray) -> typing.Any:
@@ -128,11 +127,6 @@ class Sampling(Transformer):
 
 @dataclass(repr=False)
 class SymmetricMinMaxSampling(Sampling):
-    # data: float
-
-    # def __repr__(self, **attrs):
-    #     attrs.setdefault("threshold", self.data)
-    #     return super().__repr__(**attrs)
     @property
     def data(self) -> float:
         return super().data

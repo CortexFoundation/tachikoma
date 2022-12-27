@@ -5,6 +5,7 @@ import os
 import pickle
 import numpy as np
 from functools import wraps
+from contextlib import redirect_stdout
 from dataclasses import dataclass, field
 
 import tvm
@@ -41,26 +42,6 @@ class ParamSymbol(Transformer):
                 attrs["tdtype"] = self.dtype
         return super().__repr__(**attrs)
 
-@dataclass(repr=False)
-class SetInputShape(Transformer):
-    def __repr__(self, **extra_attrs):
-        extra_attrs["shp"] = self.shape
-        extra_attrs["typ"] = self.dtype
-        return super().__repr__(**extra_attrs)
-
-    def __call__(self, shape = None, shape_dict = {}):
-        if not self.is_input():
-            return
-
-        old_shape = self.shape
-        self.attrs["shape"] = shape_dict.get(
-                self.name, shape or old_shape)
-        if self.shape != old_shape:
-            print("change {}'s shape from {} into {}".format(
-                self.name, old_shape, self.shape))
-        return self
-
-
 @dataclass
 class Trace:
     """ Only use visitor mode in Trace. """
@@ -85,10 +66,13 @@ class Trace:
             if op.is_input(sym, self.params):
                 self.sym_inputs.append(sym)
             elif op.is_param(sym, self.params):
-                pshape = list(self.params[sym.name].shape)
-                assert sym.shape == pshape, (
+                data = self.params[sym.name]
+                assert sym.shape == list(data.shape), (
                     "param:{} shape inconsistent: {} vs. {}"
                 ).format(sym.name, sym.shape, pshape)
+                assert sym.dtype == data.dtype, (
+                    "params:{} dtype inconsistent: {} vs. {}"
+                ).format(sym.name, sym.dtype, data.dtype)
                 self.sym_params.append(sym)
         visit(self.symbol, _init)
 
@@ -102,21 +86,6 @@ class Trace:
     @property
     def input_shapes(self) -> typing.List[ShapeT]:
         return [i.attrs["shape"] for i in self.sym_inputs]
-
-    def populate(self, **kwargs) -> runtime.ValidateFunctionT:
-        if self._executor is None:
-            self._executor = runtime.create_executor(
-                    self.to_expr(), self.params,
-                    **kwargs)
-
-        def _run(data: np.ndarray) -> np.ndarray:
-            data = self.as_input_dict(data)
-            res = runtime.run_executor(self._executor, data)
-            assert len(res) == 1
-            res = res[0]
-            return self._postprocess_output(self.symbol, res)
-        _run.__name__ = self.name
-        return _run
 
     def _preprocess_input(self, sym: Symbol, data):
         if "dt_type" not in sym.extra_attrs:
@@ -150,15 +119,29 @@ class Trace:
             input_dict[sym.name] = val
         return input_dict
 
+    def populate(self, **kwargs) -> runtime.ValidateFunctionT:
+        if self._executor is None:
+            self._executor = runtime.create_executor(
+                    self.to_expr(), self.params,
+                    **kwargs)
+
+        def _run(data: np.ndarray) -> np.ndarray:
+            data = self.as_input_dict(data)
+            # for n, val in data.items():
+            #     print("input", n, np.abs(val.numpy()).max(),
+            #             val.numpy().flatten()[:5])
+            res = runtime.run_executor(self._executor, data)
+            assert len(res) == 1
+            res = res[0]
+            # print("output", self.symbol, np.abs(res).max())
+            return self._postprocess_output(self.symbol, res)
+        _run.__name__ = self.name
+        return _run
+
     def eval(self,
             data: typing.Optional[np.ndarray] = None,
-            data_dict: ParametersT = {},
-            device: tvm.runtime.Device = tvm.runtime.cpu(0),
-            target: tvm.target.Target = tvm.target.arm_cpu(),
-    ) -> typing.List[np.ndarray]:
-        self.populate()
-        input_dict = self.as_input_dict(data, data_dict)
-        return runtime.run_executor(self._executor, input_dict)
+            **kwargs,) -> np.ndarray:
+        return self.populate(**kwargs)(data)
 
     def random_run(self) -> typing.List[np.ndarray]:
         data = {}
@@ -279,6 +262,14 @@ class Trace:
         print("Operator Names:", ", ".join(info["op_names"]))
         print("=" * len(msg))
 
+    def log(self, **kwargs):
+        fname = self._get_checkpoint_path(self.name) + ".log"
+        print("Log Trace {} into {}".format(
+            self.name, fname))
+        with open(fname, "w") as f:
+            with redirect_stdout(f):
+                self.print(**kwargs)
+
     def subgraph(self, inames=[], onames=[]) -> Trace:
         out = op.subgraph(self.symbol, inames, onames)
         return Trace("subgraph",
@@ -387,6 +378,8 @@ class Trace:
 
     def to_expr(self, expr_map={}) -> ir.RelayExpr:
         return symbol2expr(self.symbol, expr_map)
+    def to_mod(self) -> ir.IRModule:
+        return ir.IRModule.from_expr(self.to_expr())
 
     @staticmethod
     def from_expr(

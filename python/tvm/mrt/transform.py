@@ -49,13 +49,6 @@ class WithParameters(Symbol):
     def from_const_data(self, data: int) -> Symbol:
         return self.from_np_data(
                 np.array(data).astype(self.dtype))
-        # assert int(data) == data, data
-        # data = np.array(int(data), dtype=self.dtype)
-        # name = "const_{}".format(data)
-        # if name not in self.params:
-        #     self.params[name] = tvm.nd.array(data)
-        # return op.variable(name,
-        #         data.shape, data.dtype.name).like(self)
 
     def from_np_data(self,
             data: np.ndarray,
@@ -63,7 +56,8 @@ class WithParameters(Symbol):
     ) -> Symbol:
         name = N.n(prefix=prefix)
         self.params[name] = tvm.nd.array(data)
-        return op.variable(name, data.shape, data.dtype.name)
+        return op.variable(
+                name, data.shape, data.dtype.name).like(self)
 
     def is_input(self) -> bool:
         return op.is_input(self, self.params)
