@@ -6,58 +6,63 @@ from ..opns import *
 from ..utils import *
 
 from .. import op
-from ..transform import Pass
+from ..transform import Pass, Transformer
 from ..discrete import Discretor, InferDiscretor
 
 @dataclass(repr=False)
 class SymmetricLinearDiscretor(Discretor):
-    data: float
-    info: float | None
     """ symmetric linear scale to precision integer. """
-    precision: int | None
 
-    @classmethod
-    def default_dict(cls, **kwargs):
-        kwargs.setdefault("precision", None)
-        return super().default_dict(**kwargs)
+    @property
+    def data(self) -> float:
+        return super().data
+    @property
+    def info(self) -> float | None:
+        return super().dt_info
 
     @classmethod
     def update_dict(cls, data_dict, **kwargs) -> dict:
-        assert isinstance(data_dict["data"], float), \
-                type(data_dict["data"])
+        data_dict.update(kwargs)
+        data = data_dict["extra_attrs"]["data"]
+        assert isinstance(data, float), type(data)
         return super().update_dict(data_dict, **kwargs)
 
     def summary(self) -> str:
         return "T({:.3f})|S({:.2f})".format(
-                self.data or 0, self.info or 0)
+                self.data, self.dt_info or 0)
 
-    def _mapping(self, sym: Symbol) -> Quantizer:
-        out: Quantizer = sym.copy(name=N.n())
-        out.update_data(sym.numpy() * self.info)
-
+    def _mapping(self, data: np.ndarray) -> np.ndarray:
+        out = data * self.dt_info
         # params out of precision will be cliped
         #   in cvm-runtime.
-        check = float(np.abs(out.numpy()).max())
+        check = float(np.abs(out).max())
         checked_bit = number_to_bits(check)
-        assert checked_bit <= self.precision
+        if checked_bit > self.precision:
+            print((
+                "[WARNING]: precision is out of bound"
+                ", expected {}, but get {}.").format(
+                    self.precision, checked_bit))
         return out
+
+    def _restore(self, data: np.ndarray) -> np.ndarray:
+        return data / self.dt_info
 
     def _remapping(self,
             base: SymmetricLinearDiscretor,
             sym: Symbol) -> Quantizer:
-        rescale = self.info / base.info
+        rescale = self.dt_info / base.dt_info
         out = op.requant(sym,
                 rescale=rescale,
                 precision=self.precision)
-        return out
+        return out.like(sym)
 
     def _examine(self):
-        if self.info is not None:
-            real_max = self.data * self.info
+        if self.dt_info is not None:
+            real_max = self.data * self.dt_info
             self.precision = number_to_bits(real_max)
         elif self.precision is not None:
             prec_max = 2 ** (self.precision - 1) - 1
-            self.info = prec_max / self.data
+            self.dt_info = prec_max / self.data
         else:
             assert False
 

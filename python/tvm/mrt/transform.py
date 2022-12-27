@@ -47,13 +47,15 @@ class WithParameters(Symbol):
         self.params[self.name] = tvm.nd.array(data)
 
     def from_const_data(self, data: int) -> Symbol:
-        assert int(data) == data, data
-        data = np.array(int(data), dtype=self.dtype)
-        name = "const_{}".format(data)
-        if name not in self.params:
-            self.params[name] = tvm.nd.array(data)
-        return op.variable(name,
-                data.shape, data.dtype.name).like(self)
+        return self.from_np_data(
+                np.array(data).astype(self.dtype))
+        # assert int(data) == data, data
+        # data = np.array(int(data), dtype=self.dtype)
+        # name = "const_{}".format(data)
+        # if name not in self.params:
+        #     self.params[name] = tvm.nd.array(data)
+        # return op.variable(name,
+        #         data.shape, data.dtype.name).like(self)
 
     def from_np_data(self,
             data: np.ndarray,
@@ -140,8 +142,8 @@ class Pass(WithParameters):
     # TODO: add unmount and unmount all function
 
     @classmethod
-    def bind(cls, symbol: Symbol):
-        return cls.base(symbol)()
+    def bind(cls, symbol: Symbol, **kwargs):
+        return cls.base(symbol)(**kwargs)
 
     def __call__(self, *args, **kw):
         op_registry = _PASS_REGISTRY[type(self)]

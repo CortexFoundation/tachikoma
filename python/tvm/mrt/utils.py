@@ -122,3 +122,11 @@ def count_to_bits(count: int):
         prec += 1
         count >>= 1
     return prec
+
+def get_class_name(o):
+    klass = o if isinstance(o, type) else o.__class__
+    module = klass.__module__
+    if module == 'builtins':
+        return klass.__qualname__ # avoid outputs like 'builtins.str'
+    return module + '.' + klass.__qualname__
+

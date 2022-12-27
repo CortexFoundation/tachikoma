@@ -105,11 +105,14 @@ ValidateFunctionT = typing.Callable[[np.ndarray], np.ndarray]
 
 def multiple_validate(
         base_func: ValidateFunctionT,
-        dataset: Dataset,
-        stats_type: typing.Type[Statistics],
         *comp_funcs: typing.List[ValidateFunctionT],
+        dataset: Dataset = None,
+        stats_type: typing.Type[Statistics] = None,
         max_iter_num: typing.Optional[int] = None,
 ):
+    assert dataset is not None
+    assert stats_type is not None
+
     all_funcs = [ base_func, ] + list(comp_funcs)
     all_stats = [stats_type() for _ in all_funcs]
 

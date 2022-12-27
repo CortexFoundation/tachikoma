@@ -41,15 +41,10 @@ class FixPoint(Transformer, QuantizedInfo):
         attrs.setdefault("sinfer", self.shape)
         return super().__repr__(**attrs)
 
-    @classmethod
-    def update_dict(cls, data, **kwargs) -> dict:
-        data.update(kwargs)
-        # prec = InferPrecision.from_dict(data)()
-        # data["precision"] = prec or data["precision"]
-        return super().update_dict(data)
-
     def like(self, other: Symbol, copy=False, **kwargs):
-        return super().like(other, copy=copy, **kwargs)
+        out = super().like(other, **kwargs)
+        copy and out.set_extra_attrs(**other.extra_attrs)
+        return out
 
     def map_requant(self):
         X: FixPoint = self.args[0]
@@ -77,7 +72,6 @@ class FixPoint(Transformer, QuantizedInfo):
 
     def map_pclip(self):
         X: FixPoint = self.args[0]
-
         pos = self.int_max()
         out = op.clip(X, a_min=-pos, a_max=pos).like(self)
         return out
@@ -94,6 +88,8 @@ class FixPoint(Transformer, QuantizedInfo):
 
     def __call__(self):
         self.validate_precision()
+
+        # print(self.precision, self.extra_attrs)
 
         self.set_dtype()
         out = self

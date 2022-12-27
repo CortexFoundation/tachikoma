@@ -15,6 +15,9 @@ class Dataset:
         """ reset dataset internal reader status. """
         raise RuntimeError("Base Dataset Error")
 
+    def __len__(self):
+        raise RuntimeError("Base Dataset Error")
+
     def label(self, index):
         return index
 
@@ -39,6 +42,9 @@ class MemoryDataset(Dataset):
         self.data = available_dls
         self._max = len(self.data)
         self._index = 0
+
+    def __len__(self):
+        return self._max
 
     def next(self) -> typing.Optional[DataLabelT]:
         if self._index < self._max:

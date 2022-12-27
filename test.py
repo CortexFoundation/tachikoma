@@ -4,11 +4,25 @@ from tvm.relay import testing
 from tvm.mrt.utils import *
 
 from tvm.mrt import runtime
-from tvm.mrt import stats
+from tvm.mrt import stats, dataset
 from tvm.mrt import utils
 
 import sys
 import numpy as np
+
+from PIL import Image
+from tvm.contrib.download import download_testdata
+def get_real_image(im_height, im_width) -> np.ndarray:
+    repo_base = "https://github.com/dmlc/web-data/raw/main/tensorflow/models/InceptionV1/"
+    img_name = "elephant-299.jpg"
+    image_url = path.join(repo_base, img_name)
+    img_path = download_testdata(image_url, img_name, module="data")
+    image = Image.open(img_path).resize((im_height, im_width))
+    data = np.array(image).astype("float32")
+    data = np.reshape(data, (1, im_height, im_width, 3))
+    data = np.transpose(data, (0, 3, 1, 2))
+    data = data / 255.0
+    return data
 
 batch_size = 1
 
@@ -77,14 +91,9 @@ from tvm.mrt.trace import Trace, SetInputShape
 from tvm.mrt.opns import *
 from tvm.mrt.symbol import *
 tr = Trace.from_expr(expr, params, model_name="resnet18_v1")
-tr.checkpoint("init")
-
-tr = tr.set_input_shape(
-        shape=(16, *data_shape[1:]),
-        checkpoint=True,)
-tr.print(short=True)
-
-# tr.print()
+# tr = tr.subgraph(onames=["%1"])
+tr.checkpoint()
+# tr.print(param_config={ "use_all": True, })
 
 from tvm.mrt import fuse
 from tvm.mrt import op
@@ -95,6 +104,7 @@ fuse_tr = tr.checkpoint_transform(
         tr_name = "fuse",
         # force=True,
         )
+# fuse_tr.print(param_config={ "use_all": True, })
 
 from tvm.mrt.calibrate import Calibrator, SymmetricMinMaxSampling
 
@@ -107,17 +117,19 @@ calib_tr = fuse_tr.checkpoint_transform(
 # calib_tr.print()
 # print(type(calib_tr.symbol))
 
-from tvm.mrt.rules import symmetric_linear_minmax as dt
+from tvm.mrt.rules import slm
 from tvm.mrt.quantize import Quantizer
 
 # calib_tr = calib_tr.subgraph(onames=["%5"])
 dt_tr = calib_tr.checkpoint_transform(
         SymmetricMinMaxSampling.apply(),
-        dt.SymmetricLinearDiscretor.apply(),
-        # force=True,
+        slm.SymmetricLinearDiscretor.apply(),
+        force=True,
         )
+# dt_tr.print(short=True)
 dt_tr = dt_tr.checkpoint_transform(
         Quantizer.apply(),
+        # print_bf=True, print_af=True,
         # print_af=True,
         # force=True,
 )
@@ -132,87 +144,46 @@ from tvm.mrt.fixed_point import FixPoint
 
 qt_tr = dt_tr.checkpoint_transform(
         FixPoint.apply(),
-        print_bf = True, print_af = True,
+        # print_bf = True,
+        # print_af = True,
         # force=True,
 )
-
 qt_tr.print(short=True, prefix_layers=20)
+sys.exit(-1)
+
+# data = get_real_image(*image_shape[1:])
+# res = tr.eval(data,
+#         device=tvm.runtime.cuda(1),
+#         target=tvm.target.cuda(),)
+# print(res[0].flatten()[:10])
+# res = fuse_tr.eval(data,
+#         device=tvm.runtime.cuda(1),
+#         target=tvm.target.cuda(),)
+# print(res[0].flatten()[:10])
+
+from tvm.mrt.dataset_torch import TorchImageNet
+ds = TorchImageNet(
+        batch_size=batch_size,
+        img_size=image_shape[1:],)
+runtime.multiple_validate(
+        tr.populate(), fuse_tr.populate(),
+        qt_tr.populate(),
+        dataset=ds,
+        stats_type=stats.ClassificationOutput,
+)
+sys.exit(-1)
+
 
 # qt_expr = qt_tr.to_expr()
 # print(qt_expr)
 # print(qt_expr.astext(show_meta_data=False))
 
-from PIL import Image
-from tvm.contrib.download import download_testdata
-def get_real_image(im_height, im_width) -> np.ndarray:
-    repo_base = "https://github.com/dmlc/web-data/raw/main/tensorflow/models/InceptionV1/"
-    img_name = "elephant-299.jpg"
-    image_url = path.join(repo_base, img_name)
-    img_path = download_testdata(image_url, img_name, module="data")
-    image = Image.open(img_path).resize((im_height, im_width))
-    data = np.array(image).astype("float32")
-    data = np.reshape(data, (1, im_height, im_width, 3))
-    data = np.transpose(data, (0, 3, 1, 2))
-    data = data / 255.0
-    return data
-
 # test accuracy
-from tvm.mrt import dataset
-data = get_real_image(*image_shape[1:])
-res = tr.run(data,
-        device=tvm.runtime.cuda(1),
-        target=tvm.target.cuda(),
-)
 
-out = stats.ClassificationOutput()
-out.merge([res[0], np.array([0,])])
-imagenet = dataset.ImageNet()
-out.dl_info(imagenet.labels)
-
-import torch
-from torch.utils.data import DataLoader
-import torchvision as tv
-
-def to_tensor(img: Image.Image):
-    print(img.shape)
-    img = img.resize(image_shape[1:])
-    img = np.array(img).astype("float32")
-    # data = np.reshape(data, (1, im_height, im_width, 3))
-    img = np.transpose(img, (2, 1, 0))
-    return img / 255.0
-
-val_data = tv.datasets.ImageFolder(
-        path.join(utils.MRT_DATASET_ROOT, "imagenet/val"),
-        transform=to_tensor)
-data_loader = DataLoader(val_data, batch_size=1)
-class TorchImageNet(dataset.ImageNet):
-    def __init__(self):
-        self.data_loader = data_loader
-        self._max = len(self.data_loader)
-        self.reset()
-
-    def reset(self):
-        self._iter = iter(self.data_loader)
-
-    def next(self):
-        try:
-            data, label = next(self._iter)
-            return data.numpy(), label.numpy()
-        except Exception as e:
-            print(e)
-            return None, None
-
-torch_dataset = TorchImageNet()
-data, label = torch_dataset.next()
-print(data.shape, label.shape)
-sys.exit(-1)
-
-tr_func = tr.populate()
-runtime.multiple_validate(
-        tr_func,
-        dataset=TorchImageNet(),
-        stats_type=stats.ClassificationOutput,
-)
+# torch_dataset = TorchImageNet()
+# data, label = torch_dataset.next()
+# print(data.shape, label.shape)
+# sys.exit(-1)
 
 # tr.print()
 # outs = tr.calibrate()

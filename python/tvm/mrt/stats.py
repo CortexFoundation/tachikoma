@@ -59,7 +59,8 @@ class ClassificationOutput(Statistics):
 
     def merge(self, dl: DataLabelT):
         data, label = dl
-        self.argsort = [ np.argsort(d).tolist() for d in data]
+        self.argsort = [ np.argsort(d).tolist() \
+                for d in data]
 
         self.dl_top1 = [a[-1] for a in self.argsort]
         self.dl_top5 = [a[-5:] for a in self.argsort]
@@ -102,6 +103,6 @@ class ClassificationOutput(Statistics):
         print("=" * 50)
 
     def info(self):
-        return "{:.3f},{.3f}".format(
+        return "Top1/5: {:4.2%},{:4.2%}".format(
                 (1. * self.top1_hit / self.dl_total),
                 (1. * self.top5_hit / self.dl_total))

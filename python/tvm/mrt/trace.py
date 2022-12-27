@@ -13,13 +13,33 @@ from tvm.contrib import graph_executor as graph
 
 from . import op
 from . import runtime
+from .stats import *
 from .transform import Transformer
+from .discrete import Discretor
 from .types import *
 from .symbol import *
 from .sym_expr import *
 
 VisitorT = typing.Callable[[Symbol, ParametersT], None]
 TransformerT = typing.Callable[[Symbol, ParametersT], typing.Optional[Symbol]]
+
+@dataclass(repr=False)
+class ParamSymbol(Transformer):
+    use_all: bool       = False
+    use_absmax: bool    = False
+    use_shape: bool     = False
+    use_dtype: bool     = False
+
+    def __repr__(self, **attrs):
+        if self.is_param():
+            data = self.numpy()
+            if self.use_all or self.use_absmax:
+                attrs["absmax"] = np.abs(data).max()
+            if self.use_all or self.use_shape:
+                attrs["tshape"] = self.shape
+            if self.use_all or self.use_dtype:
+                attrs["tdtype"] = self.dtype
+        return super().__repr__(**attrs)
 
 @dataclass(repr=False)
 class SetInputShape(Transformer):
@@ -39,6 +59,7 @@ class SetInputShape(Transformer):
             print("change {}'s shape from {} into {}".format(
                 self.name, old_shape, self.shape))
         return self
+
 
 @dataclass
 class Trace:
@@ -82,60 +103,6 @@ class Trace:
     def input_shapes(self) -> typing.List[ShapeT]:
         return [i.attrs["shape"] for i in self.sym_inputs]
 
-    def calibrate(self,
-            data: typing.Optional[np.ndarray] = None,
-            data_dict: typing.Dict[str, np.ndarray] = {},
-        ) -> typing.Dict[str, np.ndarray]:
-        calibrate_outputs: typing.Dict[str, np.ndarray] = {
-                k: v.numpy() for k, v in self.params.items()}
-
-        # set input data
-        for v in self.sym_inputs:
-            shape, dtype = v.attrs["shape"], v.attrs["dtype"]
-            val = data_dict.get(v.name, data)
-            if val is None:
-                print("input: {} use random data".format(v.name))
-                val = np.random.randn(*shape).astype(dtype)
-            calibrate_outputs[v.name] = val
-
-        def _execute(sym: Symbol, data: ParametersT) -> runtime.OutputDataType:
-            args = [ a.as_parameter() for a in sym.args]
-            sym = sym.clone(args=args)
-            expr = symbol2expr(sym)
-            result = runtime.infer(expr, data)
-            return result
-
-        def _tassert(expect: typing.Any, val: typing.Any):
-            if isinstance(expect, ( list, tuple )):
-                assert len(expect) == len(val), (
-                    "{} vs. {}").format(expect, val)
-                for e, o in zip(expect, val):
-                    _tassert(e, o)
-            elif isinstance(expect, ( int, str )):
-                assert expect == val
-
-        def _get_type(out, key):
-            if isinstance(out, tvm.runtime.NDArray):
-                return getattr(out, key)
-            return [ _get_type(o, key) for o in out ]
-
-        def _calibrate(sym: Symbol, params: ParametersT):
-            global TUPLE_GET_ITEM_NAME
-
-            if is_variable(sym, params):
-                return
-            if sym.op_name == TUPLE_GET_ITEM_NAME:
-                out = calibrate_outputs[sym.args[0].name][sym.attrs['index']]
-            else:
-                out = _execute(sym, calibrate_outputs)
-
-            _tassert(sym.attrs["shape"], _get_type(out, "shape"))
-            _tassert(sym.attrs["dtype"], _get_type(out, "dtype"))
-            calibrate_outputs[sym.name] = out
-
-        self.visit(_calibrate)
-        return calibrate_outputs
-
     def populate(self, **kwargs) -> runtime.ValidateFunctionT:
         if self._executor is None:
             self._executor = runtime.create_executor(
@@ -146,28 +113,45 @@ class Trace:
             data = self.as_input_dict(data)
             res = runtime.run_executor(self._executor, data)
             assert len(res) == 1
-            return res[0]
+            res = res[0]
+            return self._postprocess_output(self.symbol, res)
         _run.__name__ = self.name
         return _run
 
+    def _preprocess_input(self, sym: Symbol, data):
+        if "dt_type" not in sym.extra_attrs:
+            return data
+        dt_type = eval(sym.extra_attrs["dt_type"])
+        dt: Discretor = dt_type.base(sym)
+        return dt.mapping(data).astype(sym.dtype)
+
+    def _postprocess_output(self, sym: Symbol, data):
+        if "dt_type" not in sym.extra_attrs:
+            return data
+        dt_type = eval(sym.extra_attrs["dt_type"])
+        dt: Discretor = dt_type.base(sym)
+        return dt.restore(data)
+
     def as_input_dict(self,
-            data: typing.Optional[tvm.nd.NDArray] = None,
+            data: typing.Optional[np.ndarray] = None,
             data_dict: ParametersT = {},
             ) -> ParametersT:
         input_dict = {}
         for sym in self.sym_inputs:
             val = data_dict.get(sym.name, data)
             assert val is not None
+            val = self._preprocess_input(sym, val)
             val = tvm.nd.array(val)
             assert sym.shape == list(val.shape), (
                     "{}: {} vs. {}").format(
                             sym.name, sym.shape, val.shape)
-            assert sym.dtype == val.dtype
+            assert sym.dtype == val.dtype, (
+                "{} vs. {}").format(sym.dtype, val.dtype)
             input_dict[sym.name] = val
         return input_dict
 
-    def run(self,
-            data: typing.Optional[tvm.nd.NDArray] = None,
+    def eval(self,
+            data: typing.Optional[np.ndarray] = None,
             data_dict: ParametersT = {},
             device: tvm.runtime.Device = tvm.runtime.cpu(0),
             target: tvm.target.Target = tvm.target.arm_cpu(),
@@ -188,6 +172,7 @@ class Trace:
     def infer_type(self) -> Trace:
         return Trace.from_expr(
                 self.to_expr(), self.params,
+                tr_name="infer_type",
                 model_name=self._model_name)
 
     def set_input_shape(self,
@@ -210,8 +195,14 @@ class Trace:
             if op.is_input(sym, params):
                 sym.attrs["shape"] = shp_dict[sym.name]
             return sym
-        tr = self.transform(_set_shape)
+        tr = self.transform(_set_shape, tr_name=tr_name)
         tr = tr.infer_type()
+        tr.name = tr_name
+        tr._loaded = False
+        if checkpoint:
+            tr.dump(tr_path)
+            print("Dumped checkpoint: {:20} into {}".format(
+                tr_name, tr_path))
         return tr
 
     def print(self,
@@ -219,7 +210,8 @@ class Trace:
             suffix_layers=0,
             short: bool = False,
             till_layer=None,
-            selects: typing.List[str] =[]
+            selects: typing.List[str] =[],
+            param_config = {},
     ):
         msg = "{f} {s} View {f}".format(
                 f="=" * 25, s=self.name)
@@ -271,6 +263,10 @@ class Trace:
             selected = selected or (sym.op_name in selects)
             checked = checked and selected
 
+            if op.is_param(sym, params):
+                sym = ParamSymbol.from_dict(
+                        sym.to_dict(), params=params,
+                        **param_config)
             checked and print(sym)
 
         self.visit(_print)
@@ -284,7 +280,7 @@ class Trace:
         print("=" * len(msg))
 
     def subgraph(self, inames=[], onames=[]) -> Trace:
-        out = op.subgraph(self.symbol, iname, onames)
+        out = op.subgraph(self.symbol, inames, onames)
         return Trace("subgraph",
                 out, self.params,
                 _loaded=self._loaded,
@@ -314,10 +310,10 @@ class Trace:
         print("Apply transformer: {}".format(tr_name))
         with N(tr_name):
             new_symbol = transform(self.symbol, _tfm)
-        # raw_print(new_symbol)
+
         return Trace(tr_name, new_symbol, new_params,
-                _loaded=False,
-                _model_name=self._model_name)
+                _loaded=False, _model_name=self._model_name)
+
 
     def _get_checkpoint_path(self, tr_name):
         base_dir = os.path.join(self.BASE_DIR, self._model_name)
@@ -396,8 +392,9 @@ class Trace:
     def from_expr(
             expr: RelayExpr,
             params: ParametersT,
+            tr_name = "from_expr",
             model_name="unknown-model") -> Trace:
-        return Trace("init", expr2symbol(expr), params,
+        return Trace(tr_name, expr2symbol(expr), params,
                 _loaded=True,
                 _model_name=model_name)
 

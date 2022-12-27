@@ -105,17 +105,19 @@ class Calibrator(Transformer):
 
 @dataclass(repr=False)
 class Sampling(Transformer):
-    data: typing.Any
+    @property
+    def data(self) -> typing.Any:
+        return self.extra_attrs["data"]
 
     @classmethod
     def update_dict(cls, data_dict: dict, **kwargs) -> dict:
         data_dict.update(kwargs)
-        data = data_dict.get("data", None)
-        origin: Calibrator = data_dict.get("origin", None)
+        origin = data_dict.get("origin", None)
         if isinstance(origin, Calibrator):
             data = cls.sampling(origin.data)
-        assert data is not None
-        return super().update_dict(data_dict, data=data)
+            cls.update_extra_attrs(data_dict, data=data)
+        return super().update_dict(data_dict)
+        # return super().update_dict(data_dict, data=data)
 
     @classmethod
     def sampling(cls, np_data: np.ndarray) -> typing.Any:
@@ -126,11 +128,14 @@ class Sampling(Transformer):
 
 @dataclass(repr=False)
 class SymmetricMinMaxSampling(Sampling):
-    data: float
+    # data: float
 
-    def __repr__(self, **attrs):
-        attrs.setdefault("threshold", self.data)
-        return super().__repr__(**attrs)
+    # def __repr__(self, **attrs):
+    #     attrs.setdefault("threshold", self.data)
+    #     return super().__repr__(**attrs)
+    @property
+    def data(self) -> float:
+        return super().data
 
     @classmethod
     def sampling(cls, data: np.ndarray) -> float:

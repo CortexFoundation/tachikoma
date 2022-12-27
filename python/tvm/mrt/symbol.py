@@ -16,8 +16,74 @@ __ALL__ = [
 
 _CopyAttrsT = typing.Union[typing.List[str], str]
 
+@dataclass(repr=False)
+class _BaseSymbol:
+    """ Symbol should record neccessary infomation about
+            the transformer, such as discretization method,
+            precision, etc.
+    """
+    extra_attrs: typing.Dict[str, typing.Any]
+
+    @classmethod
+    def update_extra_attrs(cls, data_dict, **kwargs):
+        extra_attrs: dict = data_dict.get("extra_attrs", {})
+        extra_attrs.update(kwargs)
+        data_dict["extra_attrs"] = extra_attrs
+        return data_dict
+    def set_extra_attrs(self, **kwargs) -> Symbol:
+        self.extra_attrs.update(kwargs)
+        return self
+
+    @classmethod
+    def base(cls, symbol: Symbol, **kwargs):
+        """ create current class instance based on another.
+            Enable the inherit class to override.
+        """
+        return cls.from_dict(symbol.to_dict(), **kwargs)
+    def like(self, other: Symbol, **kwargs) -> Symbol:
+        """ cast current symbol to child class. """
+        data = other.to_dict()
+        data.update(self.to_dict())
+        return type(other).from_dict(data, **kwargs)
+    def copy(self, **kwargs) -> typing.Type[Symbol]:
+        """ clone current symbol. """
+        return type(self).from_dict(
+            self.to_dict(), **kwargs) # kwargs override self
+
+    @classmethod
+    def default_dict(cls, **kwargs) -> dict:
+        """ possible dict to initialize symbol class. """
+        kwargs.setdefault("extra_attrs", {})
+        return kwargs
+    @classmethod
+    def update_dict(cls, data_dict: dict, **kwargs) -> dict:
+        data_dict.update(kwargs)
+        return data_dict
+    @classmethod
+    def from_dict(cls, d: dict, **kwargs):
+        data = cls.default_dict()
+        data.update(d)
+        data.update(kwargs)
+        data = cls.update_dict(data)
+        fnames = [f.name for f in fields(cls)]
+        data = {k: data[k] for k in data if k in fnames}
+        try:
+            out = cls(**data)
+        except Exception as e:
+            print(cls, list(data.keys()))
+            raise e
+        return out
+    def to_dict(self, **kwargs) -> dict:
+        data = dataclass_to_dict(self)
+        data.update(**kwargs)
+        data["args"] = [a for a in data["args"]]
+        data["attrs"] = {k: v for k, v in self.attrs.items()}
+        data["extra_attrs"] = {k: v \
+                for k, v in data["extra_attrs"].items()}
+        return data
+
 @dataclass
-class Symbol:
+class Symbol(_BaseSymbol):
     """ Uniform Symbol Representation for RelayExpr
 
     RelayExpr has different format for operators, functions,
@@ -38,67 +104,39 @@ class Symbol:
     args: typing.List[Symbol]
     attrs: typing.Dict[str, typing.Any]
 
-    # TODO: validate variable name has name_hint attribute.
-
-    def is_op(self, *op_names) -> bool:
-        return self.op_name in op_names
-
-    def like(self, other: Symbol, **kwargs) -> Symbol:
-        """ cast current symbol to child class. """
-        data = other.to_dict()
-        data.update(self.to_dict())
-        return type(other).from_dict(data, **kwargs)
-
+    # Overridable Methods, inheritted from _BaseSymbol
+    #   to support multi-inherit design.
     @classmethod
-    def base(cls, symbol: Symbol, **kwargs):
-        """ create current class instance based on another.
-
-            Enable the inherit class to override.
-        """
-        return cls.from_dict(symbol.to_dict(), **kwargs)
-
-    def copy(self, **kwargs) -> typing.Type[Symbol]:
-        """ clone current symbol. """
-        return type(self).from_dict(
-                self.to_dict( # update mutable types
-                    args=[a for a in self.args],
-                    attrs={k: v for k, v in self.attrs.items()}),
-                **kwargs) # kwargs override self
-
-    def to_dict(self, **kwargs) -> dict:
-        data = dataclass_to_dict(self)
-        data.update(**kwargs)
-        return data
-
+    def update_extra_attrs(cls, data_dict, **kwargs):
+        return super().update_extra_attrs(data_dict, **kwargs)
+    def set_extra_attrs(self, **kwargs):
+        return super().set_extra_attrs(**kwargs)
+    @classmethod
+    def base(cls, symbol: Symbol, **kwargs) -> Symbol:
+        return super().base(symbol, **kwargs)
+    def like(self, other: Symbol, **kwargs) -> Symbol:
+        return super().like(other, **kwargs)
+    def copy(self, **kwargs) -> Symbol:
+        return super().copy(**kwargs)
     @classmethod
     def from_dict(cls, d: dict, **kwargs):
-        data = cls.default_dict()
-        data.update(d)
-        data.update(kwargs)
-        data = cls.update_dict(data)
-        fnames = [f.name for f in fields(cls)]
-        data = {k: data[k] for k in data if k in fnames}
-        try:
-            out = cls(**data)
-        except Exception as e:
-            print(cls, list(data.keys()))
-            raise e
-        return out
-
+        return super().from_dict(d, **kwargs)
     @classmethod
     def default_dict(cls, **kwargs) -> dict:
-        """ possible dict to initialize symbol class. """
-        return kwargs
-
+        return super().default_dict(**kwargs)
     @classmethod
     def update_dict(cls, data_dict: dict, **kwargs) -> dict:
-        data_dict.update(kwargs)
-        return data_dict
+        return super().update_dict(data_dict, **kwargs)
+    def to_dict(self, **kwargs) -> dict:
+        return super().to_dict(**kwargs)
+
+    # Naive Methods
+    def is_op(self, *op_names) -> bool:
+        return self.op_name in op_names
 
     @property
     def shape(self) -> ShapeT:
         return list(self.attrs.get("shape", None))
-
     @property
     def dtype(self):
         return self.attrs.get("dtype", None)
@@ -109,8 +147,9 @@ class Symbol:
         attrs.update(self.attrs)
         skips = [ "shape", "dtype", "name_hint" ]
         attrs = {k: attrs[k] for k in attrs if k not in skips}
-        return "{:30} = {:>15}{:30} /* attrs */ {}".format(
-                self.name, self.op_name, args_info, attrs)
+        return "{:30} = {:>15}{:30} /* attrs */ {} | {}".format(
+                self.name, self.op_name, args_info,
+                attrs, self.extra_attrs)
 
     def __hash__(self) -> int:
         return hash(str(self))
@@ -125,13 +164,6 @@ def _topo_sort(symbol: Symbol, sym_list: typing.List[Symbol]):
 _SymbolNodesT = typing.List[typing.Dict[str, typing.Any]]
 _SymbolJsonT = typing.Dict[str, typing.Any]
 
-def _class_name(o):
-    klass = o.__class__
-    module = klass.__module__
-    if module == 'builtins':
-        return klass.__qualname__ # avoid outputs like 'builtins.str'
-    return module + '.' + klass.__qualname__
-
 
 def dump_json(symbol: Symbol) -> _SymbolJsonT:
     nodes = []
@@ -139,7 +171,7 @@ def dump_json(symbol: Symbol) -> _SymbolJsonT:
         node = dataclass_to_dict(sym, check_repr=True)
         node.update({
             "args": [a.name for a in node["args"]],
-            "_class_type": _class_name(sym),
+            "_class_type": get_class_name(sym),
             })
         nodes.append(node)
     visit(symbol, _to_json)

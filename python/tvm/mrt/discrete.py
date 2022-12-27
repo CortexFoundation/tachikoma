@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from .opns import *
 from .utils import *
 from .calibrate import Sampling
-from .precision import WithPrecision
+from .precision import WithPrecision, QuantizedInfo
 from .transform import Pass, Transformer
 
 __ALL__ = [
@@ -15,54 +15,41 @@ __ALL__ = [
         "InferOperator", ]
 
 @dataclass(repr=False)
-class Discretor(Sampling, WithPrecision):
+class Discretor(Sampling, QuantizedInfo):
     """ Perform discretization on the sampling data
             and precision.
     """
-    info: typing.Any | None
-    """ discretization information
-            need to provide __eq__ function to compare
-            in InferDiscretor.
-    """
-    precision: typing.Any | None
-    """ precision information
-            need to provide base arthmetic function
-            to compare in InferPrecision.
-    """
-
     @classmethod
-    def default_dict(cls, **kwargs) -> dict:
-        kwargs.setdefault("info", None)
-        return super().default_dict(**kwargs)
-
-    def to_dict(self, **kwargs) -> dict:
-        kwargs.setdefault("dt", self)
-        return super().to_dict(**kwargs)
-
-    # def __repr__(self, **attrs):
-    #     if self.info is not None:
-    #         attrs.setdefault("discrete_info", self.info)
-    #     return super().__repr__(**attrs)
+    def update_dict(cls, data: dict, **kwargs):
+        cls.update_extra_attrs(
+                data, dt_type=get_class_name(cls))
+        return super().update_dict(data, **kwargs)
 
     # ======== Annotate Functions ==========
     def same(self, other: Discretor) -> Discretor:
         """ make current discretization same as other. """
-        return self.copy(
-                info=other.info,
-                precision=other.precision)
+        return self.copy().set_extra_attrs(
+            dt_info=other.dt_info, precision=other.precision)
 
     def set_prec(self, prec: typing.Any) -> Discretor:
-        return self.copy(info=None, precision=prec)
+        return self.copy().set_extra_attrs(
+                dt_info=None, precision=prec)
 
     # ======== Quantize Functions ==========
-    def mapping(self, sym: Transformer) -> Transformer:
+    def mapping(self, data: np.ndarray) -> np.ndarray:
         """ discrete parameters. """
         self.examine()
-        return self._mapping(sym)
+        return self._mapping(data)
+
+    def restore(self, data: np.ndarray) -> np.ndarray:
+        """ restore discreted parameters. """
+        self.examine()
+        return self._restore(data)
 
     def remapping(self, base: Discretor, sym: Transformer) -> Transformer:
+        """ Remapping discretor to another precision. """
         self.examine()
-        if self.info == base.info:
+        if self.dt_info == base.dt_info:
             return sym
         return self._remapping(base, sym)
 
@@ -76,7 +63,9 @@ class Discretor(Sampling, WithPrecision):
     def summary(self) -> str:
         """ return current discrete information. """
         raise NotImplementedError()
-    def _mapping(self, sym):
+    def _mapping(self, data):
+        raise NotImplementedError()
+    def _restore(self, data):
         raise NotImplementedError()
     def _remapping(self, base, sym):
         raise NotImplementedError()
@@ -86,9 +75,10 @@ class Discretor(Sampling, WithPrecision):
 @dataclass(repr=False)
 class InferDiscretor(Pass):
     """ Discretization Information Inference with Operator """
+    args: typing.List[QuantizedInfo]
     @property
     def arg_infos(self):
-        return [a.dt.info for a in self.args]
+        return [a.dt_info for a in self.args]
 
 @dataclass(repr=False)
 class InferOperator(Pass):

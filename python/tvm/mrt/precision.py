@@ -17,44 +17,55 @@ __ALL__ = [ "WithPrecision",
 
 @dataclass(repr=False)
 class WithPrecision(Symbol):
-    precision: int
-
     MAX_BIT: typing.ClassVar[int] = 32
 
-    def __repr__(self, **attrs):
-        attrs.setdefault("pinfer", self.precision)
-        return super().__repr__(**attrs)
+    @property
+    def precision(self) -> int | None:
+        return self.extra_attrs["precision"]
+    @precision.setter
+    def precision(self, val):
+        assert val is None or self._validate(val), val
+        self.set_extra_attrs(precision=val)
+
+    @classmethod
+    def _validate(cls, prec, msg=None):
+        assert isinstance(prec, int), self.precision
+        assert prec <= cls.MAX_BIT, (
+            "precision:{} out of max bit:{} for \n{}"
+        ).format(prec, cls.MAX_BIT, msg or str(cls))
+        assert prec > 0
+        return True
 
     def validate_precision(self):
-        assert isinstance(self.precision, int), self.precision
-        assert self.precision <= self.MAX_BIT, (
-            "precision:{} out of max bit:{} for \n{}"
-        ).format(self.precision, self.MAX_BIT, self)
-        assert self.precision > 0
+        self._validate(self.precision, msg=str(self))
 
     def int_max(self):
         return (2 ** (self.precision - 1)) - 1
 
     @classmethod
-    def update_dict(cls, data: dict, **kwargs) -> dict:
-        prec = data["precision"]
-        assert prec is None or prec > 0, prec
-        return super().update_dict(data, **kwargs)
+    def default_dict(cls, **kwargs):
+        cls.update_extra_attrs(kwargs, precision=None)
+        return super().default_dict(**kwargs)
 
 @dataclass(repr=False)
 class QuantizedInfo(WithPrecision):
-    dt_info: str
+    @property
+    def dt_type(self) -> str | None:
+        """ discretization method type. """
+        return self.extra_attrs["dt_type"]
+    @property
+    def dt_info(self) -> typing.Any | None:
+        """ discretization information. """
+        return self.extra_attrs["dt_info"]
+    @dt_info.setter
+    def dt_info(self, val):
+        assert val is not None
+        self.set_extra_attrs(dt_info=val)
 
-    def __repr__(self, **attrs):
-        attrs["dt_info"] = self.dt_info
-        return super().__repr__(**attrs)
-
-    def like(self, other: Symbol, copy=True, **kwargs):
-        data = other.to_dict()
-        data.update(self.to_dict())
-        data["precision"] = self.precision if copy else 0
-        data["dt_info"] = self.dt_info if copy else ""
-        return type(other).from_dict(data, **kwargs)
+    @classmethod
+    def default_dict(cls, **kwargs):
+        cls.update_extra_attrs(kwargs, dt_type=None, dt_info=None)
+        return super().default_dict(**kwargs)
 
 @dataclass(repr=False)
 class InferPrecision(Pass):
@@ -62,10 +73,12 @@ class InferPrecision(Pass):
 
         This inference should be consistent with cvm-runtime.
     """
+    args: typing.List[WithPrecision]
+
     @property
     def arg_precisions(self):
         for a in self.args:
-            assert a.precision is not None and a.precision > 0
+            a.validate_precision()
         return [a.precision for a in self.args]
 
     def _infer_index(self, index):

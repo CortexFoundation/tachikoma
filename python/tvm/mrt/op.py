@@ -75,7 +75,9 @@ class FirstLikeInferType(InferType):
         return self.args[0].shape
 
 def _new_op(op_name, *args, **attrs) -> Symbol:
-    return Symbol(N.n(), op_name, args, attrs)
+    return Symbol.from_dict({},
+            name=N.n(), op_name=op_name,
+            args=args, attrs=attrs)
 
 def _register_op(op_name,
         infer_type: typing.Type[InferType] = InferType):
@@ -107,10 +109,12 @@ rs_pclip = _register_op(RS_PCLIP, FirstLikeInferType)
 
 def variable(name, shape, dtype) -> Symbol:
     """ Create varible for symbol. """
-    return Symbol(name, VAR, [], {
-        "shape": shape, "dtype": dtype,
-        "name_hint": name,
-        })
+    return Symbol.from_dict({},
+            name=name, op_name = VAR,
+            args = [], attrs = {
+                "shape": shape,
+                "dtype": dtype,
+                "name_hint": name, })
 
 def is_operator(symbol: Symbol, params: ParametersT = {}):
     return symbol.op_name != VAR
