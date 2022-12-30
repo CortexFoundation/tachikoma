@@ -19,14 +19,15 @@ class MapMRTOp(Transformer, QuantizedInfo):
         out = op.mul(X, rescale).like(self,
                 extra_attrs=self.extra_attrs)
         pos = self.int_max()
-        out = op.clip(out, a_min=-pos, a_max=pos).like(self,
-                extra_attrs=self.extra_attrs)
+        # out = op.clip(out, a_min=-pos, a_max=pos).like(self,
+        #         extra_attrs=self.extra_attrs)
         return out
 
     def map_pclip(self):
         X: MapMRTOp = self.args[0]
         pos = self.int_max()
-        out = op.clip(X, a_min=-pos, a_max=pos).like(self)
+        out = X
+        # out = op.clip(X, a_min=-pos, a_max=pos).like(self)
         return out
 
     def __call__(self):
@@ -64,13 +65,14 @@ class FixPoint(Transformer, QuantizedInfo):
         #         precision=self.precision)
         pos = self.int_max()
         out = op.right_shift(out, exp_sym).like(self)
-        out = op.clip(out, a_min=-pos, a_max=pos).like(self)
+        # out = op.clip(out, a_min=-pos, a_max=pos).like(self)
         return out
 
     def map_pclip(self):
         X: FixPoint = self.args[0]
         pos = self.int_max()
-        out = op.clip(X, a_min=-pos, a_max=pos).like(self)
+        out = X
+        # out = op.clip(X, a_min=-pos, a_max=pos).like(self)
         return out
 
     def set_dtype(self):
@@ -91,6 +93,7 @@ class FixPoint(Transformer, QuantizedInfo):
         if self.is_input():
             pass
         elif self.is_param():
+            pass
             data = np.round(self.numpy()).astype(self.dtype)
             absmax = np.abs(data).max()
             assert absmax <= self.int_max()

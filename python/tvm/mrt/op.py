@@ -40,26 +40,17 @@ def infer_type(symbol: Symbol) -> Symbol:
 
 @dataclass(repr=False)
 class InferType(Symbol):
-    def __repr__(self, **attrs):
-        attrs.setdefault("tinfer", self.dtype)
-        attrs.setdefault("sinfer", self.shape)
-        return super().__repr__(**attrs)
-
     def __post_init__(self):
         assert is_operator(self)
 
         if type(self) is InferType:
             sym = retrieve_operator(self)
             sym = infer_type(sym)
-            self.attrs.update({
-                "shape": sym.shape,
-                "dtype": sym.dtype,
-            })
+            self.shape = sym.shape
+            self.dtype = sym.dtype
         else:
-            self.attrs.update({
-                "shape": self._infer_shape(),
-                "dtype": self._infer_type(),
-            })
+            self.shape = self._infer_shape()
+            self.dtype = self._infer_type()
 
     def _infer_type(self):
         assert all([self.args[0].dtype == a.dtype \
@@ -74,10 +65,12 @@ class FirstLikeInferType(InferType):
     def _infer_shape(self) -> ShapeT:
         return self.args[0].shape
 
-def _new_op(op_name, *args, **attrs) -> Symbol:
+def _new_op(op_name, *args,
+        extra_attrs=None, **attrs) -> Symbol:
     return Symbol.from_dict({},
             name=N.n(), op_name=op_name,
-            args=args, attrs=attrs)
+            args=args, attrs=attrs,
+            extra_attrs=extra_attrs or {})
 
 def _register_op(op_name,
         infer_type: typing.Type[InferType] = InferType):
@@ -111,10 +104,9 @@ def variable(name, shape, dtype) -> Symbol:
     """ Create varible for symbol. """
     return Symbol.from_dict({},
             name=name, op_name = VAR,
-            args = [], attrs = {
+            args = [], extra_attrs = {
                 "shape": shape,
-                "dtype": dtype,
-                "name_hint": name, })
+                "dtype": dtype, })
 
 def is_operator(symbol: Symbol, params: ParametersT = {}):
     return symbol.op_name != VAR

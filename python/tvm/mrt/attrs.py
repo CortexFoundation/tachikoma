@@ -8,9 +8,6 @@ from .op import *
 
 @dataclass
 class _BaseAttrs:
-    shape: typing.Union[ShapeT, typing.List[ShapeT]]
-    dtype: typing.Union[DTypeT, typing.List[DTypeT]]
-
     @classmethod
     def parse(cls, attrs: AttrsT):
         fkeys = [f.name for f in fields(cls) ]

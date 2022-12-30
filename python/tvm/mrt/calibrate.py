@@ -31,12 +31,6 @@ class Calibrator(Transformer):
             data_dict["nd_data"] = nd_data
         return super().update_dict(data_dict, **kwargs)
 
-    def __repr__(self, **extra_attrs):
-        if type(self) == Calibrator:
-            extra_attrs["shp"] = self.shape
-            extra_attrs["typ"] = self.dtype
-        return super().__repr__(**extra_attrs)
-
     def _rand_data(self,
             enabled: bool = False,
             absmax: float | None = None,

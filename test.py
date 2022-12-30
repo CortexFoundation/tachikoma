@@ -114,8 +114,7 @@ dt_tr = calib_tr.checkpoint_transform(
 # dt_tr.print(short=True)
 dt_tr = dt_tr.checkpoint_transform(
         Quantizer.apply(),
-        # print_bf=True,
-        # print_af=True,
+        # print_bf=True, print_af=True,
         force=True,
 )
 # dt_tr.print()
@@ -133,11 +132,11 @@ sim_tr = dt_tr.checkpoint_transform(
         # force=True,
         )
 sim_tr.log()
+sim_tr.print(short=True)
 
 # qt_tr = dt_tr.checkpoint_transform(
 #         FixPoint.apply(),
-#         # print_bf = True,
-#         # print_af = True,
+#         # print_bf = True, print_af = True,
 #         # force=True,
 # )
 # qt_tr.print(short=True, prefix_layers=10)
@@ -145,12 +144,14 @@ sim_tr.log()
 config = {
         "device": tvm.runtime.cuda(1),
         "target": tvm.target.cuda() }
-data = get_real_image(*image_shape[1:])
+tr = tr.set_input_shape((1, *image_shape))
+qt_tr = qt_tr.set_input_shape((1, *image_shape))
+# data = get_real_image(*image_shape[1:])
 # res = tr.eval(data, **config)
 # print("tr: ", res.flatten()[:5])
 # res = qt_tr.eval(data, **config)
 # print("qt tr: ", res.flatten()[:5])
-sys.exit(-1)
+# sys.exit(-1)
 
 from tvm.mrt.dataset_torch import TorchImageNet
 ds = TorchImageNet(

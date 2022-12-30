@@ -14,7 +14,17 @@ __ALL__ = [
         "filter_operators",
         ]
 
-_CopyAttrsT = typing.Union[typing.List[str], str]
+def _format_printer(data):
+    if isinstance(data, dict):
+        data = ["{}={}".format(k, _format_printer(v)) \
+                for k, v in data.items()]
+        return ", ".join(data)
+    elif isinstance(data, (tuple, list)):
+        return "(" + ",".join([_format_printer(d) \
+                for d in data]) + ")"
+    elif isinstance(data, float):
+        return "{:.3f}".format(data)
+    return str(data)[-20:]
 
 @dataclass(repr=False)
 class _BaseSymbol:
@@ -83,6 +93,16 @@ class _BaseSymbol:
                 for k, v in data["extra_attrs"].items()}
         return data
 
+    def __repr__(self, **attrs) -> str:
+        args_info = "({})".format(
+                ", ".join([i.name for i in self.args]))
+        oattrs = {k: v for k, v in self.attrs.items()}
+        oattrs.update(attrs)
+        oattrs.update(self.extra_attrs)
+        return "{:30} = {:>15}{:30} /* attrs */ {}".format(
+                self.name, self.op_name, args_info,
+                _format_printer(oattrs))
+
 @dataclass
 class Symbol(_BaseSymbol):
     """ Uniform Symbol Representation for RelayExpr
@@ -124,12 +144,16 @@ class Symbol(_BaseSymbol):
         return super().from_dict(d, **kwargs)
     @classmethod
     def default_dict(cls, **kwargs) -> dict:
+        kwargs.setdefault("args", [])
+        kwargs.setdefault("attrs", {})
         return super().default_dict(**kwargs)
     @classmethod
     def update_dict(cls, data_dict: dict, **kwargs) -> dict:
         return super().update_dict(data_dict, **kwargs)
     def to_dict(self, **kwargs) -> dict:
         return super().to_dict(**kwargs)
+    def __repr__(self, **attrs) -> str:
+        return super().__repr__(**attrs)
 
     # Naive Methods
     def is_op(self, *op_names) -> bool:
@@ -137,21 +161,16 @@ class Symbol(_BaseSymbol):
 
     @property
     def shape(self) -> ShapeT:
-        return list(self.attrs.get("shape", None))
+        return list(self.extra_attrs.get("shape", None))
+    @shape.setter
+    def shape(self, val):
+        self.extra_attrs["shape"] = list(val)
     @property
     def dtype(self):
-        return self.attrs.get("dtype", None)
-
-    def __repr__(self, **attrs) -> str:
-        args_info = "({})".format(
-                ", ".join([i.name for i in self.args]))
-        attrs.update(self.attrs)
-        # skips = [ "shape", "dtype", "name_hint" ]
-        skips = []
-        attrs = {k: attrs[k] for k in attrs if k not in skips}
-        return "{:30} = {:>15}{:30} /* attrs */ {} | {}".format(
-                self.name, self.op_name, args_info,
-                attrs, self.extra_attrs)
+        return self.extra_attrs.get("dtype", None)
+    @dtype.setter
+    def dtype(self, val):
+        self.extra_attrs["dtype"] = val
 
     def __hash__(self) -> int:
         return hash(str(self))

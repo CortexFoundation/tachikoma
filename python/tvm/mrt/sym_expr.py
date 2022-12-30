@@ -46,8 +46,9 @@ def expr2symbol(expr: RelayExpr) -> Symbol:
         name, op_name, args = None, None, []
         dtype = _expr_type(node.checked_type, "dtype")
         shape = _expr_type(node.checked_type, "concrete_shape")
-        attrs = { "shape": shape, "dtype": dtype, }
+        extra_attrs = { "shape": shape, "dtype": dtype, }
 
+        attrs = { "extra_attrs": extra_attrs, }
         if isinstance(node, relay.Var):
             name = node.name_hint or N.n(prefix="input_")
             symbol_map[node] = op.variable(name, shape, dtype)
@@ -84,11 +85,11 @@ def symbol2expr(symbol: Symbol, expr_map={}) -> RelayExpr:
         attrs = {k: v for k, v in sym.attrs.items()}
         # operator creator don't need shape or dtype attrs,
         #   except for the variable.
-        if op.is_operator(sym):
-            skips = [ "shape", "dtype" ]
-            attrs = {k: attrs[k] for k in attrs if k not in skips}
         if op.is_variable(sym):
-            attrs["name_hint"] = sym.name
+            attrs.update({
+                "shape": sym.shape, "dtype": sym.dtype,
+                "name_hint": sym.name,
+            })
 
         if sym.is_op(op.TUPLE):
             out = relay.Tuple(args)
