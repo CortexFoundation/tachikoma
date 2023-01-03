@@ -117,18 +117,15 @@ dt_tr = dt_tr.checkpoint_transform(
         # print_bf=True, print_af=True,
         force=True,
 )
-# dt_tr.print()
-# dt_tr.print(short=True, suffix_layers=10)
-# dt_tr.print(selects=["nn.max_pool2d"])
 
 # TODO(wlt): add symbol extra attrs for name_hint to search
 #   in subgraph.
 # TODO: extra attrs copy and assign logic.
-from tvm.mrt.fixed_point import FixPoint, MapMRTOp
+from tvm.mrt.fixed_point import FixPoint, Simulator
 # dt_tr.print(short=True, prefix_layers=20)
 # FuseBatchNorm.%1
 sim_tr = dt_tr.checkpoint_transform(
-        MapMRTOp.apply(),
+        Simulator.apply(),
         # force=True,
         )
 sim_tr.log()
@@ -144,8 +141,10 @@ sim_tr.print(short=True)
 config = {
         "device": tvm.runtime.cuda(1),
         "target": tvm.target.cuda() }
-tr = tr.set_input_shape((1, *image_shape))
-qt_tr = qt_tr.set_input_shape((1, *image_shape))
+# data_shape = (1, ) + image_shape
+# tr = tr.set_input_shape(data_shape)
+# sim_tr = sim_tr.set_input_shape(data_shape)
+# qt_tr = qt_tr.set_input_shape(data_shape)
 # data = get_real_image(*image_shape[1:])
 # res = tr.eval(data, **config)
 # print("tr: ", res.flatten()[:5])

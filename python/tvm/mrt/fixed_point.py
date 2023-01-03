@@ -11,9 +11,9 @@ from .symbol import filter_operators
 from .transform import Transformer, Pass
 
 @dataclass(repr=False)
-class MapMRTOp(Transformer, QuantizedInfo):
+class Simulator(Transformer, QuantizedInfo):
     def map_requant(self):
-        X: MapMRTOp = self.args[0]
+        X: Simulator = self.args[0]
         rescale = self.parsed.rescale
         rescale = X.from_const_data(rescale)
         out = op.mul(X, rescale).like(self,
@@ -24,7 +24,7 @@ class MapMRTOp(Transformer, QuantizedInfo):
         return out
 
     def map_pclip(self):
-        X: MapMRTOp = self.args[0]
+        X: Simulator = self.args[0]
         pos = self.int_max()
         out = X
         # out = op.clip(X, a_min=-pos, a_max=pos).like(self)
