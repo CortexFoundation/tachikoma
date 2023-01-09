@@ -115,7 +115,7 @@ dt_tr = calib_tr.checkpoint_transform(
 dt_tr = dt_tr.checkpoint_transform(
         Quantizer.apply(),
         # print_bf=True, print_af=True,
-        force=True,
+        # force=True,
 )
 
 # TODO(wlt): add symbol extra attrs for name_hint to search
@@ -141,16 +141,20 @@ sim_tr.print(short=True)
 config = {
         "device": tvm.runtime.cuda(1),
         "target": tvm.target.cuda() }
-# data_shape = (1, ) + image_shape
-# tr = tr.set_input_shape(data_shape)
-# sim_tr = sim_tr.set_input_shape(data_shape)
+data_shape = (1, ) + image_shape
+print(data_shape, data_shape)
+tr = tr.set_input_shape(data_shape)
+sim_tr = sim_tr.set_input_shape(data_shape)
+sim_tr.print(short=True)
 # qt_tr = qt_tr.set_input_shape(data_shape)
-# data = get_real_image(*image_shape[1:])
-# res = tr.eval(data, **config)
-# print("tr: ", res.flatten()[:5])
+data = get_real_image(*image_shape[1:])
+res = tr.eval(data, **config)
+print("tr: ", res.flatten()[:5])
+res = sim_tr.eval(data, **config)
+print("sim tr: ", res.flatten()[:5])
 # res = qt_tr.eval(data, **config)
 # print("qt tr: ", res.flatten()[:5])
-# sys.exit(-1)
+sys.exit(-1)
 
 from tvm.mrt.dataset_torch import TorchImageNet
 ds = TorchImageNet(

@@ -182,6 +182,11 @@ def _topo_sort(symbol: Symbol, sym_list: typing.List[Symbol]):
         _topo_sort(c, sym_list)
     sym_list.append(symbol)
 
+def sym2list(symbol: Symbol) -> typing.List[Symbol]:
+    sym_list = []
+    _topo_sort(symbol, sym_list)
+    return sym_list
+
 _SymbolNodesT = typing.List[typing.Dict[str, typing.Any]]
 _SymbolJsonT = typing.Dict[str, typing.Any]
 
@@ -219,11 +224,8 @@ _TransformerT = typing.Callable[[Symbol], typing.Optional[Symbol]]
 
 def visit(symbol: Symbol, callback: _VisitorT):
     """ Visitor mode, possible modify symbol itself. """
-    sym_list: typing.List[Symbol] = []
-    _topo_sort(symbol, sym_list)
-    for sym in sym_list:
+    for sym in sym2list(symbol):
         callback(sym)
-
 
 def transform(symbol: Symbol, callback: _TransformerT) -> Symbol:
     """ Transform symbol from old to new, with inputs updated.
@@ -231,19 +233,17 @@ def transform(symbol: Symbol, callback: _TransformerT) -> Symbol:
         Only the return value indicates mutation, while changing
         attributes in parameter passed in args does nothing.
     """
-    sym_list: typing.List[Symbol] = []
-    _topo_sort(symbol, sym_list)
-
     sym_map = {}
-    for sym in sym_list:
+    for sym in sym2list(symbol):
         args = [sym_map[c.name] for c in sym.args]
         # pre-clone symbol, to avoid misleading usage in callback
         sym = sym.copy(args=args)
         out = callback(sym) or sym
         assert isinstance(out, Symbol)
         # default const_ prefix symbol means parameters
-        assert sym.name.startswith("const_") or \
-                sym.name not in sym_map, sym.name
+        assert sym.name not in sym_map, sym.name
+        # assert sym.name.startswith("const_") or \
+        #         sym.name not in sym_map, sym.name
         sym_map[sym.name] = out
     return sym_map[symbol.name]
 

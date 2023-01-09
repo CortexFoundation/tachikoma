@@ -99,6 +99,7 @@ class Trace:
             return data
         dt_type = eval(sym.extra_attrs["dt_type"])
         dt: Discretor = dt_type.base(sym)
+        print("restore output")
         return dt.restore(data)
 
     def as_input_dict(self,
@@ -153,10 +154,34 @@ class Trace:
         return self.run(data_dict=data)
 
     def infer_type(self) -> Trace:
-        return Trace.from_expr(
+        tr = Trace.from_expr(
                 self.to_expr(), self.params,
                 tr_name="infer_type",
                 model_name=self._model_name)
+
+        for old, new in zip(
+                sym2list(self.symbol), sym2list(tr.symbol)):
+            new.attrs.update({
+                k: v for k, v in old.attrs.items() \
+                    if k not in new.attrs})
+            new.extra_attrs.update({
+                k: v for k, v in old.extra_attrs.items() \
+                    if k not in new.extra_attrs})
+
+        old_sym_iter = iter(sym2list(self.symbol))
+        def restore_sym_type(sym: Symbol, params: ParametersT):
+            old = next(old_sym_iter)
+            new = sym.like(old)
+            new.attrs.update({
+                k: v for k, v in old.attrs.items() \
+                    if k not in new.attrs})
+            new.extra_attrs.update({
+                k: v for k, v in old.extra_attrs.items() \
+                    if k not in new.extra_attrs})
+            return new
+        restore_sym_type.__name__ = "infer_type"
+        tr = tr.transform(restore_sym_type)
+        return tr
 
     def set_input_shape(self,
             shape = None, shape_dict = {},
@@ -176,7 +201,7 @@ class Trace:
 
         def _set_shape(sym: Symbol, params: ParametersT):
             if op.is_input(sym, params):
-                sym.attrs["shape"] = shp_dict[sym.name]
+                sym.shape = shp_dict[sym.name]
             return sym
         tr = self.transform(_set_shape, tr_name=tr_name)
         tr = tr.infer_type()
