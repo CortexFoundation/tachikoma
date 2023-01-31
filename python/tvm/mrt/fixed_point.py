@@ -78,11 +78,12 @@ class FixPoint(Transformer, QuantizedInfo):
     def set_dtype(self):
         assert 0 <= self.precision and self.precision <= 32
         dtype = "int8" if self.precision <= 8 else "int32"
-        self.attrs["dtype"] = dtype
+        self.dtype = dtype
 
     def match_dtype(self, out: Symbol):
         if self.precision <= 8:
-            out = op.astype(out, target="int8")
+            out = op.cast(out, dtype="int8")
+            # out = op.astype(out, target="int8")
         return out
 
     def __call__(self):
@@ -93,7 +94,6 @@ class FixPoint(Transformer, QuantizedInfo):
         if self.is_input():
             pass
         elif self.is_param():
-            pass
             data = np.round(self.numpy()).astype(self.dtype)
             absmax = np.abs(data).max()
             assert absmax <= self.int_max()

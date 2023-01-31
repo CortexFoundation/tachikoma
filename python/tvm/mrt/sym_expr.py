@@ -93,13 +93,13 @@ def symbol2expr(symbol: Symbol, expr_map={}) -> RelayExpr:
 
         if sym.is_op(op.TUPLE):
             out = relay.Tuple(args)
-        elif sym.is_op(op.AS_TYPE):
-            out = args[0].astype(attrs["target"])
+        # elif sym.is_op(op.AS_TYPE):
+        #     out = args[0].astype(attrs["target"])
         else:
             try:
                 out = eval("relay." + sym.op_name)(*args, **attrs)
             except Exception as e:
-                print(sym, [type(a) for a in args])
+                print(sym, [type(a) for a in args], attrs)
                 raise e
 
         if isinstance(out, relay.TupleWrapper):

@@ -19,7 +19,8 @@ RESHAPE = "reshape"
 
 CLIP = "clip"
 RIGHT_SHIFT = "right_shift"
-AS_TYPE = "astype"
+# AS_TYPE = "astype"
+CAST = "cast"
 
 ADD = "add"
 SUB = "sub"
