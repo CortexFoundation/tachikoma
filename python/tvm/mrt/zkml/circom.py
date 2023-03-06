@@ -173,8 +173,8 @@ class Component:
     #      self.fpath = fpath
 
     def __call__(self, name, inputs, attrs) -> CircomGenerator:
-        import zkml.circom_impl
-        return eval('zkml.circom_impl.'+self.op_name+'Generator')(
+        from tvm.mrt.zkml import circom_impl
+        return eval('circom_impl.'+self.op_name+'Generator')(
                 self, name, inputs, attrs)
         #  return op_components[self.op_name]()
         #  return CircomGenerator(self, name, inputs, attrs)

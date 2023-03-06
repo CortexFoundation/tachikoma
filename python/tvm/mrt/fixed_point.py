@@ -1,3 +1,4 @@
+from __future__ import annotations
 
 import numpy as np
 from dataclasses import dataclass
@@ -44,7 +45,7 @@ class FixPoint(Transformer, QuantizedInfo):
         copy and out.set_extra_attrs(**other.extra_attrs)
         return out
 
-    def map_requant(self):
+    def map_requant(self) -> FixPoint:
         X: FixPoint = self.args[0]
         parsed: RequantAttrs = self.parsed
 
@@ -61,35 +62,25 @@ class FixPoint(Transformer, QuantizedInfo):
         out = op.mul(X, frac_sym).like(self)
 
         exp_sym = out.from_const_data(-exp)
-        # out = op.rs_pclip(out, exp_sym,
-        #         precision=self.precision)
-        pos = self.int_max()
-        out = op.right_shift(out, exp_sym).like(self)
+        out = op.rs_pclip(out, exp_sym,
+                precision=self.precision)
+        # pos = self.int_max()
+        # out = op.right_shift(out, exp_sym).like(self)
         # out = op.clip(out, a_min=-pos, a_max=pos).like(self)
-        return out
+        return out.like(self)
 
-    def map_pclip(self):
+    def map_pclip(self) -> FixPoint:
         X: FixPoint = self.args[0]
         pos = self.int_max()
         out = X
+        out = op.pclip(X, precision=self.precision).like(self)
         # out = op.clip(X, a_min=-pos, a_max=pos).like(self)
-        return out
-
-    def set_dtype(self):
-        assert 0 <= self.precision and self.precision <= 32
-        dtype = "int8" if self.precision <= 8 else "int32"
-        self.dtype = dtype
-
-    def match_dtype(self, out: Symbol):
-        if self.precision <= 8:
-            out = op.cast(out, dtype="int8")
-            # out = op.astype(out, target="int8")
         return out
 
     def __call__(self):
         self.validate_precision()
+        self.dtype = "int8" if self.precision <= 8 else "int32"
 
-        self.set_dtype()
         out = self
         if self.is_input():
             pass
@@ -102,18 +93,18 @@ class FixPoint(Transformer, QuantizedInfo):
             out = self.map_pclip()
         elif self.is_op(REQUANT):
             out = self.map_requant()
-        elif self.is_op(CONV2D, DENSE):
-            out.attrs["out_dtype"] = "int32"
+        # elif self.is_op(CONV2D, DENSE):
+        #     out.attrs["out_dtype"] = "int32"
 
-        if self.is_operator():
-            out = self.match_dtype(out)
+        if self.is_operator() and self.precision <= 8:
+            out = op.cast(out, dtype="int8")
 
-        inames = [a.name for a in self.args]
-        tmp = op.subgraph(out, inames)
-        tmp = op.infer_type(tmp)
-        assert self.dtype == tmp.dtype, (
-                "expected {}, but get {}, in \n{}"
-        ).format(self.dtype, tmp.dtype, tmp)
+        # inames = [a.name for a in self.args]
+        # tmp = op.subgraph(out, inames)
+        # tmp = op.infer_type(tmp)
+        # assert self.dtype == tmp.dtype, (
+        #         "expected {}, but get {}, in \n{}"
+        # ).format(self.dtype, tmp.dtype, tmp)
         return out.like(self, copy=True)
 
 def cvm_float(number, bits=24):

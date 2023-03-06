@@ -139,7 +139,22 @@ qt_tr = dt_tr.checkpoint_transform(
 qt_tr.log()
 qt_tr.print(short=True, prefix_layers=20)
 
-from tvm.mrt.zkml import circom
+from tvm.mrt.zkml import circom, transformer
+
+print(">>> Generating circom code ...")
+symbol, params = qt_tr.symbol, qt_tr.params
+out = transformer.model2circom(symbol, params)
+code = circom.generate(out)
+input_json = transformer.input_json(symbol, params)
+
+print(">>> Generated, dump to {} ...".format(args.output))
+#  print(code)
+with open(args.output + ".circom", "w") as f:
+    f.write(code)
+with open(args.output + ".json", "w") as f:
+    f.write(json.dumps(input_json, indent=2))
+
+
 sys.exit(-1)
 
 config = {
