@@ -1,3 +1,9 @@
+import os
+from os import path
+
+ROOT = path.dirname(__file__)
+os.sys.path.insert(0, path.join(ROOT, "python"))
+
 import tvm
 from tvm import relay, ir
 from tvm.relay import testing
@@ -128,21 +134,22 @@ sim_tr = dt_tr.checkpoint_transform(
         Simulator.apply(),
         # force=True,
         )
-sim_tr.log()
-sim_tr.print(short=True)
+# sim_tr.log()
+# sim_tr.print(short=True)
 
 qt_tr = dt_tr.checkpoint_transform(
         FixPoint.apply(),
         # print_bf = True, print_af = True,
         # force=True,
 )
-qt_tr.log()
-qt_tr.print(short=True, prefix_layers=20)
+# qt_tr.log()
+qt_tr.print(short=True)
 
 from tvm.mrt.zkml import circom, transformer
 
 print(">>> Generating circom code ...")
 symbol, params = qt_tr.symbol, qt_tr.params
+symbol = transformer.shape_adapter(symbol)
 out = transformer.model2circom(symbol, params)
 code = circom.generate(out)
 input_json = transformer.input_json(symbol, params)

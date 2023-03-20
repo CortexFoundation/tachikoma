@@ -64,7 +64,6 @@ class InferType(Symbol):
 class FirstLikeInferType(InferType):
     def _infer_shape(self) -> ShapeT:
         return self.args[0].shape
-
 def _new_op(op_name, *args,
         extra_attrs=None, **attrs) -> Symbol:
     return Symbol.from_dict({},
@@ -92,6 +91,8 @@ clip = _register_op(CLIP)
 right_shift = _register_op(RIGHT_SHIFT)
 # astype = _register_op(AS_TYPE)
 cast = _register_op(CAST)
+#  flatten = _register_op(FLATTEN)
+reshape = _register_op(RESHAPE)
 
 add = _register_op(ADD)
 sub = _register_op(SUB)

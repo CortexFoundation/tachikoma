@@ -1,7 +1,8 @@
 from .circom import *
 import numpy as np
-# from . import model, utils
 from ..symbol import *
+from ..transform import WithParameters
+from .. import op, utils
 
 def register_op_map(op_name):
     def wrapper_func(f):
@@ -71,34 +72,6 @@ def map_component(sym: Symbol) -> CircomGenerator:
     }
     return components[comp_map[sym.op_name]]
 
-#  def shape_adapter(generator: CircomGenerator):
-#      """ Change model to adapt circom shape rules by reshape & flatten. """
-#      def prod(shape):
-#          total = 1
-#          for s in shape:
-#              total *= s
-#          return total
-
-#      count = 0
-#      inputs = []
-#      for idx, inp in enumerate(generator.inputs):
-#          expected_dim = generator.comp.input_dims[idx]
-#          if expected_dim == len(inp.shape):
-#              pass
-#          elif expected_dim == 1:
-#              flatten_shape = prod(inp.shape)
-#              comp = components["Flatten" + str(len(inp.shape)) + "D"]
-#              inp = comp("flatten_" + str(count),
-#                      [ inp, ], { "shape": ( flatten_shape, )})
-#              count += 1
-#              generator
-#          else:
-#              print("cannot automatically adapt shape")
-#              raise RuntimeError(generator.info())
-
-#          inputs.append(inp)
-
-
 def model2circom(symbol, params):
     generator_map: typing.Dict[str, CircomGenerator] = {}
     circom_ops = set()
@@ -138,65 +111,78 @@ def input_json(
             for k, v in params.items()}
 
 
+def assert_rs(symbol: Symbol):
+
+    @filter_operators("right_shift")
+    def _assert(sym: Symbol):
+        B: WithParameters = sym.args[1]
+        sym.extra_attrs["shift_bit"] = B.numpy().asscalar()
+        assert B.is_variable()
+
 def _shape_adapter(sym: Symbol):
     supported_ops = [
         "clip",
         "mul_scalar", "add_scalar", "subtract_scalar",
         "right_shift",
     ]
-    if sym.op not in supported_ops:
-        inputs = []
-        for inp in sym.inputs:
-            if "orig_shape" in inp.attrs:
-                inp = Symbol("reshape", inp.name + "_r",
-                        [ inp, ], [],
-                        { "shape": inp.attrs["orig_shape"],
-                            "dtype": sym.attrs["dtype"],
-                        })
-            inputs.append(inp)
-        sym = sym.clone(inputs=inputs)
+    if sym.op_name not in supported_ops:
+        args = []
+        for inp in sym.args:
+            if "orig_shape" in inp.extra_attrs:
+                inp = op.reshape(inp, newshape=
+                    inp.extra_attrs["orig_shape"],
+                    )
+                #  inp = Symbol("reshape", inp.name + "_r",
+                #          [ inp, ], [],
+                #          { "shape": inp.attrs["orig_shape"],
+                #              "dtype": sym.attrs["dtype"],
+                #          })
+            args.append(inp)
+        sym = sym.copy(args=args)
         return sym
 
-    if len(sym.attrs["shape"]) == 1:
+    if len(sym.shape) == 1:
         return
 
-    input_shape = list(sym.inputs[0].attrs["shape"])
-    orig_shape = list(sym.inputs[0].attrs.get(
+    input_shape = list(sym.args[0].shape)
+    orig_shape = list(sym.args[0].extra_attrs.get(
         "orig_shape", input_shape))
     shape_one = utils.product(input_shape)
 
-    inputs = []
-    for inp in sym.inputs:
-        shape = list(inp.attrs["shape"])
-        assert input_shape == shape
-        if len(shape) != 1:
-            inp = Symbol("flatten", sym.inputs[0].name + "_f",
-                    [ sym.inputs[0], ], [],
-                    { "shape": ( shape_one, ),
-                        "dtype": sym.attrs["dtype"], })
-        inputs.append(inp)
+    args = [a for a in sym.args]
+    if len(args[0].shape) != 1:
+        args[0] = op.reshape(
+            args[0], newshape=( shape_one, ))
+        #  inp = Symbol("flatten", sym.args[0].name + "_f",
+        #          [ sym.args[0], ], [],
+        #          { "shape": ( shape_one, ),
+        #              "dtype": sym.attrs["dtype"], })
 
     #  assert list(sym.attrs["shape"]) == input_shape, sym.info()
-    sym = sym.clone(inputs=inputs)
-    sym.attrs.update({
-        "shape": ( shape_one, ),
+    sym = sym.copy(args=args)
+    sym.extra_attrs.update({
+        #  "shape": ( shape_one, ),
         "orig_shape": orig_shape,
         })
     return sym
 
 def shape_adapter(symbol: Symbol):
-    symbol = visit(symbol, _shape_adapter)
+    with utils.N("shape_adapter"):
+        symbol = transform(symbol, _shape_adapter)
 
-    if "orig_shape" in symbol.attrs:
-        symbol = Symbol("reshape", symbol.name + "_r",
-                [ symbol, ], [],
-                {
-                    "shape": symbol.attrs["orig_shape"],
-                    "dtype": symbol.attrs["dtype"],
-                })
+        if "orig_shape" in symbol.extra_attrs:
+            symbol = op.reshape(symbol,
+                    newshape= symbol.extra_attrs["orig_shape"], )
+            #  symbol = Symbol("reshape", symbol.name + "_r",
+            #          [ symbol, ], [],
+            #          {
+            #              "shape": symbol.attrs["orig_shape"],
+            #              "dtype": symbol.attrs["dtype"],
+            #          })
 
-    def _clean_attrs(sym: Symbol):
-        if "orig_shape" in sym.attrs:
-            del sym.attrs["orig_shape"]
-    symbol = visit(symbol, _clean_attrs)
+        def _clean_attrs(sym: Symbol):
+            if "orig_shape" in sym.extra_attrs:
+                del sym.extra_attrs["orig_shape"]
+
+        visit(symbol, _clean_attrs)
     return symbol

@@ -15,6 +15,7 @@ MAX_POOL2D = "nn.max_pool2d"
 
 SUM = "sum"
 SQUEEZE = "squeeze"
+# FLATTEN = "flatten"
 RESHAPE = "reshape"
 
 CLIP = "clip"
