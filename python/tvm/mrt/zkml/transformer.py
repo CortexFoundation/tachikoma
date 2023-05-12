@@ -48,9 +48,12 @@ def map_component(sym: Symbol) -> CircomGenerator:
         # "null": "Input",
         "var": "Input",
 
+        "nn.relu": "ReLU{}D".format(len(sym.shape)),
         "nn.pad_scalar": "Pad2D",
         "nn.conv2d": "Conv2D_CHW",
+        "nn.max_pool2d": "MaxPool2D",
         "nn.dense": "Dense2" if len(inputs) == 2 else "Dense",
+        "nn.bias_add": "BiasAdd{}".format(len(sym.shape)),
 
         **map_subtract(sym),
         **map_add(sym),
@@ -59,9 +62,13 @@ def map_component(sym: Symbol) -> CircomGenerator:
         "mul_scalar": "MulScalar",
         "add_scalar": "AddScalar",
         "subtract_scalar": "SubScalar",
-
-        "right_shift": "RightShift",
         "clip": "Clip",
+
+        "multiply": "MulScalar_b",
+        "right_shift": "RightShift_b",
+        "squeeze": "Squeeze_CHW",
+        "sum": "Sum_CHW",
+        "pass": "Pass{}D".format(len(sym.shape)),
 
         "image.resize2d": "Resize2D",
 
@@ -84,10 +91,169 @@ def model2circom(symbol, params):
 
         attrs = {k: v for k, v in sym.attrs.items()}
         attrs.update(sym.extra_attrs)
-        gen = map_component(sym)(name, inputs, attrs)
-        circom_ops.add(gen.comp.op_name)
+        #print("model2circom_transfering:: sym_name:{}, op_name:{}, attrs:{}".format(name, sym.op_name, attrs))
+
+        # insert pad2d before conv2d
+        if (sym.op_name == "nn.conv2d" or sym.op_name=="nn.max_pool2d") and "padding" in attrs:
+            padding = sym.attrs["padding"]
+            sym_pad = sym.copy(args=sym.args)
+            sym_pad.name = name+"_pad"
+            sym_pad.op_name = "nn.pad_scalar"
+            attrs_pad = {k: v for k, v in sym.attrs.items()}
+            attrs_pad["pad_value"] = 0
+            shape_pad = inputs[0].shape
+            shape_pad[1] = shape_pad[1] + padding[0] + padding[1]
+            shape_pad[2] = shape_pad[2] + padding[2] + padding[3]
+            attrs_pad["shape"] = shape_pad
+            sym_pad.attrs = attrs_pad
+            inputs_pad = [inputs[0]]
+            sym_pad.args = inputs_pad
+            #print("@@@ ((((", sym.shape, sym_pad, ")))", attrs_pad, "[[[", sym_pad.info(), "]]]", sym_pad.attrs)
+
+            # start generate map
+            gen_pad = map_component(sym_pad)(sym_pad.name, inputs_pad, attrs_pad)
+            circom_ops.add(gen_pad.comp.op_name)
+            generator_map[sym_pad.name] = gen_pad
+
+            sym.args[0] = sym_pad
+            sym.attrs["shape"] = attrs["shape"]
+            sym.attrs["padding"] = [0]
+            # start generate map
+            attrs = {k: v for k, v in sym.attrs.items()}
+            inputs = [generator_map[i.name] for i in sym.args]
+            gen = map_component(sym)(name, inputs, attrs)
+            circom_ops.add(gen.comp.op_name)
+            generator_map[sym.name] = gen
+
+        elif sym.op_name == "cast":
+            sym_rs = sym.copy(args=sym.args)
+            # change op_name
+            sym_rs.op_name = "pass"
+            sym2circom(sym_rs)
+
+        # reshape auto infer newshape
+        elif sym.op_name == "reshape":
+            # reshape op
+            sym_rs = sym.copy(args=sym.args)
+            # when new shape -1, may occurs len(orig_shape) != 1
+            sym_rs.op_name = "reshape" if len(sym.args[0].shape)==1 else "pass"
+            sym2circom(sym_rs)
+        
+        elif sym.op_name == "mrt.rs_pclip":
+            # rs op
+            sym_rs = sym.copy(args=sym.args)
+            sym_rs.op_name = "right_shift"
+            sym_rs.name = name+"_right_shift"
+            sym2circom(sym_rs)
+
+            # pclip op
+            sym_pclip = sym.copy(args=[sym_rs])
+            sym_pclip.op_name = "mrt.pclip"
+            sym_pclip.name = name
+            sym2circom(sym_pclip)
+
+        elif sym.op_name == "mrt.pclip":
+            if len(sym.args[0].shape) == 1:
+                # clip op
+                sym.op_name = "clip"
+                precision = sym.attrs["precision"]
+                # todo calculate
+                sym.attrs["a_max"] = abs(int(np.power(2, precision-1)-1))
+                sym.attrs["a_min"] = -1 * sym.attrs["a_max"]
+                sym.attrs["shape"] = sym.args[0].shape
+                # start generate map
+                attrs = {k: v for k, v in sym.attrs.items()}
+                inputs = [generator_map[i.name] for i in sym.args]
+                gen = map_component(sym)(sym.name, inputs, attrs)
+                circom_ops.add(gen.comp.op_name)
+                generator_map[sym.name] = gen
+
+            else:
+
+                sym_flatten = sym.copy(args=sym.args)
+                sym_flatten.name = name+"_flatten"
+                sym_flatten.op_name = "flatten"
+                sym_flatten.attrs["shape"] = [int(np.prod(sym.args[0].shape))]
+                # start generate map
+                attrs_flatten = {k: v for k, v in sym_flatten.attrs.items()}
+                inputs = [generator_map[i.name] for i in sym_flatten.args]
+                gen = map_component(sym_flatten)(sym_flatten.name, inputs, attrs_flatten)
+                circom_ops.add(gen.comp.op_name)
+                generator_map[sym_flatten.name] = gen
+
+                # clip op
+                sym_clip = sym_flatten.copy(args=[sym_flatten])
+                sym_clip.op_name = "clip"
+                sym_clip.name = name+"_clip"
+                precision = sym.attrs["precision"]
+                # todo calculate
+                sym_clip.attrs["a_max"] = abs(int(np.power(2, precision-1)-1))
+                sym_clip.attrs["a_min"] = -1 * sym_clip.attrs["a_max"]
+                # start generate map
+                attrs_clip = {k: v for k, v in sym_clip.attrs.items()}
+                inputs = [generator_map[i.name] for i in sym_clip.args]
+                gen = map_component(sym_clip)(sym_clip.name, inputs, attrs_clip)
+                circom_ops.add(gen.comp.op_name)
+                generator_map[sym_clip.name] = gen
+
+                # reshape op
+                sym_reshape = sym_clip.copy(args=[sym_clip])
+                sym_reshape.name = name
+                sym_reshape.op_name = "reshape"
+                sym_reshape.attrs["shape"] = sym_flatten.args[0].shape
+                # start generate map
+                attrs_reshape = {k: v for k, v in sym_reshape.attrs.items()}
+                inputs = [generator_map[i.name] for i in sym_reshape.args]
+                gen = map_component(sym_reshape)(sym_reshape.name, inputs, attrs_reshape)
+                circom_ops.add(gen.comp.op_name)
+                generator_map[sym_reshape.name] = gen
+
+        elif sym.op_name == "multiply" or sym.op_name == "right_shift":
+            if len(sym.args[0].shape) == 1:
+                gen = map_component(sym)(name, inputs, attrs)
+                circom_ops.add(gen.comp.op_name)
+                generator_map[name] = gen
+            else:
+
+                sym_flatten = sym.copy(args=[sym.args[0]])
+                sym_flatten.name = name+"_flatten"
+                sym_flatten.op_name = "flatten"
+                sym_flatten.attrs["shape"] = [int(np.prod(sym.args[0].shape))]
+                # start generate map
+                attrs_flatten = {k: v for k, v in sym_flatten.attrs.items()}
+                inputs = [generator_map[i.name] for i in sym_flatten.args]
+                gen = map_component(sym_flatten)(sym_flatten.name, inputs, attrs_flatten)
+                circom_ops.add(gen.comp.op_name)
+                generator_map[sym_flatten.name] = gen
+
+                # rs op
+                sym_rs = sym_flatten.copy(args=[sym_flatten, sym.args[1]])
+                sym_rs.op_name = sym.op_name
+                sym_rs.name = name+"_right_shift"
+                # start generate map
+                attrs_rs = {k: v for k, v in sym_rs.attrs.items()}
+                inputs = [generator_map[i.name] for i in sym_rs.args]
+                gen = map_component(sym_rs)(sym_rs.name, inputs, attrs_rs)
+                circom_ops.add(gen.comp.op_name)
+                generator_map[sym_rs.name] = gen
+
+                # reshape op
+                sym_reshape = sym_rs.copy(args=[sym_rs])
+                sym_reshape.name = name
+                sym_reshape.op_name = "reshape"
+                sym_reshape.attrs["shape"] = sym_flatten.args[0].shape
+                # start generate map
+                attrs_reshape = {k: v for k, v in sym_reshape.attrs.items()}
+                inputs = [generator_map[i.name] for i in sym_reshape.args]
+                gen = map_component(sym_reshape)(sym_reshape.name, inputs, attrs_reshape)
+                circom_ops.add(gen.comp.op_name)
+                generator_map[sym_reshape.name] = gen
+
+        else:
+            gen = map_component(sym)(name, inputs, attrs)
+            circom_ops.add(gen.comp.op_name)
+            generator_map[name] = gen
         #  comp.fill_circom()
-        generator_map[name] = gen
 
     visit(symbol, sym2circom)
     #  print("Invoked Circoms: \n", "\n".join(circom_ops))
@@ -107,12 +273,11 @@ def input_json(
         assert isinstance(data, int)
         return str(data)
 
-    return {k: _as_str_data(v.tolist()) \
+    return {k: _as_str_data(v.numpy().tolist()) \
             for k, v in params.items()}
 
 
 def assert_rs(symbol: Symbol):
-
     @filter_operators("right_shift")
     def _assert(sym: Symbol):
         B: WithParameters = sym.args[1]

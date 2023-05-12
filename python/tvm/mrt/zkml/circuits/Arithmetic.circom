@@ -17,6 +17,17 @@ template Mul(iShape) {
     }
 }
 
+template Mul_b(H) {
+    signal input a[H];
+    signal input b;
+    signal output out[H];
+
+    for (var i = 0; i < H; i++) {
+        out[i] <== a[i] * b;
+    }
+}
+
+
 template Add(iShape) {
     signal input a[iShape];
     signal input b[iShape];

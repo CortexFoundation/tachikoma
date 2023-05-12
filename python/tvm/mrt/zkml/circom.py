@@ -51,7 +51,7 @@ class Signal:
         assert self.shape == inp.shape
 
         if len(self.shape) == 0:
-            circom_assign += "{}.{} <== {};".format(
+            circom_assign = "{}.{} <== {};".format(
                     self.comp.name, self.name, inp.circom_output)
             return inject_main(code, circom_assign)
 

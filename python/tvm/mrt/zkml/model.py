@@ -12,57 +12,59 @@ import numpy as np
 from tvm import relay, IRModule as ir
 
 from . import utils
+from .. import symbol as MrtSymbol
 
-@dataclass
-class Symbol:
-    op: str
-    name: str
-    inputs: typing.Dict[Symbol]
-    inputs_raw: typing.Dict[typing.List[int]]
-    attrs: typing.Dict[str, str]
-
-    @classmethod
-    def variable(cls, name, **attrs):
-        return cls("null", name, [], [], attrs)
-
-    def find(self, child_name) -> typing.Optional[Symbol]:
-        sym_list: typing.List[Symbol] = []
-        _topo_sort(self, sym_list)
-        for sym in sym_list:
-            if sym.name == child_name:
-                return sym
-        return None
-
-    def as_parameter(self):
-        self.op = "null"
-        self.inputs = []
-        self.inputs_raw = []
-        assert "dtype" in self.attrs, self.info()
-        self.attrs = {
-            "shape": self.attrs["shape"],
-            "dtype": self.attrs["dtype"],
-        }
-        return self
-
-    def clone(self, **kw) -> Symbol:
-        data = dict((f.name, getattr(self, f.name)) \
-                for f in fields(self))
-        data.update(kw)
-        return Symbol(**data)
-
-    def info(self):
-        inputs_info = [
-            "{}@{}".format(i.name, i.attrs.get("shape", None)) \
-            for i in self.inputs ]
-        return "{} = {}({}) /* attrs */ \t{}".format(
-            self.name, self.op,
-            ", ".join(inputs_info),
-            self.attrs)
+#@dataclass
+#class Symbol:
+#    op: str
+#    name: str
+#    inputs: typing.Dict[Symbol]
+#    inputs_raw: typing.Dict[typing.List[int]]
+#    attrs: typing.Dict[str, str]
+#
+#    @classmethod
+#    def variable(cls, name, **attrs):
+#        return cls("null", name, [], [], attrs)
+#
+#    def find(self, child_name) -> typing.Optional[Symbol]:
+#        sym_list: typing.List[Symbol] = []
+#        _topo_sort(self, sym_list)
+#        for sym in sym_list:
+#            if sym.name == child_name:
+#                return sym
+#        return None
+#
+#    def as_parameter(self):
+#        self.op = "null"
+#        self.inputs = []
+#        self.inputs_raw = []
+#        assert "dtype" in self.attrs, self.info()
+#        self.attrs = {
+#            "shape": self.attrs["shape"],
+#            "dtype": self.attrs["dtype"],
+#        }
+#        return self
+#
+#    def clone(self, **kw) -> Symbol:
+#        data = dict((f.name, getattr(self, f.name)) \
+#                for f in fields(self))
+#        data.update(kw)
+#        return Symbol(**data)
+#
+#    def info(self):
+#        inputs_info = [
+#            "{}@{}".format(i.name, i.attrs.get("shape", None)) \
+#            for i in self.inputs ]
+#        return "{} = {}({}) /* attrs */ \t{}".format(
+#            self.name, self.op,
+#            ", ".join(inputs_info),
+#            self.attrs)
 
 def _topo_sort(symbol, sym_list: typing.List[Symbol]):
     if sym_list.count(symbol) > 0:
         return
-    for c in symbol.inputs:
+    #for c in symbol.inputs:
+    for c in symbol.args:
         _topo_sort(c, sym_list)
     sym_list.append(symbol)
 
@@ -72,11 +74,12 @@ def visit(symbol, callback) -> Symbol:
 
     sym_map = {}
     for sym in sym_list:
-        inputs = [sym_map[c.name] for c in sym.inputs]
-        sym = sym.clone(inputs=inputs)
+        #inputs = [sym_map[c.name] for c in sym.inputs]
+        args = [sym_map[c.name] for c in sym.args]
+        sym = sym.copy(args=args)
         # pre-clone symbol, to avoid misleading usage in callback
-        out = callback(sym.clone()) or sym
-        assert isinstance(out, Symbol)
+        out = callback(sym.copy()) or sym
+        assert isinstance(out, MrtSymbol.Symbol)
         sym_map[sym.name] = out
     return sym_map[symbol.name]
 
@@ -113,26 +116,27 @@ def transform(f: CallbackType):
         return visit(symbol, f)
     return _wrapper_visit
 
+# 202304 invalid for mrt symbol
 def simple_raw_print(symbol, params={}):
-    info = { "op": 0, "param": 0 }
+    info = { "op_name": 0, "param": 0 }
     def _simple_visit(sym):
         if not is_operator(sym):
             print("{:68} /* attrs */ \t{}".format(
                 sym.name, sym.attrs))
             if is_param(sym, params):
-                info["param"] += utils.product(sym.attrs["shape"])
+                info["param"] += utils.product(sym.shape)
             return
 
-        info["op"] += 1
+        info["op_name"] += 1
         print("{:15} = {:>20}{:30} /* attrs */ \t{}".format(
-            sym.name, sym.op,
-            "(" + ", ".join([i.name for i in sym.inputs]) + ")",
+            sym.name, sym.op_name,
+            "(" + ", ".join([i.name for i in sym.args]) + ")",
             sym.attrs,
         ))
     visit(symbol, _simple_visit)
     print("="*50)
     print("Operators: {} | Parameters: {}".format(
-        info["op"], info["param"]))
+        info["op_name"], info["param"]))
     print("="*50)
 
 
@@ -141,9 +145,9 @@ def dump(symbol, params, dump_path):
     dict_nodes = []
     def _to_dict(sym):
         dict_nodes.append({
-            "op": sym.op,
+            "op_name": sym.op_name,
             "name": sym.name,
-            "inputs": [i.name for i in sym.inputs],
+            "args": [i.name for i in sym.args],
             "attrs": sym.attrs,
         })
     visit(symbol, _to_dict)
@@ -164,10 +168,10 @@ def load(model_path):
     # assume the node order is topological.
     symbol_map = {}
     for node in model_json["nodes"]:
-        inputs = [symbol_map[i] for i in node["inputs"]]
+        args = [symbol_map[i] for i in node["args"]]
         sym = Symbol(
-                node["op"], node["name"],
-                inputs, node["inputs"],
+                node["op_name"], node["name"],
+                args, node["args"],
                 node["attrs"])
         symbol_map[node["name"]] = sym
 
@@ -191,8 +195,8 @@ def info(symbol, params):
     useful_params = {}
     def _collect_info(sym):
         if is_operator(sym, params):
-            operator_info.setdefault(sym.op, 0)
-            operator_info[sym.op] += 1
+            operator_info.setdefault(sym.op_name, 0)
+            operator_info[sym.op_name] += 1
             total_operators = 0
             operators.append(sym)
         elif is_input(sym, params):
@@ -228,13 +232,16 @@ def info(symbol, params):
 
 
 def is_operator(symbol: Symbol, params = {}):
-    return symbol.op != "null"
+    #return symbol.op != "null"
+    return symbol.op_name != "var"
 
 def is_input(symbol: Symbol, params):
-    return symbol.op == "null" and symbol.name not in params
+    #return symbol.op == "null" and symbol.name not in params
+    return symbol.op_name == "var" and symbol.name not in params
 
 def is_param(symbol: Symbol, params):
-    return symbol.op == "null" and symbol.name in params
+    #return symbol.op == "null" and symbol.name in params
+    return symbol.op_name == "var" and symbol.name in params
 
 def json_load(symbol_path, ir_path, params_path):
     # mod = relay.build_module.load_module(symbol_path)
@@ -248,8 +255,8 @@ def json_load(symbol_path, ir_path, params_path):
     symbol_map: typing.Dict[int, Symbol] = {}
     for idx, node in enumerate(nodes):
         sym = Symbol(
-                node["op"], node["name"],
-                [], node["inputs"], {})
+                node["op_name"], node["name"],
+                [], node["args"], {})
 
         for inp_raw in sym.inputs_raw:
             assert len(inp_raw) == 3
@@ -260,7 +267,7 @@ def json_load(symbol_path, ir_path, params_path):
 
         sym.attrs = node.get("attrs", {})
         if is_operator(sym): # parse func name
-            sym.op = sym.attrs["func_name"]
+            sym.op_name = sym.attrs["func_name"]
 
 
         symbol_map[sym.name] = sym
@@ -413,7 +420,7 @@ def ir_load(symbol_path, params_path):
                     assert False
                     #  symbol_map[arg_name] = Symbol.variable(
                     #          arg_name, shape=inputs_info[arg_name])
-                sym.inputs.append(symbol_map[arg_name])
+                sym.args.append(symbol_map[arg_name])
 
         assert sym.name not in symbol_map, (
                 "duplicated symbol: {}").format(sym.name)
@@ -430,7 +437,7 @@ def config(symbol, input_name = None, output_name = None):
     output_name = output_name or symbol.name
     def replace_input(sym: Symbol):
         if sym.name == input_name:
-            sym = sym.clone().as_parameter()
+            sym = sym.copy().as_parameter()
         return sym
 
     symbol = visit(symbol, replace_input)
@@ -508,10 +515,10 @@ def check_params(symbol, params):
 
 @transform
 def fuse_cast(sym):
-    if sym.op == "cast":
+    if sym.op_name == "cast":
         #  assert "int" in sym.inputs[0].attrs["dtype"], sym.inputs[0].info()
         #  assert "int" in sym.attrs["dtype"], sym.info()
-        return sym.inputs[0]
+        return sym.args[0]
 
 def _copy_attrs(attrs, *keys, **kw):
     return {
@@ -523,12 +530,12 @@ def _copy_attrs(attrs, *keys, **kw):
 
 @transform
 def fuse_fixed_point_multiply(sym: Symbol):
-    if sym.op != "fixed_point_multiply":
+    if sym.op_name != "fixed_point_multiply":
         return
 
     attrs = sym.attrs
     out = Symbol("mul_scalar", sym.name + "_mul",
-            sym.inputs, [],
+            sym.args, [],
             _copy_attrs(attrs, scalar=attrs["multiplier"]))
 
     shift_bit = sym.attrs["shift"]
@@ -551,7 +558,7 @@ def fuse_scalar_op(symbol: Symbol, params):
 
         scalars = []
         inputs = []
-        for inp in sym.inputs:
+        for inp in sym.args:
             # if params' shape is 1, try to cast into scalar.
             if is_param(inp, params) and utils.product(params[inp.name].shape) == 1:
                 scalars.append(params[inp.name].item())
@@ -559,7 +566,7 @@ def fuse_scalar_op(symbol: Symbol, params):
                 inputs.append(inp)
 
         if len(scalars) == 1:
-            sym = sym.clone(op=sym.op+"_scalar", inputs=inputs,)
+            sym = sym.copy(op_name=sym.op_name+"_scalar", args=inputs,)
             sym.attrs["scalar"] = scalars[0]
         return sym
     return visit(symbol, _fuse)
@@ -570,9 +577,9 @@ def _shape_adapter(sym: Symbol):
         "mul_scalar", "add_scalar", "subtract_scalar",
         "right_shift",
     ]
-    if sym.op not in supported_ops:
+    if sym.op_name not in supported_ops:
         inputs = []
-        for inp in sym.inputs:
+        for inp in sym.args:
             if "orig_shape" in inp.attrs:
                 inp = Symbol("reshape", inp.name + "_r",
                         [ inp, ], [],
@@ -580,30 +587,30 @@ def _shape_adapter(sym: Symbol):
                             "dtype": sym.attrs["dtype"],
                         })
             inputs.append(inp)
-        sym = sym.clone(inputs=inputs)
+        sym = sym.copy(args=inputs)
         return sym
 
-    if len(sym.attrs["shape"]) == 1:
+    if len(sym.shape) == 1:
         return
 
-    input_shape = list(sym.inputs[0].attrs["shape"])
-    orig_shape = list(sym.inputs[0].attrs.get(
+    input_shape = list(sym.args[0].shape)
+    orig_shape = list(sym.args[0].attrs.get(
         "orig_shape", input_shape))
     shape_one = utils.product(input_shape)
 
     inputs = []
-    for inp in sym.inputs:
-        shape = list(inp.attrs["shape"])
+    for inp in sym.args:
+        shape = inp.shape
         assert input_shape == shape
         if len(shape) != 1:
-            inp = Symbol("flatten", sym.inputs[0].name + "_f",
-                    [ sym.inputs[0], ], [],
+            inp = Symbol("flatten", sym.args[0].name + "_f",
+                    [ sym.args[0], ], [],
                     { "shape": ( shape_one, ),
                         "dtype": sym.attrs["dtype"], })
         inputs.append(inp)
 
     #  assert list(sym.attrs["shape"]) == input_shape, sym.info()
-    sym = sym.clone(inputs=inputs)
+    sym = sym.copy(args=args)
     sym.attrs.update({
         "shape": ( shape_one, ),
         "orig_shape": orig_shape,
@@ -628,42 +635,44 @@ def shape_adapter(symbol: Symbol):
     return symbol
 
 
-
 def resize_batch(symbol, params, batch_size=1):
     # temporary set batch size, hook!!!
     def _change_batch_size(sym: model.Symbol):
+        # incase: e.g. weight of conv2d (is param)
         if is_param(sym, params):
             return
 
-        if sym.op in ["subtract"]:
+        if sym.op_name in ["subtract"]:
             inputs = []
-            for inp in sym.inputs:
+            for inp in sym.args:
                 shape = inp.attrs["shape"]
                 if is_param(inp, params) and len(shape) == 4:
                     assert shape[0] == 1
                     param = params[inp.name]
-                    inp = inp.clone(name=inp.name+"_dim3")
+                    inp = inp.copy(name=inp.name+"_dim3")
                     inp.attrs["shape"] = shape[1:]
                     params[inp.name] = param.reshape(shape[1:])
                 inputs.append(inp)
-            sym = sym.clone(inputs=inputs)
+            sym = sym.copy(args=args)
 
-        assert "shape" in sym.attrs, sym.info()
-        shape = list(sym.attrs["shape"])
-        assert shape[0] == 64
-        #  shape[0] = 1
-        sym.attrs["shape"] = shape[1:]
+        assert "shape" in sym.info()
+        shape = sym.shape
+        # cut down the batch (shape[0] of op_symbol)
+        #assert shape[0] == 64
+        # shape[0] = 1
+        sym.shape = shape[1:]
+        return sym
     symbol = visit(symbol, _change_batch_size)
     return symbol, params
 
 
 def fuse_tanh(symbol, params):
     def _tanh(sym: Symbol):
-        if sym.op != "tanh":
+        if sym.op_name != "tanh":
             return
 
-        mul_input = sym.inputs[0]
-        assert mul_input.op == "multiply"
+        mul_input = sym.args[0]
+        assert mul_input.op_name == "multiply"
 
         return sym
     return visit(symbol, _tanh), params

@@ -66,6 +66,50 @@ template Conv2D_CHW (C, H, W, F, K, S) {
 
 }
 
+template Conv2D_NCHW (N, C, H, W, F, K, S) {
+    signal input in[N][C][H][W];
+    signal input weights[F][C][K][K];
+    signal output out[N][F][(H-K)\S+1][(W-K)\S+1];
+
+    component Conv2D_CHW[N];
+
+    // first set inputs
+    for (var k = 0; k < N; k++) {
+        for (var m = 0; m < C; m++) {
+	    for (var i = 0; i < H; i++) {
+	        for (var j = 0; j < W; j++) {
+                    Conv2D_CHW[k].in[m][i][j] <== in[k][m][i][j];
+                }
+            }
+        }
+    }
+
+    for (var g = 0; g < N; g++) {
+    for (var k = 0; k < F; k++) {
+        for (var m = 0; m < C; m++) {
+	    for (var i = 0; i < K; i++) {
+	        for (var j = 0; j < K; j++) {
+                    Conv2D_CHW[g].weights[k][m][i][j] <== weights[k][m][i][j];
+                }
+            }
+        }
+    }
+    }
+
+
+    // then set output
+    for (var k = 0; k < N; k++) {
+        for (var m = 0; m < F; m++) {
+	    for (var i = 0; i < (H-K)\S+1; i++) {
+	        for (var j = 0; j < (W-K)\S+1; j++) {
+                    out[k][m][i][j] <== Conv2D_CHW[k].out[m][i][j];
+                }
+            }
+        }
+    }
+}
+
+
 // Conv2D layer with valid padding
 template Conv2D (nRows, nCols, nChannels, nFilters, kernelSize, strides) {
     signal input in[nRows][nCols][nChannels];

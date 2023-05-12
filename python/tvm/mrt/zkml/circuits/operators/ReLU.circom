@@ -16,6 +16,51 @@ template ReLU () {
     out <== in * isPositive.out;
 }
 
+template ReLU1D (c) {
+    signal input in[c];
+    signal output out[c];
+
+    component isPositive[c];
+
+    for (var i=0; i < c; i++) {
+        isPositive[i] = IsPositive();
+        isPositive[i].in <== in[i];
+        out[i] <== in[i] * isPositive[i].out;
+    }
+}
+
+template ReLU2D (c,h) {
+    signal input in[c][h];
+    signal output out[c][h];
+
+    component isPositive[c][h];
+
+    for (var i=0; i < c; i++) {
+        for (var j=0; j < h; j++) {
+            isPositive[i][j] = IsPositive();
+            isPositive[i][j].in <== in[i][j];
+	    out[i][j] <== in[i][j] * isPositive[i][j].out;
+        }
+    }
+}
+
+template ReLU3D (c,h,w) {
+    signal input in[c][h][w];
+    signal output out[c][h][w];
+
+    component isPositive[c][h][w];
+
+    for (var i=0; i < c; i++) {
+        for (var j=0; j < h; j++) {
+            for (var k=0; k < w; k++) {
+                isPositive[i][j][k] = IsPositive();
+                isPositive[i][j][k].in <== in[i][j][k];
+	        out[i][j][k] <== in[i][j][k] * isPositive[i][j][k].out;
+            }
+        }
+    }
+}
+
 template Clip(iShape, min, max) {
     signal input in[iShape];
     signal output out[iShape];
