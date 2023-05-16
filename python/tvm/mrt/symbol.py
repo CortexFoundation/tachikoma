@@ -99,9 +99,10 @@ class _BaseSymbol:
         oattrs = {k: v for k, v in self.attrs.items()}
         oattrs.update(attrs)
         oattrs.update(self.extra_attrs)
-        return "{:30} = {:>15}{:30} /* attrs */ {}".format(
+        return "{:30} = {:>15}<op_name>{:30}<args_info> /* attrs */ {}".format(
                 self.name, self.op_name, args_info,
                 _format_printer(oattrs))
+
 
 @dataclass
 class Symbol(_BaseSymbol):
@@ -154,6 +155,15 @@ class Symbol(_BaseSymbol):
         return super().to_dict(**kwargs)
     def __repr__(self, **attrs) -> str:
         return super().__repr__(**attrs)
+    def info(self, **attrs) -> str:
+        return super().__repr__(**attrs)
+#        inputs_info = [
+#            "{}@{}".format(i.name, i.attrs.get("shape", None)) \
+#            for i in self.args]
+#        return "{} = {}({}) /* attrs */ \t{}".format(
+#            self.name, self.op_name,
+#            ", ".join(inputs_info),
+#            self.attrs)
 
     # Naive Methods
     def is_op(self, *op_names) -> bool:

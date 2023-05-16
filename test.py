@@ -18,6 +18,7 @@ import numpy as np
 
 from PIL import Image
 from tvm.contrib.download import download_testdata
+
 def get_real_image(im_height, im_width) -> np.ndarray:
     repo_base = "https://github.com/dmlc/web-data/raw/main/tensorflow/models/InceptionV1/"
     img_name = "elephant-299.jpg"
@@ -30,8 +31,6 @@ def get_real_image(im_height, im_width) -> np.ndarray:
     data = data / 255.0
     return data
 
-batch_size = 16
-
 def load_model_from_mx() -> (ir.IRModule, ParametersT):
     import mxnet as mx
     spath, ppath = gluon.save_model("resnet18_v1", ctx=mx.cpu())
@@ -39,8 +38,7 @@ def load_model_from_mx() -> (ir.IRModule, ParametersT):
     symbol, params = gluon.load_model(spath, ppath)
     return relay.frontend.from_mxnet(symbol, arg_params=params)
 
-
-
+batch_size = 16
 if False:
     num_class = 10
     image_shape = (1, 28, 28)
@@ -143,25 +141,27 @@ qt_tr = dt_tr.checkpoint_transform(
         # force=True,
 )
 # qt_tr.log()
-qt_tr.print(short=True)
+qt_tr.print(short=False)
 
-from tvm.mrt.zkml import circom, transformer
+from tvm.mrt.zkml import circom, transformer, model as ZkmlModel
 
-print(">>> Generating circom code ...")
 symbol, params = qt_tr.symbol, qt_tr.params
-symbol = transformer.shape_adapter(symbol)
+symbol, params = ZkmlModel.resize_batch(symbol, params)
+#ZkmlModel.simple_raw_print(symbol, params)
+print(">>> Generating circom code ...")
 out = transformer.model2circom(symbol, params)
 code = circom.generate(out)
 input_json = transformer.input_json(symbol, params)
 
-print(">>> Generated, dump to {} ...".format(args.output))
+output_name = "circom_model_test"
+print(">>> Generated, dump to {} ...".format(output_name))
 #  print(code)
-with open(args.output + ".circom", "w") as f:
+with open(output_name + ".circom", "w") as f:
     f.write(code)
-with open(args.output + ".json", "w") as f:
+with open(output_name + ".json", "w") as f:
     f.write(json.dumps(input_json, indent=2))
 
-
+print(">>> exit sys -1 <<<")
 sys.exit(-1)
 
 config = {

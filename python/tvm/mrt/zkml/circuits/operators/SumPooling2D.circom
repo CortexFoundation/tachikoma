@@ -24,3 +24,21 @@ template SumPooling2D (nRows, nCols, nChannels, poolSize) {
         }
     }
 }
+
+// CHW, sum of H and W, keep H,W as 1,1
+template Sum_CHW (C, H, W) {
+    signal input in[C][H][W];
+    signal output out[C][1][1];
+
+    component elemSum[C];
+
+    for (var i=0; i<C; i++) {
+        elemSum[i] = matElemSum(H, W);
+	for (var x=0; x<H; x++) {
+	    for (var y=0; y<W; y++) {
+		elemSum[i].a[x][y] <== in[i][x][y];
+	    }
+	}
+	out[i][0][0] <== elemSum[i].out;
+    }
+}
