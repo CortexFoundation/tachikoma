@@ -71,7 +71,6 @@ def load_model_from_torch() -> Tuple[ir.IRModule, ParametersT]:
     model = models.resnet18(weights=weights)
     model = model.eval()
     input_data = torch.randn(data_shape)
-    np.save('data/resnet18_v1/data.npy', input_data.data.numpy().astype('int8'))
     script_module = torch.jit.trace(model, [input_data]).eval()
     return relay.frontend.from_pytorch(
             script_module, [ ("input", data_shape) ])
