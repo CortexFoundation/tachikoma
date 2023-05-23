@@ -51,6 +51,18 @@ os.sys.path.insert(0, path.join(ROOT, "python"))
 ## firstly it will download models, proxy is necessary 
 `proxychains4 python test.py`
 
-## afterwards you can run with
+## afterwards you can run with, got code.circom and input.json
 `python test.py`
+
+# compile circom code and generate witness
+first install 'nlohmann-json3-dev, libgmp-dev and nasm' in system
+```bash
+circom circom_model_test.circom --r1cs --wasm --sym --c
+cd circom_model_test_cpp
+make -j6
+cp ../circom_model_test.json input.json
+./circom_model_test input.json witness.wtns
+# or in js
+node generate_witness.js model.wasm input.json witness.wtns
+```
 

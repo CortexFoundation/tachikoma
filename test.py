@@ -149,6 +149,7 @@ symbol, params = qt_tr.symbol, qt_tr.params
 symbol, params = ZkmlModel.resize_batch(symbol, params)
 #ZkmlModel.simple_raw_print(symbol, params)
 print(">>> Generating circom code ...")
+symbol, params = transformer.change_name(symbol, params)
 out = transformer.model2circom(symbol, params)
 code = circom.generate(out)
 input_json = transformer.input_json(symbol, params)

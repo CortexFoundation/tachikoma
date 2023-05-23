@@ -3,6 +3,7 @@ import numpy as np
 from ..symbol import *
 from ..transform import WithParameters
 from .. import op, utils
+from .model import visit as zkvisit
 
 def register_op_map(op_name):
     def wrapper_func(f):
@@ -79,6 +80,29 @@ def map_component(sym: Symbol) -> CircomGenerator:
     }
     return components[comp_map[sym.op_name]]
 
+
+def change_name(symbol, params):
+    # change into valid circom symbol name
+    new_params = {}
+    def _change_name(sym: Symbol):
+        if op.is_operator(sym, params):
+            name = sym.name.replace("%", "O_")
+            name = name.replace(".", "_")
+        elif op.is_param(sym, params):
+            name = sym.name.replace("%", "P_")
+            name = name.replace(".", "_")
+            new_params[name] = params[sym.name]
+        else:
+            name = sym.name.replace("%", "I_")
+            name = name.replace(".", "_")
+
+        sym = sym.copy(args=sym.args, name=name)
+        return sym
+    symbol = zkvisit(symbol, _change_name)
+    params = new_params
+    return symbol, params
+
+
 def model2circom(symbol, params):
     generator_map: typing.Dict[str, CircomGenerator] = {}
     circom_ops = set()
@@ -135,9 +159,28 @@ def model2circom(symbol, params):
         elif sym.op_name == "reshape":
             # reshape op
             sym_rs = sym.copy(args=sym.args)
-            # when new shape -1, may occurs len(orig_shape) != 1
-            sym_rs.op_name = "reshape" if len(sym.args[0].shape)==1 else "pass"
-            sym2circom(sym_rs)
+            # when new shape -1, may occurs len(orig_shape) != 1, just flatten first, then reshape
+            if len(sym.args[0].shape)>1:
+                sym_fl = sym.copy(args=sym.args)
+                sym_fl.name = name+"_flatten"
+                sym_fl.op_name = "flatten"
+                sym_fl.attrs["shape"] = [attrs["shape"][0]]
+                # start generate map
+                attrs_fl = {k: v for k, v in sym_fl.attrs.items()}
+                inputs_fl = [generator_map[i.name] for i in sym_fl.args]
+                gen = map_component(sym_fl)(sym_fl.name, inputs_fl, attrs_fl)
+                circom_ops.add(gen.comp.op_name)
+                generator_map[sym_fl.name] = gen
+                # process reshape op
+                sym_rs = sym.copy(args=[sym_fl])
+                sym_rs.attrs["shape"] = attrs["shape"]
+
+            # start generate map
+            attrs = {k: v for k, v in sym_rs.attrs.items()}
+            inputs = [generator_map[i.name] for i in sym_rs.args]
+            gen = map_component(sym_rs)(sym_rs.name, inputs, attrs)
+            circom_ops.add(gen.comp.op_name)
+            generator_map[sym_rs.name] = gen
         
         elif sym.op_name == "mrt.rs_pclip":
             # rs op
