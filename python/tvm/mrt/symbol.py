@@ -99,7 +99,7 @@ class _BaseSymbol:
         oattrs = {k: v for k, v in self.attrs.items()}
         oattrs.update(attrs)
         oattrs.update(self.extra_attrs)
-        return "{:30} = {:>15}<op_name>{:30}<args_info> /* attrs */ {}".format(
+        return "{:30} = {:>15}{:30}<args_info> /* attrs */ {}".format(
                 self.name, self.op_name, args_info,
                 _format_printer(oattrs))
 

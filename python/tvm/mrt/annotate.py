@@ -37,6 +37,7 @@ class ArgAnnotator(Pass):
 
 ArgAnnotator.test(VAR)(lambda x: [])
 ArgAnnotator.test(CONV2D, DENSE)(ArgAnnotator.with_prec, 8)
+# ArgAnnotator.test(LOG_SOFTMAX)(ArgAnnotator.with_prec, 8)
 ArgAnnotator.test(BIAS_ADD)(ArgAnnotator.first_like)
 ArgAnnotator.test(MUL)(ArgAnnotator.with_prec, 16)
 ArgAnnotator.test(ADD, SUB)(ArgAnnotator.first_like)

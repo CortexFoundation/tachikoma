@@ -66,6 +66,12 @@ class TupleGetItemAttrs(_BaseAttrs):
     index: int
 
 @dataclass
+@register_attrs(DENSE)
+class DenseAttrs(_BaseAttrs):
+    units: int
+    out_dtype: str
+
+@dataclass
 @register_attrs(CONV2D)
 class Conv2DAttrs(_BaseAttrs):
     """ Reference to https://tvm.apache.org/docs/reference/api/python/relay/nn.html#tvm.relay.nn.conv2d

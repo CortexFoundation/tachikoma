@@ -10,6 +10,11 @@ from .attrs import *
 from .utils import N
 from .transform import Transformer
 
+class FuseDropout(Transformer):
+    @filter_operators(DROP_OUT)
+    def __call__(self):
+        return self.args[0]
+
 class FuseBatchNorm(Transformer):
     @filter_operators(BATCH_NORM)
     def __call__(self):
@@ -44,15 +49,32 @@ class FuseBatchNorm(Transformer):
 
             B = X.from_np_data(bias)
             out = op.bias_add(X, B, axis=parsed.axis)
+        elif X.is_op(DENSE):
+            A, W = X.args
+            dense_parsed: DenseAttrs = X.parsed
+
+            # (A * W) * gamma + bias
+            # A * (W * gamma) + bias
+            W_data = W.numpy() * gamma.reshape(K, 1)
+            W.update_data(W_data)
+
+            B = X.from_np_data(bias)
+            out = op.bias_add(X, B, axis=parsed.axis)
         else:
-            assert False
+            reshp = [s if i == parsed.axis else 1 \
+                    for i, s in enumerate(X.shape)]
+            W = X.from_np_data(gamma.reshape(reshp))
+            out = op.mul(X, W)
+
+            B = X.from_np_data(bias)
+            out = op.bias_add(out, B, axis=parsed.axis)
         return out.like(self)
 
 class FuseTupleGetItem(Transformer):
     @filter_operators(TUPLE_GET_ITEM)
     def __call__(self):
-        X = self.args[0]
-        assert X.is_op(BATCH_NORM)
+        X: Symbol = self.args[0]
+        assert X.is_op(BATCH_NORM, DROP_OUT), X.name
         assert self.parsed.index == 0
         return X
 
