@@ -82,7 +82,7 @@ class FuseAvgPool2D(Transformer):
     @filter_operators(GLOBAL_AVG_POOL2D)
     def __call__(self):
         X = self.args[0]
-        parsed: AvgPool2DAttrs = self.parsed
+        parsed: GlobalAvgPool2DAttrs = self.parsed
 
         assert len(X.shape) == 4
         assert all([s == 1 for s in parsed.output_size])
@@ -92,5 +92,12 @@ class FuseAvgPool2D(Transformer):
                 keepdims=True, exclude=False)
         scale = self.from_np_data(scale.astype(X.dtype))
         return op.mul(out, scale).like(self)
+
+class FuseNaiveSoftmax(Transformer):
+    def __call__(self):
+        if self.is_op(SOFTMAX, LOG_SOFTMAX):
+            return self.args[0]
+        assert self.is_variable() or not self.args[0].is_op(SOFTMAX, LOG_SOFTMAX)
+        return self
 
 

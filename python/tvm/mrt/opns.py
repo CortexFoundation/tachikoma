@@ -14,6 +14,7 @@ RELU = "nn.relu"
 GLOBAL_AVG_POOL2D = "nn.adaptive_avg_pool2d"
 MAX_POOL2D = "nn.max_pool2d"
 
+SOFTMAX = "nn.softmax"
 LOG_SOFTMAX = "nn.log_softmax"
 
 SUM = "sum"
