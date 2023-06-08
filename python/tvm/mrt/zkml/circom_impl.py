@@ -268,10 +268,10 @@ class AddScalarGenerator(ScalarGenerator):
 class SubScalarGenerator(ScalarGenerator):
     pass
 
-class MulScalar_bGenerator(OperatorGenerator):
+class MulScalarGenerator(OperatorGenerator):
     def arguments(self):
         return [ *self.shape ]
-class RightShift_bGenerator(OperatorGenerator):
+class RightShiftGenerator(OperatorGenerator):
     def arguments(self):
         return [ *self.shape ]
 

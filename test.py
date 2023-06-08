@@ -150,9 +150,15 @@ symbol, params = ZkmlModel.resize_batch(symbol, params)
 #ZkmlModel.simple_raw_print(symbol, params)
 print(">>> Generating circom code ...")
 symbol, params = transformer.change_name(symbol, params)
+# set input as params
+symbol_first = ZkmlModel.visit_first(symbol)
+print(">>> 2222 ...", symbol_first, symbol_first.is_input(), symbol_first.is_param())
+import torch
+input_data = torch.randint(255, image_shape)
+params[symbol_first.name] = input_data
 out = transformer.model2circom(symbol, params)
 code = circom.generate(out)
-input_json = transformer.input_json(symbol, params)
+input_json = transformer.input_json(params)
 
 output_name = "circom_model_test"
 print(">>> Generated, dump to {} ...".format(output_name))
