@@ -171,7 +171,7 @@ def load_model_from_torch() -> (ir.IRModule, ParametersT):
     #model = models.resnet18(weights=weights)
     model = torch.load("mnist_cnn.pt0", map_location=torch.device('cpu'))
     model = model.eval()
-    model = torch.nn.Sequential(*(list(model.children())[:-1]))
+    #model = torch.nn.Sequential(*(list(model.children())[:-1]))
     input_data = torch.randn(data_shape)
     script_module = torch.jit.trace(model, [input_data]).eval()
     #input_dat.cut_last_level()
@@ -200,9 +200,10 @@ fuse_tr = tr.checkpoint_transform(
         fuse.FuseDropout.apply(),
         fuse.FuseBatchNorm.apply(),
         fuse.FuseAvgPool2D.apply(),
+        fuse.FuseNaiveSoftmax.apply(),
         tr_name = "fuse",
-        # force=True,
-        )
+        #force=True,
+      )
 # fuse_tr.print(param_config={ "use_all": True, })
 
 from tvm.mrt.calibrate import Calibrator, SymmetricMinMaxSampling
