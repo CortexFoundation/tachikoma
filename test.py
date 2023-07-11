@@ -1,8 +1,9 @@
 import os
 from os import path
+import sys
 
 ROOT = path.dirname(__file__)
-os.sys.path.insert(0, path.join(ROOT, "python"))
+sys.path.insert(0, path.join(ROOT, "python"))
 
 import tvm
 from tvm import relay, ir
@@ -13,7 +14,6 @@ from tvm.mrt import runtime
 from tvm.mrt import stats, dataset
 from tvm.mrt import utils
 
-import sys
 import numpy as np
 
 from PIL import Image
@@ -152,7 +152,7 @@ print(">>> Generating circom code ...")
 symbol, params = transformer.change_name(symbol, params)
 # set input as params
 symbol_first = ZkmlModel.visit_first(symbol)
-print(">>> 2222 ...", symbol_first, symbol_first.is_input(), symbol_first.is_param())
+print(">>> before circom gen ...", symbol_first, symbol_first.is_input(), symbol_first.is_param())
 import torch
 input_data = torch.randint(255, image_shape)
 params[symbol_first.name] = input_data

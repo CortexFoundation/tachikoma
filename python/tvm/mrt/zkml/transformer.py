@@ -122,6 +122,7 @@ def model2circom(symbol, params):
         attrs = get_merged_attrs(sym)
         #print("model2circom_transfering:: sym_name:{}, op_name:{}, attrs:{}".format(name, sym.op_name, attrs))
 
+        # mrt ops fit with circom ops
         # insert pad2d before conv2d
         if (sym.op_name == "nn.conv2d" or sym.op_name=="nn.max_pool2d") and "padding" in attrs:
             padding = sym.attrs["padding"]
@@ -137,7 +138,6 @@ def model2circom(symbol, params):
             sym_pad.attrs = attrs_pad
             inputs_pad = [inputs[0]]
             sym_pad.args = inputs_pad
-            #print("@@@ ((((", sym.shape, sym_pad, ")))", attrs_pad, "[[[", sym_pad.info(), "]]]", sym_pad.attrs)
 
             # start generate map
             gen_pad = map_component(sym_pad)(sym_pad.name, inputs_pad, attrs_pad)

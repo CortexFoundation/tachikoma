@@ -53,6 +53,8 @@ os.sys.path.insert(0, path.join(ROOT, "python"))
 
 ## afterwards you can run with, got code.circom and input.json
 `python test.py`
+`python scripts/image_scale_to_circom_input.py scripts/test_a.png input.json # resolve image input, and put in xxx.json`
+
 
 # circom code usage
 ## compile and generate witness
@@ -83,3 +85,7 @@ snarkjs zkey export solidityverifier circom_model_test_0001.zkey verifier.sol
 snarkjs generatecall
 ```
 
+## using mypy to check tvm.mrt
+```bash
+python -m mypy -p python.tvm.mrt
+```

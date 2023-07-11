@@ -1,9 +1,10 @@
 from __future__ import print_function
 import os
 from os import path
+import sys
 
 ROOT = path.dirname(__file__)
-os.sys.path.insert(0, path.join(ROOT, "python"))
+sys.path.insert(0, path.join(ROOT, "python"))
 
 import tvm
 from tvm import relay, ir
@@ -14,7 +15,6 @@ from tvm.mrt import runtime
 from tvm.mrt import stats, dataset
 from tvm.mrt import utils
 
-import sys
 import numpy as np
 
 from PIL import Image
@@ -221,12 +221,12 @@ from tvm.mrt.rules import slm
 from tvm.mrt.quantize import Quantizer
 
 # calib_tr = calib_tr.subgraph(onames=["%5"])
-dt_tr = calib_tr.checkpoint_transform(
+dt_tr: Trace = calib_tr.checkpoint_transform(
         SymmetricMinMaxSampling.apply(),
         slm.SymmetricLinearDiscretor.apply(),
         )
 # dt_tr.print(short=True)
-dt_tr: Trace = dt_tr.checkpoint_transform(
+dt_tr = dt_tr.checkpoint_transform(
         Quantizer.apply(),
         # print_bf=True, print_af=True,
         # force=True,
@@ -251,25 +251,23 @@ qt_tr = dt_tr.checkpoint_transform(
         # force=True,
 )
 # qt_tr.log()
-qt_tr.print(short=False)
+#qt_tr.print(short=False)
 
 from tvm.mrt.zkml import circom, transformer, model as ZkmlModel
 
 symbol, params = qt_tr.symbol, qt_tr.params
 symbol, params = ZkmlModel.resize_batch(symbol, params)
-print(">>> 1111 change_name ...\n")
+print(">>> change_symbol_name ...\n")
 ZkmlModel.simple_raw_print(symbol, params)
 symbol, params = transformer.change_name(symbol, params)
 
 # set input as params
 symbol_first = ZkmlModel.visit_first(symbol)
-print(">>> 2222 ...", symbol_first, symbol_first.is_input(), symbol_first.is_param())
-#params[symbol_first.name] = symbol_first
 #params[symbol_first.name] = symbol_first.numpy()
-input_data = torch.randint(255, image_shape)
-params[symbol_first.name] = input_data
+#input_data = torch.randint(255, image_shape)
+#params[symbol_first.name] = input_data
 
-print(">>> 3333 model2circom ...\n")
+print(">>> before model2circom ...\n", symbol_first, symbol_first.is_input())
 out = transformer.model2circom(symbol, params)
 print(">>> Generating circom code ...")
 code = circom.generate(out)
@@ -281,6 +279,7 @@ print(">>> Generated, dump to {} ...".format(output_name))
 with open(output_name + ".circom", "w") as f:
     f.write(code)
 with open(output_name + ".json", "w") as f:
+    import json
     f.write(json.dumps(input_json, indent=2))
 
 print(">>> finished. exit sys +1 <<<")
