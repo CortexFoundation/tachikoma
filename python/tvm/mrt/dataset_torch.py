@@ -41,3 +41,102 @@ class TorchImageNet(dataset.ImageNet):
             raise e
             print("error:", e)
             return None, None
+
+class TorchCoco(dataset.Coco):
+    def __init__(self, batch_size = 1, img_size=(28, 28)):
+        self._img_size = img_size
+        val_data = tv.datasets.CocoDetection(
+            path.join(utils.MRT_DATASET_ROOT, "coco/val2017"),
+            transform=self._to_sensor)
+        self.data_loader = DataLoader(
+            val_data, batch_size=batch_size)
+        self._max = len(self.data_loader)
+        self.reset()
+
+    def _to_tensor(self, img: Image.Image):
+        img = img.resize(self._img_size)
+        img = np.array(img).astype("float32")
+        img = np.transpose(img, (2, 0, 1))
+        return img / 255.0
+
+    
+    def __len__(self):
+        return self._max
+
+    def reset(self):
+        self._iter = iter(self.data_loader)
+    
+    def next(self):
+        try:
+            data, label = next(self._iter)
+            return data.numpy(), label.numpy()
+        except Exception as e:
+            raise e
+            print("error:", e)
+            return None, None
+
+class TorchVoc(dataset.Voc):
+    def __init__(self, batch_size = 1, img_size=(28, 28)):
+        self._img_size = img_size
+        val_data = tv.datasets.VOCDetection(
+            path.join(utils.MRT_DATASET_ROOT, "voc/VOC2012/JPEGImages"),
+            transform=self._to_sensor)
+        self.data_loader = DataLoader(
+            val_data, batch_size=batch_size)
+        self._max = len(self.data_loader)
+        self.reset()
+
+    def _to_tensor(self, img: Image.Image):
+        img = img.resize(self._img_size)
+        img = np.array(img).astype("float32")
+        img = np.transpose(img, (2, 0, 1))
+        return img / 255.0
+
+    
+    def __len__(self):
+        return self._max
+
+    def reset(self):
+        self._iter = iter(self.data_loader)
+    
+    def next(self):
+        try:
+            data, label = next(self._iter)
+            return data.numpy(), label.numpy()
+        except Exception as e:
+            raise e
+            print("error:", e)
+            return None, None
+
+class TorchCifar10(dataset.Cifar10):
+    def __init__(self, batch_size = 1, img_size=(28, 28)):
+        self._img_size = img_size
+        val_data = tv.datasets.CIFAR10(
+            path.join(utils.MRT_DATASET_ROOT, "cifar10/test_batch.bin"),
+            transform=self._to_sensor)
+        self.data_loader = DataLoader(
+            val_data, batch_size=batch_size)
+        self._max = len(self.data_loader)
+        self.reset()
+
+    def _to_tensor(self, img: Image.Image):
+        img = img.resize(self._img_size)
+        img = np.array(img).astype("float32")
+        img = np.transpose(img, (2, 0, 1))
+        return img / 255.0
+
+    
+    def __len__(self):
+        return self._max
+
+    def reset(self):
+        self._iter = iter(self.data_loader)
+    
+    def next(self):
+        try:
+            data, label = next(self._iter)
+            return data.numpy(), label.numpy()
+        except Exception as e:
+            raise e
+            print("error:", e)
+            return None, None
