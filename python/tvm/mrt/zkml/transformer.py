@@ -109,7 +109,7 @@ def get_merged_attrs(symbol):
     attrs.update(symbol.attrs)
     return attrs
 
-def model2circom(symbol, params):
+def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGenerator]) :
     generator_map: typing.Dict[str, CircomGenerator] = {}
     circom_ops = set()
     def sym2circom(sym: Symbol):
@@ -314,20 +314,7 @@ def model2circom(symbol, params):
     out = components["Output"](
             "out", [generator_map[symbol.name]],
             { "shape": generator_map[symbol.name].shape })
-    return out
-
-def input_json(
-        params: typing.Dict[str, np.ndarray]):
-    """ ndarray of str in json format, instead of int """
-    def _as_str_data(data):
-        if isinstance(data, list):
-            return [_as_str_data(d) for d in data]
-        assert isinstance(data, int)
-        return str(data)
-
-    return {k: _as_str_data(v.numpy().tolist()) \
-            for k, v in params.items()}
-
+    return (out, generator_map)
 
 def assert_rs(symbol: Symbol):
     @filter_operators("right_shift")

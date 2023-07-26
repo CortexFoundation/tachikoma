@@ -42,12 +42,12 @@ def inject_include(template, code) -> str:
 
 
 class Signal:
-    def __init__(self, comp: ComponentInstance, name, shape):
+    def __init__(self, comp: CircomGenerator, name, shape):
         self.comp = comp
         self.name = name
         self.shape = shape
 
-    def inject(self, code: str, inp: ComponentInstance):
+    def inject(self, code: str, inp: CircomGenerator):
         assert self.shape == inp.shape
 
         if len(self.shape) == 0:
@@ -73,7 +73,6 @@ class Signal:
         circom_shape = circom_shape.format_map(
                 SafeDict(main=circom_assign))
         return inject_main(code, circom_shape)
-
 
 class CircomGenerator:
     def __init__(self, comp: Component,
@@ -108,6 +107,10 @@ class CircomGenerator:
         #   output shape, possible output.
         raise NotImplementedError(self.comp.op_name)
 
+    def input_json_clear(self, params_whole:typing.Dict[str, np.ndarray]):
+        if not self._visit_flag:
+            del params_whole[self.name]
+
     def fill_circom(self, code: str) -> str:
         """ Inject circom code """
 
@@ -138,7 +141,25 @@ class CircomGenerator:
         return inject_main(code, "")
 
 
-def generate(comp: ComponentInstance):
+def input_json(
+	gen_map: typing.Dict[str, CircomGenerator],
+        params: typing.Dict[str, np.ndarray]):
+    """ ndarray of str in json format, instead of int """
+    def _as_str_data(data):
+        if isinstance(data, list):
+            return [_as_str_data(d) for d in data]
+        assert isinstance(data, int)
+        return str(data)
+
+    params_whole = {k: _as_str_data(v.numpy().tolist()) \
+            for k, v in params.items()}
+
+    for compkey,comp in gen_map.items():
+        comp.input_json_clear(params_whole)
+    return params_whole
+
+
+def generate(comp: CircomGenerator):
     circom_code = comp.fill_circom(circom_template_string)
 
     # complete circom code

@@ -156,16 +156,19 @@ print(">>> before circom gen ...", symbol_first, symbol_first.is_input(), symbol
 import torch
 input_data = torch.randint(255, image_shape)
 params[symbol_first.name] = input_data
-out = transformer.model2circom(symbol, params)
-code = circom.generate(out)
-input_json = transformer.input_json(params)
+circom_out, circom_gen_map = transformer.model2circom(symbol, params)
+print(">>> Generating circom code ...")
+circom_code = circom.generate(circom_out)
+print(">>> Generating circom input ...")
+input_json = circom.input_json(circom_gen_map, params)
 
 output_name = "circom_model_test"
 print(">>> Generated, dump to {} ...".format(output_name))
 #  print(code)
 with open(output_name + ".circom", "w") as f:
-    f.write(code)
+    f.write(circom_code)
 with open(output_name + ".json", "w") as f:
+    import json
     f.write(json.dumps(input_json, indent=2))
 
 print(">>> exit sys -1 <<<")
