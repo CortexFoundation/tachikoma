@@ -129,8 +129,8 @@ from tvm.mrt.fixed_point import FixPoint, Simulator
 # dt_tr.print(short=True, prefix_layers=20)
 # FuseBatchNorm.%1
 sim_tr = dt_tr.checkpoint_transform(
-        Simulator.apply(),
-        # force=True,
+        Simulator.apply(with_clip=True, with_round=True),
+        force=True,
         )
 # sim_tr.log()
 # sim_tr.print(short=True)
@@ -143,26 +143,25 @@ qt_tr = dt_tr.checkpoint_transform(
 # qt_tr.log()
 qt_tr.print(short=False)
 
-from tvm.mrt.zkml import circom, transformer, model as ZkmlModel
+# from tvm.mrt.zkml import circom, transformer, model as ZkmlModel
+# symbol, params = qt_tr.symbol, qt_tr.params
+# symbol, params = ZkmlModel.resize_batch(symbol, params)
+# #ZkmlModel.simple_raw_print(symbol, params)
+# print(">>> Generating circom code ...")
+# out = transformer.model2circom(symbol, params)
+# code = circom.generate(out)
+# input_json = transformer.input_json(symbol, params)
 
-symbol, params = qt_tr.symbol, qt_tr.params
-symbol, params = ZkmlModel.resize_batch(symbol, params)
-#ZkmlModel.simple_raw_print(symbol, params)
-print(">>> Generating circom code ...")
-out = transformer.model2circom(symbol, params)
-code = circom.generate(out)
-input_json = transformer.input_json(symbol, params)
+# output_name = "circom_model_test"
+# print(">>> Generated, dump to {} ...".format(output_name))
+# #  print(code)
+# with open(output_name + ".circom", "w") as f:
+#     f.write(code)
+# with open(output_name + ".json", "w") as f:
+#     f.write(json.dumps(input_json, indent=2))
 
-output_name = "circom_model_test"
-print(">>> Generated, dump to {} ...".format(output_name))
-#  print(code)
-with open(output_name + ".circom", "w") as f:
-    f.write(code)
-with open(output_name + ".json", "w") as f:
-    f.write(json.dumps(input_json, indent=2))
-
-print(">>> exit sys -1 <<<")
-sys.exit(-1)
+# print(">>> exit sys -1 <<<")
+# sys.exit(-1)
 
 config = {
         "device": tvm.runtime.cuda(1),
@@ -192,7 +191,7 @@ ds = TorchImageNet(
 runtime.multiple_validate(
         tr.populate(**config),
         sim_tr.populate(**config),
-        qt_tr.populate(**config),
+        # qt_tr.populate(**config),
         dataset=ds,
         stats_type=stats.ClassificationOutput,
         max_iter_num=20,

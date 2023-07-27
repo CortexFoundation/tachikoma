@@ -99,7 +99,6 @@ class Trace:
             return data
         dt_type = eval(sym.extra_attrs["dt_type"])
         dt: Discretor = dt_type.base(sym)
-        print("restore output")
         return dt.restore(data)
 
     def as_input_dict(self,

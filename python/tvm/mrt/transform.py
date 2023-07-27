@@ -166,6 +166,10 @@ class Transformer(WithParameters):
 
     @classmethod
     def apply(cls, *args, **kw):
+        """ Static apply function to generator transformer pass.
+
+        All the parameters are used to invoke `call` method.
+        """
         def _tfm(sym: Symbol, params: ParametersT):
             ins = cls.base(sym, params=params)
             out = ins(*args, **kw) or ins

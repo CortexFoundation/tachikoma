@@ -31,11 +31,24 @@ class Simulator(Transformer, QuantizedInfo):
         # out = op.clip(X, a_min=-pos, a_max=pos).like(self)
         return out
 
-    def __call__(self):
-        if self.is_op(PCLIP):
-            return self.map_pclip()
-        elif self.is_op(REQUANT):
-            return self.map_requant()
+    def __call__(self, with_clip=False, with_round=False):
+        out: Transformer = self
+        if self.is_op(PCLIP, REQUANT):
+            out: Simulator = self.args[0]
+            if self.is_op(REQUANT):
+                rescale = self.parsed.rescale
+                rescale = out.from_const_data(rescale)
+                out = op.mul(out, rescale).like(self,
+                        extra_attrs=self.extra_attrs)
+            if with_clip:
+                pos = self.int_max()
+                out = op.clip(out, a_min=-pos, a_max=pos).like(
+                        self, extra_attrs=self.extra_attrs)
+        if with_round:
+            orig_dtype = out.dtype
+            out = op.cast(out, dtype="int32")
+            out = op.cast(out, dtype=orig_dtype)
+        return out.like(self, extra_attrs=self.extra_attrs)
 
 
 @dataclass(repr=False)
