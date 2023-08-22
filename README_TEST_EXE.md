@@ -51,6 +51,41 @@ os.sys.path.insert(0, path.join(ROOT, "python"))
 ## firstly it will download models, proxy is necessary 
 `proxychains4 python test.py`
 
-## afterwards you can run with
+## afterwards you can run with, got code.circom and input.json
 `python test.py`
+`python scripts/image_scale_to_circom_input.py scripts/test_a.png input.json # resolve image input, and put in xxx.json`
 
+
+# circom code usage
+## compile and generate witness
+first install 'nlohmann-json3-dev, libgmp-dev and nasm' in system
+```bash
+circom circom_model_test.circom --r1cs --wasm --sym --c
+cd circom_model_test_cpp
+make -j6
+cp ../circom_model_test.json input.json
+./circom_model_test input.json witness.wtns
+# or in js
+node generate_witness.js model.wasm input.json witness.wtns
+```
+
+## generate proof
+```bash
+npm install -g snarkjs
+snarkjs powersoftau new bn128 18 pot12_0000.ptau -v  ##2**18 according to circom circuits scale
+snarkjs powersoftau contribute pot12_0000.ptau pot12_0001.ptau --name="First contribution" -v  ## enter text
+snarkjs powersoftau prepare phase2 pot12_0001.ptau pot12_final.ptau -v  ##maybe most time-comsuming
+snarkjs groth16 setup circom_model_test.r1cs pot12_final.ptau circom_model_test_0000.zkey
+ls
+snarkjs zkey contribute circom_model_test_0000.zkey circom_model_test_0001.zkey --name="1st Contributor Name" -v  ## enter text
+snarkjs zkey export verificationkey circom_model_test_0001.zkey verification_key.json
+snarkjs groth16 prove circom_model_test_0001.zkey witness.wtns proof.json public.json
+snarkjs groth16 verify verification_key.json public.json proof.json
+snarkjs zkey export solidityverifier circom_model_test_0001.zkey verifier.sol
+snarkjs generatecall
+```
+
+## using mypy to check tvm.mrt
+```bash
+python -m mypy -p python.tvm.mrt
+```

@@ -43,9 +43,9 @@ class OutputGenerator(CircomGenerator):
         for inp in self.inputs:
             code = inp.fill_circom(code)
 
-        circom_shape = ["["+str(s)+"]" for s in self.shape]
+        circom_shape_lst = ["["+str(s)+"]" for s in self.shape]
         code = inject_signal(code, "signal output {}{};".format(
-                    self.name, "".join(circom_shape)))
+                    self.name, "".join(circom_shape_lst)))
 
         circom_shape = "{main}"
         for idx, dim in enumerate(self.shape):
@@ -268,12 +268,12 @@ class AddScalarGenerator(ScalarGenerator):
 class SubScalarGenerator(ScalarGenerator):
     pass
 
-class MulScalar_bGenerator(OperatorGenerator):
+#class MulScalarGenerator(OperatorGenerator):
+#    def arguments(self):
+#        return [ *self.shape,  ]
+class RightShiftGenerator(OperatorGenerator):
     def arguments(self):
-        return [ *self.shape ]
-class RightShift_bGenerator(OperatorGenerator):
-    def arguments(self):
-        return [ *self.shape ]
+        return [ *self.shape, self.attrs["scalar"]]
 
 class ReLU1DGenerator(OperatorGenerator):
     def arguments(self):

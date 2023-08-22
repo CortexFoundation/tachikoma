@@ -20,34 +20,7 @@ import numpy as np
 from PIL import Image
 
 """
-lenet-5
-"""
-import torch.nn as nn
-import torch.nn.functional as F
-class LeNet(nn.Module):                    #继承来着nn.Module的父类
-    def __init__(self):                    # 初始化网络
-        super(LeNet, self).__init__()      #super()继承父类的构造函数，多继承需用到super函数
-        self.conv1 = nn.Conv2d(3, 16, 5)
-        self.pool1 = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(16, 32, 5)
-        self.pool2 = nn.MaxPool2d(2, 2)
-        self.fc1 = nn.Linear(32*5*5, 120)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, 10)
-                                     #图像参数变化
-    def forward(self, x):            # input(3, 32, 32)        
-        x = F.relu(self.conv1(x))    #output(16, 28, 28)
-        x = self.pool1(x)            # output(16, 14, 14)
-        x = F.relu(self.conv2(x))    # output(32, 10, 10)
-        x = self.pool2(x)            # output(32, 5, 5)
-        x = x.view(-1, 32*5*5)       # output(32*5*5)
-        x = F.relu(self.fc1(x))      # output(120)
-        x = F.relu(self.fc2(x))      # output(84)
-        x = self.fc3(x)              # output(10)
-        return x
-"""
-lenet-5
-mnist
+mnist begin
 """
 import argparse
 import torch
@@ -57,32 +30,19 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
 
-
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(1, 32, 3, 1)
-        self.conv2 = nn.Conv2d(32, 64, 3, 1)
-        self.dropout1 = nn.Dropout(0.25)
-        self.dropout2 = nn.Dropout(0.5)
-        self.fc1 = nn.Linear(9216, 128)
-        self.fc2 = nn.Linear(128, 10)
+        self.conv1 = nn.Conv2d(1, 1, 20, 1)
+        self.fc1 = nn.Linear(81, 10)
 
     def forward(self, x):
         x = self.conv1(x)
-        x = F.relu(x)
-        x = self.conv2(x)
-        x = F.relu(x)
-        x = F.max_pool2d(x, 2)
-        x = self.dropout1(x)
         x = torch.flatten(x, 1)
         x = self.fc1(x)
-        x = F.relu(x)
-        x = self.dropout2(x)
-        x = self.fc2(x)
+        #output = x
         output = F.log_softmax(x, dim=1)
         return output
-
 
 def train(args, model, device, train_loader, optimizer, epoch):
     model.train()
@@ -99,7 +59,6 @@ def train(args, model, device, train_loader, optimizer, epoch):
                 100. * batch_idx / len(train_loader), loss.item()))
             if args.dry_run:
                 break
-
 
 def test(model, device, test_loader):
     model.eval()
@@ -190,16 +149,14 @@ def MnistMain():
     torch.save(model, "mnist_cnn.pt0")
 
 
-# if need to train mnist first
-if False:
+# set 'True' if need to train mnist first
+if True:
     MnistMain()
     print("mnist model saved")
-    sys.exit(0)
+    #sys.exit(0)
 """
-lenet-5
-mnist
+mnist end
 """
-
 
 batch_size = 16
 num_class = 10
@@ -214,8 +171,10 @@ def load_model_from_torch() -> (ir.IRModule, ParametersT):
     #model = models.resnet18(weights=weights)
     model = torch.load("mnist_cnn.pt0", map_location=torch.device('cpu'))
     model = model.eval()
+    #model = torch.nn.Sequential(*(list(model.children())[:-1]))
     input_data = torch.randn(data_shape)
     script_module = torch.jit.trace(model, [input_data]).eval()
+    #input_dat.cut_last_level()
     return relay.frontend.from_pytorch(
             script_module, [ ("input", data_shape) ])
 
@@ -228,12 +187,10 @@ expr: ir.RelayExpr = func.body
 from tvm.mrt.trace import Trace
 from tvm.mrt.opns import *
 from tvm.mrt.symbol import *
-tr: Trace = Trace.from_expr(expr, params, model_name="mnist_cnn")
+tr = Trace.from_expr(expr, params, model_name="mnist_cnn")
 # tr = tr.subgraph(onames=["%1"])
 tr.checkpoint()
 # tr.print(param_config={ "use_all": True, })
-#  tr.print()
-#  sys.exit()
 
 tr.print(short=False)
 from tvm.mrt import fuse
@@ -245,8 +202,8 @@ fuse_tr = tr.checkpoint_transform(
         fuse.FuseAvgPool2D.apply(),
         fuse.FuseNaiveSoftmax.apply(),
         tr_name = "fuse",
-        force=True,
-        )
+        #force=True,
+      )
 # fuse_tr.print(param_config={ "use_all": True, })
 
 from tvm.mrt.calibrate import Calibrator, SymmetricMinMaxSampling
@@ -264,12 +221,12 @@ from tvm.mrt.rules import slm
 from tvm.mrt.quantize import Quantizer
 
 # calib_tr = calib_tr.subgraph(onames=["%5"])
-dt_tr = calib_tr.checkpoint_transform(
+dt_tr: Trace = calib_tr.checkpoint_transform(
         SymmetricMinMaxSampling.apply(),
         slm.SymmetricLinearDiscretor.apply(),
         )
 # dt_tr.print(short=True)
-dt_tr: Trace = dt_tr.checkpoint_transform(
+dt_tr = dt_tr.checkpoint_transform(
         Quantizer.apply(),
         # print_bf=True, print_af=True,
         # force=True,
@@ -294,17 +251,27 @@ qt_tr = dt_tr.checkpoint_transform(
         # force=True,
 )
 # qt_tr.log()
-qt_tr.print(short=False)
+#qt_tr.print(short=False)
 
 from tvm.mrt.zkml import circom, transformer, model as ZkmlModel
 
 symbol, params = qt_tr.symbol, qt_tr.params
 symbol, params = ZkmlModel.resize_batch(symbol, params)
-#ZkmlModel.simple_raw_print(symbol, params)
-print(">>> Generating circom code ...")
+print(">>> change_symbol_name ...\n")
+ZkmlModel.simple_raw_print(symbol, params)
+symbol, params = transformer.change_name(symbol, params)
+
+# set input as params
+symbol_first = ZkmlModel.visit_first(symbol)
+#params[symbol_first.name] = symbol_first.numpy()
+#input_data = torch.randint(255, image_shape)
+#params[symbol_first.name] = input_data
+
+print(">>> before model2circom ...\n", symbol_first, symbol_first.is_input())
 out = transformer.model2circom(symbol, params)
+print(">>> Generating circom code ...")
 code = circom.generate(out)
-input_json = transformer.input_json(symbol, params)
+input_json = transformer.input_json(params)
 
 output_name = "circom_model_test"
 print(">>> Generated, dump to {} ...".format(output_name))
@@ -312,7 +279,8 @@ print(">>> Generated, dump to {} ...".format(output_name))
 with open(output_name + ".circom", "w") as f:
     f.write(code)
 with open(output_name + ".json", "w") as f:
+    import json
     f.write(json.dumps(input_json, indent=2))
 
-print(">>> exit sys -1 <<<")
-sys.exit(-1)
+print(">>> finished. exit sys +1 <<<")
+sys.exit(1)

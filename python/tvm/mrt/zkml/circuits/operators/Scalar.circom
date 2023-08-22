@@ -9,17 +9,6 @@ template MulScalar(iShape, sc) {
     }
 }
 
-template MulScalar_b(H) {
-    signal input in[H];
-    signal input sc;
-    signal output out[H];
-
-    for (var i=0; i < H; i++) {
-        out[i] <== in[i] * sc;
-    }
-}
-
-
 template AddScalar(iShape, sc) {
     signal input in[iShape];
     signal output out[iShape];

@@ -83,6 +83,11 @@ def visit(symbol, callback) -> Symbol:
         sym_map[sym.name] = out
     return sym_map[symbol.name]
 
+def visit_first(symbol) -> Symbol:
+    sym_list: typing.List[Symbol] = []
+    _topo_sort(symbol, sym_list)
+    return sym_list[0]
+
 
 #  def _visit_impl(symbol, callback, visit_map):
 #      if symbol.name in visit_map:
@@ -121,17 +126,17 @@ def simple_raw_print(symbol, params={}):
     info = { "op_name": 0, "param": 0 }
     def _simple_visit(sym):
         if not is_operator(sym):
-            print("{:68} /* attrs */ \t{}".format(
-                sym.name, sym.attrs))
+            print("{:68} /* attrs */ \t{} /* extra_attrs */ \t{}".format(
+                sym.name, sym.attrs, sym.extra_attrs))
             if is_param(sym, params):
                 info["param"] += utils.product(sym.shape)
             return
 
         info["op_name"] += 1
-        print("{:15} = {:>20}{:30} /* attrs */ \t{}".format(
+        print("{:15} = {:>20}{:30} /* attrs */ \t{} /* extra_attrs */ \t{}".format(
             sym.name, sym.op_name,
             "(" + ", ".join([i.name for i in sym.args]) + ")",
-            sym.attrs,
+            sym.attrs, sym.extra_attrs
         ))
     visit(symbol, _simple_visit)
     print("="*50)
