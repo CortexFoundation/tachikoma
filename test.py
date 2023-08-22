@@ -96,13 +96,21 @@ fuse_tr = tr.checkpoint_transform(
         )
 # fuse_tr.print(param_config={ "use_all": True, })
 
+from tvm.mrt.dataset_torch import TorchImageNet
+ds = TorchImageNet(
+        batch_size=batch_size,
+        img_size=image_shape[1:],)
+
 from tvm.mrt.calibrate import Calibrator, SymmetricMinMaxSampling
 
+data, _ = ds.next()
 calib_tr = fuse_tr.checkpoint_transform(
-        Calibrator.apply(random_config={
-            "enabled": True,
-            "absmax": 1.0, }),
+        Calibrator.apply(data=tvm.nd.array(data)),
+        # Calibrator.apply(random_config={
+        #     "enabled": True,
+        #     "absmax": 1.0, }),
         print_bf=True, print_af=True,
+        # force=True,
 )
 # calib_tr.print()
 # print(type(calib_tr.symbol))
@@ -184,10 +192,6 @@ def eval_single_image():
     sys.exit(-1)
 # eval_single_image()
 
-from tvm.mrt.dataset_torch import TorchImageNet
-ds = TorchImageNet(
-        batch_size=batch_size,
-        img_size=image_shape[1:],)
 runtime.multiple_validate(
         tr.populate(**config),
         sim_tr.populate(**config),

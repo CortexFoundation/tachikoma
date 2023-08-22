@@ -20,6 +20,7 @@ from .discrete import Discretor
 from .types import *
 from .symbol import *
 from .sym_expr import *
+from .dataset import Dataset
 
 VisitorT = typing.Callable[[Symbol, ParametersT], None]
 TransformerT = typing.Callable[[Symbol, ParametersT], typing.Optional[Symbol]]
@@ -42,6 +43,24 @@ class ParamSymbol(Transformer):
                 attrs["tdtype"] = self.dtype
         return super().__repr__(**attrs)
 
+def uniform_input_data(
+        sym_inputs: typing.List[Symbol],
+        data: typing.Optional[np.ndarray] = None,
+        data_dict: ParametersT = {}):
+    input_dict = {}
+    for sym in sym_inputs:
+        val = data_dict.get(sym.name, data)
+        assert val is not None
+        val = self._preprocess_input(sym, val)
+        val = tvm.nd.array(val)
+        assert sym.shape == list(val.shape), (
+                "{}: {} vs. {}").format(
+                        sym.name, sym.shape, val.shape)
+        assert sym.dtype == val.dtype, (
+                "{} vs. {}").format(sym.dtype, val.dtype)
+        input_dict[sym.name] = val
+    return input_dict
+
 @dataclass
 class Trace:
     """ Only use visitor mode in Trace. """
@@ -55,8 +74,11 @@ class Trace:
     _model_name: str = "unknown-model"
     sym_inputs: typing.List[Symbol] = field(init=False)
     sym_params: typing.List[Symbol] = field(init=False)
+    dataset: typing.optional[Dataset] = field(
+            init=False, default=None)
     _executor: graph.GraphModule = field(init=False, default=None)
 
+    uniform_func = uniform_input_data
     BASE_DIR: typing.ClassVar[str] = "./data"
 
     def __post_init__(self):
@@ -86,6 +108,17 @@ class Trace:
     @property
     def input_shapes(self) -> typing.List[ShapeT]:
         return [i.attrs["shape"] for i in self.sym_inputs]
+
+    def bind_dataset(self, dataset: Dataset, uniform_func = None):
+        self.uniform_func = uniform_func or self.uniform_func
+
+        dataset.reset()
+        data, label = dataset.next()
+        # verify and assert the input data
+        input_data = self.uniform_func(self.sym_inputs, data)
+
+        dataset.reset()
+        self.dataset = dataset
 
     def _preprocess_input(self, sym: Symbol, data):
         if "dt_type" not in sym.extra_attrs:

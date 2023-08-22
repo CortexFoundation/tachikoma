@@ -52,7 +52,8 @@ class Calibrator(Transformer):
     ):
         if self.is_input():
             out = data_dict.get(self.name, data)
-            out = out or self._rand_data(**random_config)
+            if out is None:
+                out = self._rand_data(**random_config)
         elif self.is_param():
             out = self.params[self.name]
         else:

@@ -1,3 +1,4 @@
+import typing
 from os import path
 from PIL import Image
 import numpy as np
@@ -6,6 +7,7 @@ import torch
 from torch.utils.data import DataLoader
 import torchvision as tv
 
+from .types import DataLabelT
 from . import dataset, utils
 
 class TorchImageNet(dataset.ImageNet):
@@ -33,7 +35,7 @@ class TorchImageNet(dataset.ImageNet):
     def reset(self):
         self._iter = iter(self.data_loader)
 
-    def next(self):
+    def next(self) -> typing.Optional[DataLabelT]:
         try:
             data, label = next(self._iter)
             return data.numpy(), label.numpy()
