@@ -36,6 +36,42 @@ class ImageNet(Dataset):
     def label(self, index):
         return self.synset.get(index, "unknown category")
 
+class Coco(Dataset):
+    category_name = "coco_category.json"
+
+    def __init__(self):
+        base_dir = path.join(path.dirname(__file__), "datasets")
+
+        with open(path.join(base_dir, self.category_name)) as f:
+            self.synset = eval(f.read())
+
+    def label(self, index):
+        return self.synset.get(index, "unknown category")
+
+class Voc(Dataset):
+    category_name = "voc_category.json"
+
+    def __init__(self):
+        base_dir = path.join(path.dirname(__file__), "datasets")
+
+        with open(path.join(base_dir, self.category_name)) as f:
+            self.synset = eval(f.read())
+
+    def label(self, index):
+        return self.synset.get(index, "unknown category")
+
+class Cifar10(Dataset):
+    category_name = "cifar10_category.json"
+
+    def __init__(self):
+        base_dir = path.join(path.dirname(__file__), "datasets")
+
+        with open(path.join(base_dir, self.category_name)) as f:
+            self.synset = eval(f.read())
+
+    def label(self, index):
+        return self.synset.get(index, "unknown category")
+
 
 class MemoryDataset(Dataset):
     def __init__(self, available_dls: typing.List[DataLabelT]):
