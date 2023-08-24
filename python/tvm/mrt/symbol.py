@@ -34,6 +34,10 @@ class _BaseSymbol:
     """
     extra_attrs: typing.Dict[str, typing.Any]
     """ extra attributes will be inherited automatically. """
+    name: str
+    op_name: str
+    args: typing.List[Symbol]
+    attrs: typing.Dict[str, typing.Any]
 
     @classmethod
     def update_extra_attrs(cls, data_dict, **kwargs):
@@ -41,7 +45,7 @@ class _BaseSymbol:
         extra_attrs.update(kwargs)
         data_dict["extra_attrs"] = extra_attrs
         return data_dict
-    def set_extra_attrs(self, **kwargs) -> Symbol:
+    def set_extra_attrs(self, **kwargs) -> _BaseSymbol:
         self.extra_attrs.update(kwargs)
         return self
 
@@ -56,7 +60,7 @@ class _BaseSymbol:
         data = other.to_dict()
         data.update(self.to_dict())
         return type(other).from_dict(data, **kwargs)
-    def copy(self, **kwargs) -> typing.Type[Symbol]:
+    def copy(self, **kwargs) -> typing.Type[_BaseSymbol]:
         """ clone current symbol. """
         return type(self).from_dict(
             self.to_dict(), **kwargs) # kwargs override self
@@ -175,6 +179,7 @@ class Symbol(_BaseSymbol):
     @shape.setter
     def shape(self, val):
         self.extra_attrs["shape"] = list(val)
+
     @property
     def dtype(self):
         return self.extra_attrs.get("dtype", None)
@@ -182,7 +187,15 @@ class Symbol(_BaseSymbol):
     def dtype(self, val):
         self.extra_attrs["dtype"] = val
 
+    @property
+    def subgraph(self):
+        return self.extra_attrs.get("subgraph", None)
+    def set_subgraph(self, val):
+        self.extra_attrs["subgraph"] = val
+
     def __hash__(self) -> int:
+        return hash(str(self))
+    def hash(self) -> int:
         return hash(str(self))
 
 def _topo_sort(symbol: Symbol, sym_list: typing.List[Symbol]):
@@ -193,7 +206,7 @@ def _topo_sort(symbol: Symbol, sym_list: typing.List[Symbol]):
     sym_list.append(symbol)
 
 def sym2list(symbol: Symbol) -> typing.List[Symbol]:
-    sym_list = []
+    sym_list: typing.List[Symbol]  = []
     _topo_sort(symbol, sym_list)
     return sym_list
 
@@ -216,7 +229,7 @@ def dump_json(symbol: Symbol) -> _SymbolJsonT:
 def load_json(data: _SymbolJsonT, **extra_attrs) -> Symbol:
     nodes: _SymbolNodesT = data["nodes"]
 
-    sym_map = {}
+    sym_map: typing.Dict = {}
     for node in nodes:
         args = [sym_map[a] for a in node["args"]]
         sym_type: typing.Type[Symbol] = eval(node["_class_type"])
@@ -243,7 +256,7 @@ def transform(symbol: Symbol, callback: _TransformerT) -> Symbol:
         Only the return value indicates mutation, while changing
         attributes in parameter passed in args does nothing.
     """
-    sym_map = {}
+    sym_map: typing.Dict = {}
     for sym in sym2list(symbol):
         args = [sym_map[c.name] for c in sym.args]
         # pre-clone symbol, to avoid misleading usage in callback
