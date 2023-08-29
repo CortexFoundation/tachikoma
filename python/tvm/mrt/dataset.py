@@ -72,6 +72,233 @@ class Cifar10(Dataset):
     def label(self, index):
         return self.synset.get(index, "unknown category")
 
+class Cifar100(Dataset):
+    category_name = "cifar100_category.json"
+
+    def __init__(self):
+        base_dir = path.join(path.dirname(__file__), "datasets")
+
+        with open(path.join(base_dir, self.category_name)) as f:
+            self.synset = eval(f.read())
+
+    def label(self, index):
+        return self.synset.get(index, "unknown category")
+
+class QuickDraw(Dataset):
+    category_name = "quickdraw_category.json"
+
+    def __init__(self):
+        base_dir = path.join(path.dirname(__file__), "datasets")
+
+        with open(path.join(base_dir, self.category_name)) as f:
+            self.synset = eval(f.read())
+
+    def label(self, index):
+        return self.synset.get(index, "unknown category")
+
+class Mnist(Dataset):
+    category_name = "mnist_category.json"
+
+    def __init__(self):
+        base_dir = path.join(path.dirname(__file__), "datasets")
+
+        with open(path.join(base_dir, self.category_name)) as f:
+            self.synset = eval(f.read())
+
+    def label(self, index):
+        return self.synset.get(index, "unknown category")
+
+class Trec(Dataset):
+    category_name = "trec_category.json"
+
+    def __init__(self):
+        base_dir = path.join(path.dirname(__file__), "datasets")
+
+        with open(path.join(base_dir, self.category_name)) as f:
+            self.synset = eval(f.read())
+
+    def label(self, index):
+        return self.synset.get(index, "unknown category")
+
+class Country211(Dataset):
+    category_name = "category.json"
+
+    def __init__(self):
+        base_dir = path.join(path.dirname(__file__), "datasets")
+
+        with open(path.join(base_dir, self.category_name)) as f:
+            self.synset = eval(f.read())
+
+    def label(self, index):
+        return self.synset.get(index, "unknown category")
+
+class Dtd(Dataset):
+    category_name = "category.json"
+
+    def __init__(self):
+        base_dir = path.join(path.dirname(__file__), "datasets")
+
+        with open(path.join(base_dir, self.category_name)) as f:
+            self.synset = eval(f.read())
+
+    def label(self, index):
+        return self.synset.get(index, "unknown category")
+
+class Emnist(Dataset):
+    category_name = "category.json"
+
+    def __init__(self):
+        base_dir = path.join(path.dirname(__file__), "datasets")
+
+        with open(path.join(base_dir, self.category_name)) as f:
+            self.synset = eval(f.read())
+
+    def label(self, index):
+        return self.synset.get(index, "unknown category")
+
+class FashionMNIST(Dataset):
+    category_name = "category.json"
+
+    def __init__(self):
+        base_dir = path.join(path.dirname(__file__), "datasets")
+
+        with open(path.join(base_dir, self.category_name)) as f:
+            self.synset = eval(f.read())
+
+    def label(self, index):
+        return self.synset.get(index, "unknown category")
+
+class Fgvcaircraft(Dataset):
+    category_name = "category.json"
+
+    def __init__(self):
+        base_dir = path.join(path.dirname(__file__), "datasets")
+
+        with open(path.join(base_dir, self.category_name)) as f:
+            self.synset = eval(f.read())
+
+    def label(self, index):
+        return self.synset.get(index, "unknown category")
+
+class Flowers102(Dataset):
+    category_name = "category.json"
+
+    def __init__(self):
+        base_dir = path.join(path.dirname(__file__), "datasets")
+
+        with open(path.join(base_dir, self.category_name)) as f:
+            self.synset = eval(f.read())
+
+    def label(self, index):
+        return self.synset.get(index, "unknown category")
+
+class Food101(Dataset):
+    category_name = "category.json"
+
+    def __init__(self):
+        base_dir = path.join(path.dirname(__file__), "datasets")
+
+        with open(path.join(base_dir, self.category_name)) as f:
+            self.synset = eval(f.read())
+
+    def label(self, index):
+        return self.synset.get(index, "unknown category")
+
+class Gtsrb(Dataset):
+    category_name = "category.json"
+
+    def __init__(self):
+        base_dir = path.join(path.dirname(__file__), "datasets")
+
+        with open(path.join(base_dir, self.category_name)) as f:
+            self.synset = eval(f.read())
+
+    def label(self, index):
+        return self.synset.get(index, "unknown category")
+
+class Kmnist(Dataset):
+    category_name = "category.json"
+
+    def __init__(self):
+        base_dir = path.join(path.dirname(__file__), "datasets")
+
+        with open(path.join(base_dir, self.category_name)) as f:
+            self.synset = eval(f.read())
+
+    def label(self, index):
+        return self.synset.get(index, "unknown category")
+
+class Lfwpeople(Dataset):
+    category_name = "category.json"
+
+    def __init__(self):
+        base_dir = path.join(path.dirname(__file__), "datasets")
+
+        with open(path.join(base_dir, self.category_name)) as f:
+            self.synset = eval(f.read())
+
+    def label(self, index):
+        return self.synset.get(index, "unknown category")
+
+class Omniglot(Dataset):
+    category_name = "category.json"
+
+    def __init__(self):
+        base_dir = path.join(path.dirname(__file__), "datasets")
+
+        with open(path.join(base_dir, self.category_name)) as f:
+            self.synset = eval(f.read())
+
+    def label(self, index):
+        return self.synset.get(index, "unknown category")
+
+class OxfordIIITPet(Dataset):
+    category_name = "category.json"
+
+    def __init__(self):
+        base_dir = path.join(path.dirname(__file__), "datasets")
+
+        with open(path.join(base_dir, self.category_name)) as f:
+            self.synset = eval(f.read())
+
+    def label(self, index):
+        return self.synset.get(index, "unknown category")
+
+class Rendered(Dataset):
+    category_name = "category.json"
+
+    def __init__(self):
+        base_dir = path.join(path.dirname(__file__), "datasets")
+
+        with open(path.join(base_dir, self.category_name)) as f:
+            self.synset = eval(f.read())
+
+    def label(self, index):
+        return self.synset.get(index, "unknown category")
+
+class Stl10(Dataset):
+    category_name = "category.json"
+
+    def __init__(self):
+        base_dir = path.join(path.dirname(__file__), "datasets")
+
+        with open(path.join(base_dir, self.category_name)) as f:
+            self.synset = eval(f.read())
+
+    def label(self, index):
+        return self.synset.get(index, "unknown category")
+
+class Usps(Dataset):
+    category_name = "category.json"
+
+    def __init__(self):
+        base_dir = path.join(path.dirname(__file__), "datasets")
+
+        with open(path.join(base_dir, self.category_name)) as f:
+            self.synset = eval(f.read())
+
+    def label(self, index):
+        return self.synset.get(index, "unknown category")
 
 class MemoryDataset(Dataset):
     def __init__(self, available_dls: typing.List[DataLabelT]):
