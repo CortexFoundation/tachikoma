@@ -6,6 +6,7 @@ import os
 import re
 from os import path
 from dataclasses import dataclass
+import numpy as np
 
 from .. import utils
 

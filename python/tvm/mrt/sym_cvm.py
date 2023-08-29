@@ -22,6 +22,7 @@ def get_node(nodes: list, node_name: str) -> list:
     for index in range(len(nodes)):
         if nodes[index]["name"] == node_name:
             return [index, 0, 0]
+    return []
 
 def get_cvm_op(op_name: str) -> typing.Type[cvm.symbol.Symbol]:
     op = getattr(cvm.symbol, op_name, None)
@@ -105,7 +106,7 @@ def to_cvm(symbol: Symbol, params: ParametersT, cvm_params: dict) -> dict:
         cvm_attrs["shape"][1].append(shape)
         cvm_attrs["storage_id"][1].append(index)
         op = sym.op_name
-        inputs = []
+        inputs: typing.List = []
         args = sym.args
         if op == "var":
             op = "null"

@@ -14,6 +14,7 @@ from tvm import relay, IRModule as ir
 from . import utils
 from .. import symbol as MrtSymbol
 
+Symbol = MrtSymbol.Symbol
 #@dataclass
 #class Symbol:
 #    op: str
@@ -60,7 +61,7 @@ from .. import symbol as MrtSymbol
 #            ", ".join(inputs_info),
 #            self.attrs)
 
-def _topo_sort(symbol, sym_list: typing.List[Symbol]):
+def _topo_sort(symbol, sym_list: typing.List[MrtSymbol.Symbol]):
     if sym_list.count(symbol) > 0:
         return
     #for c in symbol.inputs:
@@ -68,11 +69,11 @@ def _topo_sort(symbol, sym_list: typing.List[Symbol]):
         _topo_sort(c, sym_list)
     sym_list.append(symbol)
 
-def visit(symbol, callback) -> Symbol:
-    sym_list: typing.List[Symbol] = []
+def visit(symbol, callback) -> MrtSymbol.Symbol:
+    sym_list: typing.List[MrtSymbol.Symbol] = []
     _topo_sort(symbol, sym_list)
 
-    sym_map = {}
+    sym_map: typing.Dict = {}
     for sym in sym_list:
         #inputs = [sym_map[c.name] for c in sym.inputs]
         args = [sym_map[c.name] for c in sym.args]
@@ -83,8 +84,8 @@ def visit(symbol, callback) -> Symbol:
         sym_map[sym.name] = out
     return sym_map[symbol.name]
 
-def visit_first(symbol) -> Symbol:
-    sym_list: typing.List[Symbol] = []
+def visit_first(symbol) -> MrtSymbol.Symbol:
+    sym_list: typing.List[MrtSymbol.Symbol] = []
     _topo_sort(symbol, sym_list)
     return sym_list[0]
 
@@ -114,12 +115,6 @@ def visit_first(symbol) -> Symbol:
 #      visit_map = {}
 #      return _visit_impl(symbol, callback,
 #              visit_map=visit_map)
-
-def transform(f: CallbackType):
-    @wraps(f)
-    def _wrapper_visit(symbol):
-        return visit(symbol, f)
-    return _wrapper_visit
 
 # 202304 invalid for mrt symbol
 def simple_raw_print(symbol, params={}):
@@ -234,7 +229,11 @@ def info(symbol, params):
     for op, count in operator_info.items():
         print("{:25} count={}".format(op, count))
 
-
+def transform(f: CallbackType):
+    @wraps(f)
+    def _wrapper_visit(symbol):
+        return visit(symbol, f)
+    return _wrapper_visit
 
 def is_operator(symbol: Symbol, params = {}):
     #return symbol.op != "null"
@@ -642,7 +641,7 @@ def shape_adapter(symbol: Symbol):
 
 def resize_batch(symbol, params, batch_size=1):
     # temporary set batch size, hook!!!
-    def _change_batch_size(sym: model.Symbol):
+    def _change_batch_size(sym: MrtSymbol.Symbol):
         # incase: e.g. weight of conv2d (is param)
         if is_param(sym, params):
             return
