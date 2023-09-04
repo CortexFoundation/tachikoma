@@ -59,6 +59,7 @@ class FixPoint(Transformer, QuantizedInfo):
         return out
 
     def map_requant(self) -> FixPoint:
+        self.validate_precision()
         X: FixPoint = self.args[0]
         parsed: RequantAttrs = self.parsed
 
@@ -83,21 +84,22 @@ class FixPoint(Transformer, QuantizedInfo):
         return out.like(self)
 
     def map_pclip(self) -> FixPoint:
+        self.validate_precision()
         X: FixPoint = self.args[0]
         pos = self.int_max()
         out = X
-        out = op.pclip(X, precision=self.precision).like(self)
-        # out = op.clip(X, a_min=-pos, a_max=pos).like(self)
+        #  out = op.pclip(X, precision=self.precision).like(self)
+        out = op.clip(X, a_min=-pos, a_max=pos).like(self)
         return out
 
     def __call__(self):
-        self.validate_precision()
         self.dtype = "int8" if self.precision <= 8 else "int32"
 
         out = self
         if self.is_input():
             pass
         elif self.is_param():
+            self.validate_precision()
             data = np.round(self.numpy()).astype(self.dtype)
             absmax = np.abs(data).max()
             assert absmax <= self.int_max()
@@ -109,8 +111,9 @@ class FixPoint(Transformer, QuantizedInfo):
         # elif self.is_op(CONV2D, DENSE):
         #     out.attrs["out_dtype"] = "int32"
 
-        if self.is_operator() and self.precision <= 8:
-            out = op.cast(out, dtype="int8")
+        if self.is_operator():
+            out = op.cast(out, dtype="int32")
+            out = op.cast(out, dtype="float32")
 
         # inames = [a.name for a in self.args]
         # tmp = op.subgraph(out, inames)

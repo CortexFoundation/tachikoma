@@ -3,17 +3,30 @@ from collections import namedtuple
 
 import numpy as np
 
-from . import op
+from . import op, inference
 from .opns import *
 from .symbol import *
 from .attrs import *
 from .utils import N
 from .transform import Transformer
+from .inference import np_executor, run
 
 class FuseDropout(Transformer):
     @filter_operators(DROP_OUT)
     def __call__(self):
         return self.args[0]
+
+class FuseConstant(Transformer):
+    def __call__(self: Transformer):
+        if self.is_operator() and all([c.is_param() for c in self.args]):
+            #  print(self)
+            data = inference.run(self, [c.numpy() for c in self.args])
+            return self.as_variable(data)
+
+            #  inputs = [c.numpy() for c in self.args]
+            #  data = np_executor(self, inputs)
+            #  out = self.from_np_data(data)
+            #  return out
 
 class FuseBatchNorm(Transformer):
     @filter_operators(BATCH_NORM)
@@ -23,7 +36,9 @@ class FuseBatchNorm(Transformer):
 
         gamma, beta = gamma.numpy(), beta.numpy()
         mean, var = mean.numpy(), var.numpy()
+        #  print(gamma.shape, beta.shape, mean.shape, var.shape)
 
+        assert parsed.axis == 1
         beta = beta if parsed.center else 0
         gamma = gamma if parsed.scale else 1
 
@@ -32,6 +47,7 @@ class FuseBatchNorm(Transformer):
         # (X - mean) * gamma + beta
         # X * gamma + (beta - mean * gamma)
         bias: np.ndarray = (beta - mean * gamma)
+        #  print(np.abs(gamma).max(), np.abs(bias).max())
         # X * gamma + bias
 
         if X.is_op(CONV2D):
@@ -46,9 +62,7 @@ class FuseBatchNorm(Transformer):
             # A * (W * gamma) + bias
             W_data = W.numpy() * gamma.reshape(K, 1, 1, 1)
             W.update_data(W_data)
-
-            B = X.from_np_data(bias)
-            out = op.bias_add(X, B, axis=parsed.axis)
+            out = X
         elif X.is_op(DENSE):
             A, W = X.args
             dense_parsed: DenseAttrs = X.parsed
@@ -57,17 +71,15 @@ class FuseBatchNorm(Transformer):
             # A * (W * gamma) + bias
             W_data = W.numpy() * gamma.reshape(K, 1)
             W.update_data(W_data)
-
-            B = X.from_np_data(bias)
-            out = op.bias_add(X, B, axis=parsed.axis)
+            out = X
         else:
             reshp = [s if i == parsed.axis else 1 \
                     for i, s in enumerate(X.shape)]
             W = X.from_np_data(gamma.reshape(reshp))
             out = op.mul(X, W)
 
-            B = X.from_np_data(bias)
-            out = op.bias_add(out, B, axis=parsed.axis)
+        B = out.from_np_data(bias)
+        out = op.bias_add(out, B, axis=parsed.axis)
         return out.like(self)
 
 class FuseTupleGetItem(Transformer):
@@ -99,5 +111,14 @@ class FuseNaiveSoftmax(Transformer):
             return self.args[0]
         assert self.is_variable() or not self.args[0].is_op(SOFTMAX, LOG_SOFTMAX)
         return self
+
+class FuseNaiveMathmatic(Transformer):
+    def __call__(self):
+        if self.is_op(BIAS_ADD):
+            X, B = self.args
+            if B.is_param() and np.abs(B.numpy()).max() == 0:
+                return X
+
+
 
 

@@ -7,12 +7,12 @@ import tvm
 
 from dataclasses import dataclass, field, InitVar
 
+from .types import *
 from .symbol import *
-from . import op
 from .sym_expr import *
 from . import runtime
+from . import op, opns, inference
 from .transform import Transformer
-from .types import *
 
 @dataclass(repr=False)
 class Calibrator(Transformer):
@@ -77,8 +77,8 @@ class Calibrator(Transformer):
     def run(self, args_data: typing.Dict[str, tvm.nd.NDArray]):
         if self.is_op(TUPLE_GET_ITEM):
             return self.args[0].nd_data[self.parsed.index]
-        elif self.is_op(REQUANT):
-            return self.args[0].flat_nd_data
+        #  elif self.is_op(REQUANT):
+        #      return self.args[0].flat_nd_data
 
         sym: Symbol = op.retrieve_operator(self)
         expr = symbol2expr(sym)
@@ -87,6 +87,11 @@ class Calibrator(Transformer):
     @property
     def flat_nd_data(self):
         return self.nd_data[0] if self.is_nd else self.nd_data
+
+    def __repr__(self, **attrs):
+        return super().__repr__(
+                data=[np.abs(d).max() for d in self.data],
+                **attrs)
 
     def _assert(self, val, expect):
         if isinstance(val, (list, tuple)):
@@ -102,14 +107,22 @@ class Calibrator(Transformer):
 class Sampling(Transformer):
     @property
     def data(self) -> typing.Any:
-        return self.extra_attrs["data"]
+        return self.extra_attrs.get("data", None)
+    @data.setter
+    def data(self, val):
+        self.set_extra_attrs(data=val)
+
+    def __repr__(self, **attrs):
+        return super().__repr__(data=self.data, **attrs)
 
     @classmethod
     def update_dict(cls, data_dict: dict, **kwargs) -> dict:
         data_dict.update(kwargs)
+        #  print("data:", data_dict["extra_attrs"]["data"])
         origin = data_dict.get("origin", None)
         if isinstance(origin, Calibrator):
             data = cls.sampling(origin.data)
+            assert data > 0
             cls.update_extra_attrs(data_dict, data=data)
         return super().update_dict(data_dict)
 
@@ -118,6 +131,9 @@ class Sampling(Transformer):
         raise NotImplementedError()
 
     def __call__(self, *args, **kw):
+        if self.is_op(CLIP):
+            a_min, a_max = self.parsed.a_min, self.parsed.a_max
+            self.extra_attrs["data"] = max(abs(a_min), abs(a_max))
         return self
 
 @dataclass(repr=False)
@@ -130,6 +146,8 @@ class SymmetricMinMaxSampling(Sampling):
     def sampling(cls, data: np.ndarray) -> float:
         if isinstance(data, list):
             return max([cls.sampling(d) for d in data])
-        return float(np.abs(data).max())
+        data = float(np.abs(data).max())
+        assert data > 0
+        return data
 
 

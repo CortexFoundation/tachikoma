@@ -12,7 +12,7 @@ from tvm import relay, ir
 # from .trace import *
 from .symbol import *
 
-from . import op
+from . import op, opns
 from .attrs import _BaseAttrs, parse_attrs
 
 from .utils import N
@@ -31,8 +31,8 @@ class WithParameters(Symbol):
         return super().update_dict(data_dict, parsed=parsed)
 
     def __repr__(self, **attrs):
-        if self.is_param() and self.shape == []:
-            attrs["scalar"] = float(self.numpy())
+        if self.is_param():
+            attrs["absmax"] = np.abs(self.numpy()).max()
         return super().__repr__(**attrs)
 
     def ndarray(self) -> tvm.nd.NDArray:
@@ -42,6 +42,10 @@ class WithParameters(Symbol):
 
     def numpy(self) -> np.ndarray:
         return self.ndarray().numpy()
+
+    def as_variable(self, data: np.ndarray):
+        self.params[self.name] = tvm.nd.array(data.astype(self.dtype))
+        return self.copy(op_name=opns.VAR, args=[], attrs={})
 
     def update_data(self, data: np.ndarray):
         self.params[self.name] = tvm.nd.array(data)
@@ -155,7 +159,7 @@ class Pass(WithParameters):
 
 @dataclass(repr=False)
 class Transformer(WithParameters):
-    """ Type TransformerT for Trace """
+    """ Symbol Transformer """
 
     def to_dict(self, **kwargs):
         """ override to dict, since transformer may want to

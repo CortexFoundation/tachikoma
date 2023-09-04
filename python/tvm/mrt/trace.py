@@ -134,23 +134,23 @@ class Trace:
         dt: Discretor = dt_type.base(sym)
         return dt.restore(data)
 
-    def as_input_dict(self,
-            data: typing.Optional[np.ndarray] = None,
-            data_dict: ParametersT = {},
-            ) -> ParametersT:
-        input_dict = {}
-        for sym in self.sym_inputs:
-            val = data_dict.get(sym.name, data)
-            assert val is not None
-            val = self._preprocess_input(sym, val)
-            val = tvm.nd.array(val)
-            assert sym.shape == list(val.shape), (
-                    "{}: {} vs. {}").format(
-                            sym.name, sym.shape, val.shape)
-            assert sym.dtype == val.dtype, (
-                "{} vs. {}").format(sym.dtype, val.dtype)
-            input_dict[sym.name] = val
-        return input_dict
+    # def as_input_dict(self,
+    #         data: typing.Optional[np.ndarray] = None,
+    #         data_dict: ParametersT = {},
+    #         ) -> ParametersT:
+    #     input_dict = {}
+    #     for sym in self.sym_inputs:
+    #         val = data_dict.get(sym.name, data)
+    #         assert val is not None
+    #         val = self._preprocess_input(sym, val)
+    #         val = tvm.nd.array(val)
+    #         assert sym.shape == list(val.shape), (
+    #                 "{}: {} vs. {}").format(
+    #                         sym.name, sym.shape, val.shape)
+    #         assert sym.dtype == val.dtype, (
+    #             "{} vs. {}").format(sym.dtype, val.dtype)
+    #         input_dict[sym.name] = val
+    #     return input_dict
 
     def populate(self, **kwargs) -> runtime.ValidateFunctionT:
         if self._executor is None:
@@ -159,6 +159,7 @@ class Trace:
                     **kwargs)
 
         def _run(data: np.ndarray) -> np.ndarray:
+            # data = self.uniform_func(self.sym_inputs, data)
             data = self.as_input_dict(data)
             # for n, val in data.items():
             #     print("input", n, np.abs(val.numpy()).max(),
@@ -175,15 +176,6 @@ class Trace:
             data: typing.Optional[np.ndarray] = None,
             **kwargs,) -> np.ndarray:
         return self.populate(**kwargs)(data)
-
-    def random_run(self) -> typing.List[np.ndarray]:
-        data = {}
-        for sym in self.sym_inputs:
-            shape = sym.attrs["shape"]
-            dtype = sym.attrs["dtype"]
-            np_data = np.random.randn(*shape).astype(dtype)
-            data[sym.name] = tvm.nd.array(np_data)
-        return self.run(data_dict=data)
 
     def infer_type(self) -> Trace:
         tr = Trace.from_expr(

@@ -10,7 +10,6 @@ from tvm.ir import RelayExpr
 from .types import *
 from .dataset import Dataset
 from .stats import Statistics
-from . import symbol
 
 __all__ = ["infer"]
 
@@ -67,9 +66,6 @@ def infer(expr: RelayExpr, params: ParametersT,
         device=device, target=target,
     ).evaluate()(**params)
     return result
-    # if isinstance(result, tvm.runtime.NDArray):
-    #     result = [ result, ]
-    # return [ r.numpy() for r in result ]
 
 def as_numpy(res) -> typing.List[tvm.nd.NDArray]:
     if isinstance(res, tvm.nd.NDArray):

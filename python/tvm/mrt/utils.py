@@ -121,6 +121,10 @@ def number_to_bits(number: float) -> int:
     number = math.floor(number + 0.5)
     return 1 + math.ceil(math.log2(number + 1))
 
+def bits_to_number(bit: int) -> float:
+    assert bit > 0
+    return float((2 ** (bit - 1)) - 1)
+
 def count_to_bits(count: int):
     """
     # get_bit_cnt (mrt) should be consistent with

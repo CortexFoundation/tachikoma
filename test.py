@@ -90,6 +90,7 @@ from tvm.mrt import op
 fuse_tr = tr.checkpoint_transform(
         fuse.FuseTupleGetItem.apply(),
         fuse.FuseBatchNorm.apply(),
+        fuse.FuseDropout.apply(),
         fuse.FuseAvgPool2D.apply(),
         tr_name = "fuse",
         # force=True,
@@ -100,56 +101,90 @@ from tvm.mrt.dataset_torch import TorchImageNet
 ds = TorchImageNet(
         batch_size=batch_size,
         img_size=image_shape[1:],)
+# fuse_tr.bind_dataset(ds)
 
 from tvm.mrt.calibrate import Calibrator, SymmetricMinMaxSampling
 
 data, _ = ds.next()
 calib_tr = fuse_tr.checkpoint_transform(
+        fuse.FuseNaiveMathmatic.apply(),
         Calibrator.apply(data=tvm.nd.array(data)),
         # Calibrator.apply(random_config={
         #     "enabled": True,
         #     "absmax": 1.0, }),
         print_bf=True, print_af=True,
-        # force=True,
+        #  force=True,
 )
 # calib_tr.print()
 # print(type(calib_tr.symbol))
 
-from tvm.mrt.rules import slm
-from tvm.mrt.quantize import Quantizer
-
-# calib_tr = calib_tr.subgraph(onames=["%5"])
-dt_tr = calib_tr.checkpoint_transform(
+sample_tr = calib_tr.checkpoint_transform(
         SymmetricMinMaxSampling.apply(),
-        slm.SymmetricLinearDiscretor.apply(),
+        print_af=True,
         )
-# dt_tr.print(short=True)
-dt_tr: Trace = dt_tr.checkpoint_transform(
-        Quantizer.apply(),
-        # print_bf=True, print_af=True,
-        # force=True,
-)
+sample_tr.log()
 
-# TODO(wlt): add symbol extra attrs for name_hint to search
-#   in subgraph.
-# TODO: extra attrs copy and assign logic.
+from tvm.mrt.discrete import Discretor2
+
+dis_tr = sample_tr.checkpoint_transform(
+        Discretor2.apply(),
+        print_bf=True, print_af=True,
+        #  force=True,
+        )
+dis_tr.log()
+
+dis_tr = dis_tr.checkpoint_transform(
+        fuse.FuseConstant.apply(),
+        force=True,
+        )
+dis_tr.log()
+
 from tvm.mrt.fixed_point import FixPoint, Simulator
-# dt_tr.print(short=True, prefix_layers=20)
-# FuseBatchNorm.%1
-sim_tr = dt_tr.checkpoint_transform(
+sim_tr = dis_tr.checkpoint_transform(
         Simulator.apply(with_clip=True, with_round=True),
         force=True,
         )
-# sim_tr.log()
-# sim_tr.print(short=True)
-
-qt_tr = dt_tr.checkpoint_transform(
+qt_tr = dis_tr.checkpoint_transform(
         FixPoint.apply(),
-        # print_bf = True, print_af = True,
-        # force=True,
-)
-# qt_tr.log()
-qt_tr.print(short=False)
+        force=True,
+        )
+#  sys.exit(0)
+
+#  from tvm.mrt.rules import slm
+#  from tvm.mrt.quantize import Quantizer
+
+#  # calib_tr = calib_tr.subgraph(onames=["%5"])
+#  dt_tr = calib_tr.checkpoint_transform(
+#          SymmetricMinMaxSampling.apply(),
+#          slm.SymmetricLinearDiscretor.apply(),
+#          )
+#  # dt_tr.print(short=True)
+#  dt_tr: Trace = dt_tr.checkpoint_transform(
+#          Quantizer.apply(),
+#          # print_bf=True, print_af=True,
+#          # force=True,
+#  )
+
+#  # TODO(wlt): add symbol extra attrs for name_hint to search
+#  #   in subgraph.
+#  # TODO: extra attrs copy and assign logic.
+#  from tvm.mrt.fixed_point import FixPoint, Simulator
+#  # dt_tr.print(short=True, prefix_layers=20)
+#  # FuseBatchNorm.%1
+#  sim_tr = dt_tr.checkpoint_transform(
+#          Simulator.apply(with_clip=True, with_round=True),
+#          force=True,
+#          )
+#  # sim_tr.log()
+#  # sim_tr.print(short=True)
+
+#  qt_tr = dt_tr.checkpoint_transform(
+#          FixPoint.apply(),
+#          # print_bf = True, print_af = True,
+#          # force=True,
+#  )
+#  # qt_tr.log()
+#  qt_tr.print(short=False)
 
 # from tvm.mrt.zkml import circom, transformer, model as ZkmlModel
 # symbol, params = qt_tr.symbol, qt_tr.params

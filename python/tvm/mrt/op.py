@@ -14,7 +14,7 @@ def subgraph(symbol: Symbol, inames=[], onames=[]):
     out = []
     def _find(sym: Symbol):
         if sym.name in inames:
-            return variable(sym.name, sym.shape, sym.dtype)
+            return sym.copy(op_name=VAR, args=[])
         elif sym.name in onames:
             out.append(sym)
 

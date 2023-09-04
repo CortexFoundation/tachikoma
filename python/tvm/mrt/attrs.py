@@ -44,6 +44,12 @@ def _format_as_tuple(attrs: AttrsT, *keys):
     return attrs
 
 @dataclass
+@register_attrs(CLIP)
+class ClipAttrs(_BaseAttrs):
+    a_min: float
+    a_max: float
+
+@dataclass
 @register_attrs(PCLIP)
 class PClipAttrs(_BaseAttrs):
     precision: int
@@ -52,6 +58,7 @@ class PClipAttrs(_BaseAttrs):
 @register_attrs(REQUANT)
 class RequantAttrs(PClipAttrs):
     rescale: float
+    precision: int
 
 @dataclass
 @register_attrs(GLOBAL_AVG_POOL2D)

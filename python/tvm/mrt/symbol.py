@@ -103,7 +103,7 @@ class _BaseSymbol:
         oattrs = {k: v for k, v in self.attrs.items()}
         oattrs.update(attrs)
         oattrs.update(self.extra_attrs)
-        return "{:30} = {:>15}{:30}<args_info> /* attrs */ {}".format(
+        return "{:30} = {:>15}{:30} /* attrs */ {}".format(
                 self.name, self.op_name, args_info,
                 _format_printer(oattrs))
 
@@ -171,6 +171,8 @@ class Symbol(_BaseSymbol):
 
     # Naive Methods
     def is_op(self, *op_names) -> bool:
+        """ Check current symbol is in the op name list. """
+        assert len(op_names) > 0
         return self.op_name in op_names
 
     @property
