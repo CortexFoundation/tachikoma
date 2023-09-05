@@ -19,7 +19,7 @@ class FuseDropout(Transformer):
 class FuseConstant(Transformer):
     def __call__(self: Transformer):
         if self.is_operator() and all([c.is_param() for c in self.args]):
-            #  print(self)
+            print("fuse constant:", self)
             data = inference.run(self, [c.numpy() for c in self.args])
             return self.as_variable(data)
 

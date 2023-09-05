@@ -51,7 +51,7 @@ def uniform_input_data(
     for sym in sym_inputs:
         val = data_dict.get(sym.name, data)
         assert val is not None
-        val = self._preprocess_input(sym, val)
+        #  val = self._preprocess_input(sym, val)
         val = tvm.nd.array(val)
         assert sym.shape == list(val.shape), (
                 "{}: {} vs. {}").format(
@@ -120,37 +120,22 @@ class Trace:
         dataset.reset()
         self.dataset = dataset
 
-    def _preprocess_input(self, sym: Symbol, data):
-        if "dt_type" not in sym.extra_attrs:
-            return data
-        dt_type = eval(sym.extra_attrs["dt_type"])
-        dt: Discretor = dt_type.base(sym)
-        return dt.mapping(data).astype(sym.dtype)
-
-    def _postprocess_output(self, sym: Symbol, data):
-        if "dt_type" not in sym.extra_attrs:
-            return data
-        dt_type = eval(sym.extra_attrs["dt_type"])
-        dt: Discretor = dt_type.base(sym)
-        return dt.restore(data)
-
-    # def as_input_dict(self,
-    #         data: typing.Optional[np.ndarray] = None,
-    #         data_dict: ParametersT = {},
-    #         ) -> ParametersT:
-    #     input_dict = {}
-    #     for sym in self.sym_inputs:
-    #         val = data_dict.get(sym.name, data)
-    #         assert val is not None
-    #         val = self._preprocess_input(sym, val)
-    #         val = tvm.nd.array(val)
-    #         assert sym.shape == list(val.shape), (
-    #                 "{}: {} vs. {}").format(
-    #                         sym.name, sym.shape, val.shape)
-    #         assert sym.dtype == val.dtype, (
-    #             "{} vs. {}").format(sym.dtype, val.dtype)
-    #         input_dict[sym.name] = val
-    #     return input_dict
+    def as_input_dict(self,
+           data: typing.Optional[np.ndarray] = None,
+           data_dict: ParametersT = {},
+           ) -> ParametersT:
+       input_dict = {}
+       for sym in self.sym_inputs:
+           val = data_dict.get(sym.name, data)
+           assert val is not None
+           val = tvm.nd.array(val)
+           assert sym.shape == list(val.shape), (
+                   "{}: {} vs. {}").format(
+                           sym.name, sym.shape, val.shape)
+           assert sym.dtype == val.dtype, (
+               "{} vs. {}").format(sym.dtype, val.dtype)
+           input_dict[sym.name] = val
+       return input_dict
 
     def populate(self, **kwargs) -> runtime.ValidateFunctionT:
         if self._executor is None:
@@ -166,9 +151,8 @@ class Trace:
             #             val.numpy().flatten()[:5])
             res = runtime.run_executor(self._executor, data)
             assert len(res) == 1
-            res = res[0]
             # print("output", self.symbol, np.abs(res).max())
-            return self._postprocess_output(self.symbol, res)
+            return res[0]
         _run.__name__ = self.name
         return _run
 
@@ -355,7 +339,7 @@ class Trace:
                 _loaded=False, _model_name=self._model_name)
 
 
-    def _get_checkpoint_path(self, tr_name):
+    def _get_checkpoint_path(self, tr_name: str = None):
         base_dir = os.path.join(self.BASE_DIR, self._model_name)
         os.makedirs(base_dir, exist_ok=True)
 
@@ -381,14 +365,14 @@ class Trace:
         if force or not path.exists(tr_path):
             tr = self
             for cb in callbacks:
-                tr = tr.transform(cb, **kwargs)
+                tr = tr.transform(cb, tr_name=tr_name, **kwargs)
             tr.dump(tr_path)
             print("Dumped checkpoint: {:20} into {}".format(
-                tr_name, tr_path))
+                tr.name, tr_path))
             return tr
         tr = Trace.load(tr_path)
         print("Loaded checkpoint: {:20} from {}".format(
-            tr_name, tr_path))
+            tr.name, tr_path))
         return tr
 
     def checkpoint(self, tr_name: str = None):

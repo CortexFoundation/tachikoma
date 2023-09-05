@@ -23,6 +23,7 @@ SQUEEZE = "squeeze"
 RESHAPE = "reshape"
 
 CLIP = "clip"
+CEIL = "ceil"
 RIGHT_SHIFT = "right_shift"
 # AS_TYPE = "astype"
 CAST = "cast"

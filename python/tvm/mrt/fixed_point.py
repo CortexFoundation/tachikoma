@@ -13,41 +13,36 @@ from .transform import Transformer, Pass
 
 @dataclass(repr=False)
 class Simulator(Transformer, QuantizedInfo):
-    def map_requant(self):
-        X: Simulator = self.args[0]
-        rescale = self.parsed.rescale
-        rescale = X.from_const_data(rescale)
-        out = op.mul(X, rescale).like(self,
-                extra_attrs=self.extra_attrs)
-        pos = self.int_max()
-        # out = op.clip(out, a_min=-pos, a_max=pos).like(self,
-        #         extra_attrs=self.extra_attrs)
-        return out
-
-    def map_pclip(self):
-        X: Simulator = self.args[0]
-        pos = self.int_max()
-        out = X
-        # out = op.clip(X, a_min=-pos, a_max=pos).like(self)
+    def round(self, out: Transformer):
+        #  data_0_5 = self.from_const_data(0.5)
+        #  out = op.add(out, data_0_5)
+        #  out = op.ceil(out)
+        orig_dtype = out.dtype
+        out = op.cast(out, dtype="int32")
+        out = op.cast(out, dtype=orig_dtype)
         return out
 
     def __call__(self, with_clip=False, with_round=False):
         out: Transformer = self
+        if self.is_input():
+            """ input is the original float data, skip. """
+            return out
+
+        if self.is_param() and with_round:
+            out = self.round(out)
+
         if self.is_op(PCLIP, REQUANT):
             out: Simulator = self.args[0]
             if self.is_op(REQUANT):
                 rescale = self.parsed.rescale
-                rescale = out.from_const_data(rescale)
-                out = op.mul(out, rescale).like(self,
-                        extra_attrs=self.extra_attrs)
+                rescale = self.from_const_data(rescale)
+                out = op.mul(out, rescale)
+                if with_round:
+                    out = self.round(out)
             if with_clip:
                 pos = self.int_max()
-                out = op.clip(out, a_min=-pos, a_max=pos).like(
-                        self, extra_attrs=self.extra_attrs)
-        if with_round:
-            orig_dtype = out.dtype
-            out = op.cast(out, dtype="int32")
-            out = op.cast(out, dtype=orig_dtype)
+                out = op.clip(out, a_min=-pos, a_max=pos)
+
         return out.like(self, extra_attrs=self.extra_attrs)
 
 
@@ -88,8 +83,8 @@ class FixPoint(Transformer, QuantizedInfo):
         X: FixPoint = self.args[0]
         pos = self.int_max()
         out = X
-        #  out = op.pclip(X, precision=self.precision).like(self)
-        out = op.clip(X, a_min=-pos, a_max=pos).like(self)
+        out = op.pclip(X, precision=self.precision).like(self)
+        #  out = op.clip(X, a_min=-pos, a_max=pos).like(self)
         return out
 
     def __call__(self):
@@ -111,9 +106,9 @@ class FixPoint(Transformer, QuantizedInfo):
         # elif self.is_op(CONV2D, DENSE):
         #     out.attrs["out_dtype"] = "int32"
 
-        if self.is_operator():
-            out = op.cast(out, dtype="int32")
-            out = op.cast(out, dtype="float32")
+        #  if self.is_operator():
+        #      out = op.cast(out, dtype="int32")
+        #      out = op.cast(out, dtype="float32")
 
         # inames = [a.name for a in self.args]
         # tmp = op.subgraph(out, inames)

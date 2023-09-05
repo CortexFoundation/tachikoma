@@ -128,26 +128,46 @@ from tvm.mrt.discrete import Discretor2
 
 dis_tr = sample_tr.checkpoint_transform(
         Discretor2.apply(),
-        print_bf=True, print_af=True,
+        #  print_bf=True, print_af=True,
         #  force=True,
         )
 dis_tr.log()
 
 dis_tr = dis_tr.checkpoint_transform(
         fuse.FuseConstant.apply(),
-        force=True,
+        #  force=True,
         )
 dis_tr.log()
 
 from tvm.mrt.fixed_point import FixPoint, Simulator
 sim_tr = dis_tr.checkpoint_transform(
+        Simulator.apply(with_clip=False, with_round=False),
+        tr_name="sim",
+        force=True,
+        )
+sim_tr.log()
+clip_tr = dis_tr.checkpoint_transform(
+        Simulator.apply(with_clip=True, with_round=False),
+        tr_name="clip",
+        force=True,
+        )
+clip_tr.log()
+round_tr: Trace = dis_tr.checkpoint_transform(
+        Simulator.apply(with_clip=False, with_round=True),
+        tr_name="round",
+        force=True,
+        )
+round_tr.log()
+qt_tr: Trace = dis_tr.checkpoint_transform(
         Simulator.apply(with_clip=True, with_round=True),
+        tr_name="quantized",
         force=True,
         )
-qt_tr = dis_tr.checkpoint_transform(
-        FixPoint.apply(),
-        force=True,
-        )
+qt_tr.log()
+#  qt_tr = dis_tr.checkpoint_transform(
+#          FixPoint.apply(),
+#          force=True,
+#          )
 #  sys.exit(0)
 
 #  from tvm.mrt.rules import slm
@@ -226,113 +246,33 @@ def eval_single_image():
     print(data_shape, data_shape)
     tr = tr.set_input_shape(data_shape)
     sim_tr = sim_tr.set_input_shape(data_shape)
-    qt_tr = qt_tr.set_input_shape(data_shape)
+    clip_tr = clip_tr.set_input_shape(data_shape)
+    round_tr = round_tr.set_input_shape(data_shape)
+
     data = get_real_image(*image_shape[1:])
     res = tr.eval(data, **config)
-    print("tr: ", res.flatten()[:5])
-    res = sim_tr.eval(data, **config)
-    print("sim tr: ", res.flatten()[:5])
-    res = qt_tr.eval(data, **config)
-    print("qt tr: ", res.flatten()[:5])
+    print("tr: ", res.flatten()[:10])
+    sim_scale = sim_tr.symbol.extra_attrs.get("scale", 1)
+    res = sim_tr.eval(data, **config) / sim_scale
+    print("sim tr: ", res.flatten()[:10])
+    res = clip_tr.eval(data, **config) / sim_scale
+    print("clip tr: ", res.flatten()[:10])
+    res = round_tr.eval(data, **config) / sim_scale
+    print("round tr: ", res.flatten()[:10])
+
+    #  res = qt_tr.eval(data, **config)
+    #  print("qt tr: ", res.flatten()[:5])
     sys.exit(-1)
-# eval_single_image()
+#  eval_single_image()
+#  sys.exit(0)
 
 runtime.multiple_validate(
         tr.populate(**config),
         sim_tr.populate(**config),
-        # qt_tr.populate(**config),
+        clip_tr.populate(**config),
+        round_tr.populate(**config),
+        qt_tr.populate(**config),
         dataset=ds,
         stats_type=stats.ClassificationOutput,
         max_iter_num=20,
 )
-sys.exit(-1)
-
-
-# qt_expr = qt_tr.to_expr()
-# print(qt_expr)
-# print(qt_expr.astext(show_meta_data=False))
-
-# test accuracy
-
-# torch_dataset = TorchImageNet()
-# data, label = torch_dataset.next()
-# print(data.shape, label.shape)
-# sys.exit(-1)
-
-# tr.print()
-# outs = tr.calibrate()
-# print(outs.keys())
-
-# tr_eval = tr.eval(ctx)
-# runtime.multiple_validate(tr_eval, TorchImageNet(),
-#         stats.ClassificationOutput,)
-
-# fuse pass: fold_constant, fuse_batch_norm, quantize
-
-# compare accuracy
-
-# to_cvm
-
-# for k, v in params.items():
-#     print(k, type(v))
-#     continue
-# set show_meta_data=True if you want to show meta data
-# print(mod.astext(show_meta_data=False))
-
-# @ir.transform.module_pass(opt_level=2)
-# def transform(mod, ctx):
-#     tp = relay.TensorType((10,), "float32")
-#     x = relay.var("x", tp)
-#     func = relay.Function([x], relay.abs(x))
-#     gv = relay.GlobalVar("myabs")
-#     # new_mod = tvm.IRModule({gv: func})
-#     new_mod = tvm.IRModule()
-#     new_mod["myabs"] = func
-#     new_mod.update(mod)
-#     return new_mod
-
-# print(relay.analysis.all_vars(mod["main"]))
-
-# module_pass = transform
-# assert isinstance(module_pass, ir.transform.ModulePass)
-# assert module_pass.info.opt_level == 2
-
-x = relay.var("x", shape=(1, 3, 28, 28), dtype="float32")
-y = relay.var("y", shape=(28,), dtype="float32")
-out = x + y
-out = relay.abs(out)
-a = relay.Constant(tvm.nd.array(np.ones((28,), dtype="float32")))
-b = relay.Constant(tvm.nd.array(np.ones((28,), dtype="float32")))
-c = a + b
-out = out + c
-relay.analysis.post_order_visit(out, _collect_ops)
-
-mod = tvm.IRModule()
-mod["main"] = relay.Function([x, y], out)
-mod = relay.transform.FoldConstant()(mod)
-
-print(mod.astext(show_meta_data=False))
-sys.exit(1)
-
-# mod = tvm.IRModule()
-# mod["main"] = relay.Function([x, y], out)
-# print(str(mod))
-
-# mod = module_pass(mod)
-# print("2", str(mod))
-
-# # out = mod["myabs"](out)
-# # mod["main"] = relay.Function([x, y], out)
-# # print("1", str(mod))
-
-# # mod = create_relay_module_from_model() # Output: Figure 1
-import pprint
-from tvm.relay.op.contrib import register
-from tvm.relay.op.contrib import cvm
-pattern_table = register.get_pattern_table("cvm")
-pprint.pprint([p[0] for p in pattern_table])
-mod = relay.transform.MergeComposite(pattern_table)(mod)
-#  mod = relay.transform.AnnotateTarget(["dnnl"])(mod) # Output: Figure 2
-#  mod = relay.transform.MergeCompilerRegions()(mod) # Output: Figure 3
-#  mod = relay.transform.PartitionGraph()(mod) # Output: Figure 4
-print("3", mod.astext(show_meta_data=False))

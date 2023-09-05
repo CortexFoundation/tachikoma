@@ -88,6 +88,7 @@ bias_add = _register_op(BIAS_ADD)
 
 sum = _register_op(SUM)
 clip = _register_op(CLIP)
+ceil = _register_op(CEIL)
 right_shift = _register_op(RIGHT_SHIFT)
 # astype = _register_op(AS_TYPE)
 cast = _register_op(CAST)

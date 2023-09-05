@@ -51,6 +51,7 @@ class WithParameters(Symbol):
         self.params[self.name] = tvm.nd.array(data)
 
     def from_const_data(self, data: int) -> Symbol:
+        # TODO: add cache for const data
         return self.from_np_data(
                 np.array(data).astype(self.dtype))
 
