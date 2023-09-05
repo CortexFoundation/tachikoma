@@ -91,7 +91,7 @@ class Trace:
                 data = self.params[sym.name]
                 assert sym.shape == list(data.shape), (
                     "param:{} shape inconsistent: {} vs. {}"
-                ).format(sym.name, sym.shape, pshape)
+                ).format(sym, sym.shape, data.shape)
                 assert sym.dtype == data.dtype, (
                     "params:{} dtype inconsistent: {} vs. {}"
                 ).format(sym.name, sym.dtype, data.dtype)
@@ -332,7 +332,7 @@ class Trace:
             return out
 
         print("Apply transformer: {}".format(tr_name))
-        with N(tr_name):
+        with N(callback.__name__):
             new_symbol = transform(self.symbol, _tfm)
 
         return Trace(tr_name, new_symbol, new_params,

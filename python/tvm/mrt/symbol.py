@@ -57,8 +57,12 @@ class _BaseSymbol:
         return cls.from_dict(symbol.to_dict(), **kwargs)
     def like(self, other: Symbol, **kwargs) -> Symbol:
         """ cast current symbol to child class. """
+        #  assert self.shape == other.shape, "%s vs.\n %s" % (self, other)
+        #  assert self.dtype == other.dtype , "%s vs.\n %s" % (self, other)
         data = other.to_dict()
         data.update(self.to_dict())
+        # copy extra attrs by default.
+        #  data["extra_attrs"] = other.extra_attrs
         return type(other).from_dict(data, **kwargs)
     def copy(self, **kwargs) -> typing.Type[_BaseSymbol]:
         """ clone current symbol. """

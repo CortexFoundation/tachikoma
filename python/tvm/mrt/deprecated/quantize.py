@@ -1,104 +1,85 @@
 from __future__ import annotations
 
-import math
 import typing
+from dataclasses import dataclass, field
 
-from dataclasses import dataclass, field, InitVar, asdict
-
-from .utils import *
-from .symbol import *
 from . import op
-from .transform import Transformer
-from .calibrate import Calibrator
-from .scale import *
+from .discrete import *
 from .precision import *
+from .transform import Transformer
+from .annotate import ArgAnnotator
+
+__ALL__ = [ "Quantizer" ]
 
 @dataclass(repr=False)
-class Quantizer(Transformer):
-    """ Scale current operator into integer range.
+class Quantizer(QuantizedInfo, Transformer):
+    """ MRT quantization class.
 
+        Lose the discretor information if dump.
     """
-    scaler: Scaler
-
-    # MAX_BIT: typing.ClassVar[int] = 32
-    """ maximum bit for quantization. """
-
-    tight_precision: Quantizer | None
-    requants: typing.Dict[int, Quantizer]
-
-    @property
-    def scale(self):
-        return self.scaler.scale
-    @property
-    def precision(self):
-        return self.scaler.precision
+    args: typing.List[Quantizer]
+    revised: Quantizer | None = field(repr=False)
+    requants: typing.Dict[str, Quantizer] = field(repr=False)
 
     @classmethod
-    def default_dict(cls) -> dict:
-        return super().default_dict(
-            tight_precision = None,
-            requants = {})
+    def default_dict(cls, **kwargs) -> dict:
+        kwargs.setdefault("revised", None)
+        kwargs.setdefault("requants", {})
+        return super().default_dict(**kwargs)
 
-    def __repr__(self):
-        return super().__repr__(
-                precision=self.precision,
-                scale=self.scale)
+    @property
+    def discretor(self) -> Discretor:
+        dt_type: Discretor = eval(self.dt_type)
+        return dt_type.base(self,
+            args=[dt_type.base(a) for a in self.args])
 
-    @classmethod
-    def base(cls, symbol: Scaler, **kwargs):
-        assert isinstance(symbol, Scaler), type(symbol)
-        return cls.from_dict(
-                symbol.to_dict(**kwargs),
-                scaler=symbol)
+    def assign(self, other: Discretor) -> Quantizer:
+        return self.set_extra_attrs(**other.extra_attrs)
 
     def __call__(self):
-        scalers: AnnotateT = Annotate.bind(self)
+        if self.is_variable():
+            return self
 
+        arg_dts = ArgAnnotator.bind(self.discretor)
         for i in range(len(self.args)):
-            arg  = self.args[i].tight_precision
-            self.args[i] = arg.requantize(scalers[i])
-            print("arg: ", i, self.args[i])
+            arg: Quantizer = self.args[i]
+            arg = arg.revised or arg
+            self.args[i] = arg.requantize(arg_dts[i])
 
+        self.set_extra_attrs(
+            dt_info = InferDiscretor.bind(self),
+            precision = InferPrecision.bind(self),)
+        self.examine_precision(self.discretor)
+        return InferOperator.bind(self).like(self)
 
-        ip = InferPrecision.bind(self)
-        sc = InferScale.bind(self)
-        self.scaler.set(sc, ip)
-        # print(ip.raw_str(), sc.scale)
-        # self = Rewriter.base(self)()
-
-        self.examine_precision()
-        # print("> [quantized]", self)
-        return self
-
-    def examine_precision(self):
-        new_scaler: Scaler = self.scaler.copy()
-        new_scaler.examine()
-
+    def examine_precision(self, dt: Discretor):
+        """ set revised target with discretor examine.
+                use explicit clip to annotate precision
+                if necessary.
+        """
+        dt.examine()
         out = self
-        if self.scaler.precision > new_scaler.precision:
-            out = op.pclip(out, precision=new_scaler.precision)
-        self.tight_precision = out.like(self, scaler=new_scaler)
+        if self.precision > dt.precision:
+            out = op.pclip(out, precision=dt.precision)
+        self.revised = out.like(self).assign(dt)
+        # raw_print(self.revised)
 
-    def requantize(self, new_scaler: Scaler) -> Requantizer:
-        """ if set scale, use scale to calculate prec. """
-        # new_scaler: Scaler = self.scaler.copy()
-        # new_scaler.examine(scale, prec)
-        key = new_scaler.hash()
+    def requantize(self, dt: Discretor):
+        dt.examine()
+        key = dt.summary()
         if key in self.requants:
             return self.requants[key]
 
-        out = new_scaler.rescale(self.scaler, self)
-        out = out.like(self, scaler=new_scaler)
+        out: Quantizer = self.copy(name=N.n())
+        if self.is_input():
+            pass
+        elif self.is_param():
+            out.update_data(dt.mapping(self.numpy()))
+        else:
+            out = dt.remapping(self.discretor, self)
+        out = out.like(self).assign(dt)
+        # out.is_op(REQUANT) and print("[  Requant]>> {}".format(out))
+        # print("[  Requant]>> {}".format(out))
         self.requants[key] = out
         return out
 
-    def calc_args_prec(self) -> typing.List[int]:
-        raise NotImplementedError()
-
-    def max_prec(self, prec: int) -> Scaler:
-        if prec not in self.cached_prec_args:
-            self.cached_prec_args[prec] = self._max_prec(prec)
-        return self.cached_prec_args[prec]
-
-    def _max_prec(self, prec: int) -> Scaler:
-        raise NotImplementedError()

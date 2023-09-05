@@ -28,9 +28,6 @@ class WithPrecision(Symbol):
         assert prec > 0, msg
         return True
 
-    def __repr__(self, **attrs):
-        return super().__repr__(prec=self.precision, **attrs)
-
     @property
     def precision(self) -> int:
         return self.extra_attrs.get("precision", -1)

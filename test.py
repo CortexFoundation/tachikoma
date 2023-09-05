@@ -93,7 +93,7 @@ fuse_tr = tr.checkpoint_transform(
         fuse.FuseDropout.apply(),
         fuse.FuseAvgPool2D.apply(),
         tr_name = "fuse",
-        # force=True,
+        force=True,
         )
 # fuse_tr.print(param_config={ "use_all": True, })
 
@@ -101,17 +101,14 @@ from tvm.mrt.dataset_torch import TorchImageNet
 ds = TorchImageNet(
         batch_size=batch_size,
         img_size=image_shape[1:],)
+data, _ = ds.next()
 # fuse_tr.bind_dataset(ds)
 
 from tvm.mrt.calibrate import Calibrator, SymmetricMinMaxSampling
 
-data, _ = ds.next()
 calib_tr = fuse_tr.checkpoint_transform(
         fuse.FuseNaiveMathmatic.apply(),
         Calibrator.apply(data=tvm.nd.array(data)),
-        # Calibrator.apply(random_config={
-        #     "enabled": True,
-        #     "absmax": 1.0, }),
         print_bf=True, print_af=True,
         #  force=True,
 )
@@ -124,12 +121,12 @@ sample_tr = calib_tr.checkpoint_transform(
         )
 sample_tr.log()
 
-from tvm.mrt.discrete import Discretor2
+from tvm.mrt.discrete import Discretor
 
 dis_tr = sample_tr.checkpoint_transform(
-        Discretor2.apply(),
+        Discretor.apply(),
         #  print_bf=True, print_af=True,
-        #  force=True,
+        force=True,
         )
 dis_tr.log()
 
@@ -164,11 +161,11 @@ qt_tr: Trace = dis_tr.checkpoint_transform(
         force=True,
         )
 qt_tr.log()
-#  qt_tr = dis_tr.checkpoint_transform(
-#          FixPoint.apply(),
-#          force=True,
-#          )
-#  sys.exit(0)
+circom_tr: Trace = dis_tr.checkpoint_transform(
+        FixPoint.apply(), tr_name="circom",
+        force=True,
+        )
+circom_tr.log()
 
 #  from tvm.mrt.rules import slm
 #  from tvm.mrt.quantize import Quantizer

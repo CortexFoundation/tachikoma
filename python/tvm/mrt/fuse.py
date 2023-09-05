@@ -19,9 +19,9 @@ class FuseDropout(Transformer):
 class FuseConstant(Transformer):
     def __call__(self: Transformer):
         if self.is_operator() and all([c.is_param() for c in self.args]):
-            print("fuse constant:", self)
+            #  print("fuse constant:", self)
             data = inference.run(self, [c.numpy() for c in self.args])
-            return self.as_variable(data)
+            return self.as_parameter(data)
 
             #  inputs = [c.numpy() for c in self.args]
             #  data = np_executor(self, inputs)
@@ -61,8 +61,8 @@ class FuseBatchNorm(Transformer):
             # (A * W) * gamma + bias
             # A * (W * gamma) + bias
             W_data = W.numpy() * gamma.reshape(K, 1, 1, 1)
-            W.update_data(W_data)
-            out = X
+            W_sym = W.from_np_data(W_data)
+            out = op.nn_conv2d(A, W_sym, **X.attrs)
         elif X.is_op(DENSE):
             A, W = X.args
             dense_parsed: DenseAttrs = X.parsed
@@ -70,15 +70,15 @@ class FuseBatchNorm(Transformer):
             # (A * W) * gamma + bias
             # A * (W * gamma) + bias
             W_data = W.numpy() * gamma.reshape(K, 1)
-            W.update_data(W_data)
-            out = X
+            W_sym = W.from_np_data(W_data)
+            out = op.nn_dense(A, W_sym, **X.attrs)
         else:
             reshp = [s if i == parsed.axis else 1 \
                     for i, s in enumerate(X.shape)]
             W = X.from_np_data(gamma.reshape(reshp))
             out = op.mul(X, W)
 
-        B = out.from_np_data(bias)
+        B = self.from_np_data(bias)
         out = op.bias_add(out, B, axis=parsed.axis)
         return out.like(self)
 

@@ -63,11 +63,12 @@ class QuantInfo(WithScale, WithPrecision, Sampling):
         if info not in self.requant_ops:
             curr_scale = self.scale if self.scale_defined else 1
             out = op.requant(
-                    self, rescale=scale / curr_scale,
-                    precision=precision
+                    self,
+                    rescale=scale/curr_scale,
+                    precision=precision,
                     ).like(self)
             out.set_extra_attrs(
-                    data=self.data, scale=scale, precision=precision)
+                data=self.data, scale=scale, precision=precision)
             self.requant_ops[info] = out
         return self.requant_ops[info]
 
@@ -141,7 +142,7 @@ def _op_clip(s: QuantInfo):
 
 
 @dataclass(repr=False)
-class Discretor2(QuantInfo):
+class Discretor(QuantInfo):
     """
         does operation -> out
 
@@ -174,98 +175,24 @@ class Discretor2(QuantInfo):
         orig_names = [a.name for a in self.args]
 
         arg_dts = _DISCRETE_REQUANT_RULES[self.op_name](self)
-        print("arg dts:", [(a.scale, a.precision) for a in arg_dts])
+        #  print("arg dts:", [(a.scale, a.precision) for a in arg_dts])
         for i, arg in enumerate(self.args):
             self.args[i] = arg.rescale(arg_dts[i])
-            print(self.args[i])
+            #  print(self.args[i])
 
         out = self
         if self.op_name in _DISCRETE_OP_RULES:
             out = _DISCRETE_OP_RULES[self.op_name](out).like(self)
 
         new = op.subgraph(out, inames=[a.name for a in self.args])
-        #  raw_print(new)
-        scale = infer_scale(new)
-        precision = self.scale_to_precision(scale)
+        raw_print(new)
+        out.scale = infer_scale(new)
+        out.precision = self.scale_to_precision(out.scale)
 
-        out = op.pclip(out, precision=precision).like(out)
-        out.set_extra_attrs(
-                data=self.data, scale=scale, precision=precision)
+        out = op.pclip(out, precision=out.precision).like(
+                out, extra_attrs=out.extra_attrs)
+        #  out.set_extra_attrs(
+        #          data=self.data, scale=scale, precision=precision)
         raw_print(op.subgraph(out, inames=orig_names))
         return out
-
-
-@dataclass(repr=False)
-class Discretor(Sampling, QuantizedInfo):
-    """ Perform discretization on the sampling data
-            and precision.
-    """
-    @classmethod
-    def update_dict(cls, data: dict, **kwargs):
-        cls.update_extra_attrs(
-                data, dt_type=get_class_name(cls))
-        return super().update_dict(data, **kwargs)
-
-    # ======== Annotate Functions ==========
-    def same(self, other: Discretor) -> Discretor:
-        """ make current discretization same as other. """
-        return self.copy().set_extra_attrs(
-            dt_info=other.dt_info, precision=other.precision)
-
-    def set_prec(self, prec: typing.Any) -> Discretor:
-        return self.copy().set_extra_attrs(
-                dt_info=None, precision=prec)
-
-    # ======== Quantize Functions ==========
-    def mapping(self, data: np.ndarray) -> np.ndarray:
-        """ discrete parameters. """
-        self.examine()
-        return self._mapping(data)
-
-    def restore(self, data: np.ndarray) -> np.ndarray:
-        """ restore discreted parameters. """
-        self.examine()
-        return self._restore(data)
-
-    def remapping(self, base: Discretor, sym: Transformer) -> Transformer:
-        """ Remapping discretor to another precision. """
-        self.examine()
-        if self.dt_info == base.dt_info:
-            return sym
-        return self._remapping(base, sym)
-
-    def examine(self):
-        """ Use sampling data to revise discretor information.
-        """
-        self.validate_precision()
-        self._examine()
-        self.validate_precision()
-
-    def summary(self) -> str:
-        """ return current discrete information. """
-        raise NotImplementedError()
-    def _mapping(self, data):
-        raise NotImplementedError()
-    def _restore(self, data):
-        raise NotImplementedError()
-    def _remapping(self, base, sym):
-        raise NotImplementedError()
-    def _examine(self):
-        raise NotImplementedError()
-
-@dataclass(repr=False)
-class InferDiscretor(Pass):
-    """ Discretization Information Inference with Operator """
-    args: typing.List[QuantizedInfo]
-    @property
-    def arg_infos(self):
-        return [a.dt_info for a in self.args]
-
-@dataclass(repr=False)
-class InferOperator(Pass):
-    """ default operator inference. """
-    def identity(self):
-        return self
-
-InferOperator.test_all(InferOperator.identity)
 

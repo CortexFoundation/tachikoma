@@ -43,22 +43,15 @@ class WithParameters(Symbol):
     def numpy(self) -> np.ndarray:
         return self.ndarray().numpy()
 
-    def as_variable(self, data: np.ndarray):
+    def as_parameter(self, data: np.ndarray):
+        # TODO: move to symbol
         self.params[self.name] = tvm.nd.array(data.astype(self.dtype))
         return self.copy(op_name=opns.VAR, args=[], attrs={})
 
-    def update_data(self, data: np.ndarray):
-        self.params[self.name] = tvm.nd.array(data)
+    def from_const_data(self, data: typing.Union[int, float]) -> Symbol:
+        return self.from_np_data(np.array(data).astype(self.dtype))
 
-    def from_const_data(self, data: int) -> Symbol:
-        # TODO: add cache for const data
-        return self.from_np_data(
-                np.array(data).astype(self.dtype))
-
-    def from_np_data(self,
-            data: np.ndarray,
-            prefix=None,
-    ) -> Symbol:
+    def from_np_data(self, data: np.ndarray, prefix=None) -> Symbol:
         name = N.n(prefix=prefix)
         self.params[name] = tvm.nd.array(data)
         return op.variable(

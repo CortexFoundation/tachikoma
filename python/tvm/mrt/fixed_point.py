@@ -42,17 +42,11 @@ class Simulator(Transformer, QuantizedInfo):
             if with_clip:
                 pos = self.int_max()
                 out = op.clip(out, a_min=-pos, a_max=pos)
-
-        return out.like(self, extra_attrs=self.extra_attrs)
+        return out.like(self)
 
 
 @dataclass(repr=False)
 class FixPoint(Transformer, QuantizedInfo):
-    def like(self, other: Symbol, copy=False, **kwargs):
-        out = super().like(other, **kwargs)
-        copy and out.set_extra_attrs(**other.extra_attrs)
-        return out
-
     def map_requant(self) -> FixPoint:
         self.validate_precision()
         X: FixPoint = self.args[0]
@@ -116,7 +110,7 @@ class FixPoint(Transformer, QuantizedInfo):
         # assert self.dtype == tmp.dtype, (
         #         "expected {}, but get {}, in \n{}"
         # ).format(self.dtype, tmp.dtype, tmp)
-        return out.like(self, copy=True)
+        return out.like(self, extra_attrs=self.extra_attrs)
 
 def cvm_float(number, bits=24):
     """ Recalculate the float value within the given range of bits.
