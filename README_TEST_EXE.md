@@ -26,6 +26,7 @@ python -m pip install attrs pytest psutil scipy decorator typing_extensions
 python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu116
 python -m pip install torchvision
 python -m pip install torchaudio
+python -m pip install onnx==1.14.0 # for exporting onnx
 ```
 
 ## set up cmake config, using cuda&llvm-10
@@ -67,6 +68,7 @@ cp ../circom_model_test.json input.json
 ./circom_model_test input.json witness.wtns
 # or in js
 node generate_witness.js model.wasm input.json witness.wtns
+snarkjs r1cs info circom_model_test.r1cs # check the info of constraints
 ```
 
 ## generate proof
