@@ -4,7 +4,6 @@ ROOT = os.getcwd()
 sys.path.insert(0, os.path.join(ROOT, "python"))
 
 import numpy as np
-from PIL import Image
 import torch
 
 import tvm
@@ -18,11 +17,40 @@ batch_size = 16
 image_shape = (3, 28, 28)
 data_shape = (batch_size,) + image_shape
 
-def load_model_from_torch() -> (ir.IRModule, ParametersT):
-    from torchvision import models
+def test_accuracy(model, test_loader):
+    #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cpu")
+    model.eval()
+    correct = 0
+    iter_cnt = 0
+    with torch.no_grad():
+        for data, target in test_loader:
+            iter_cnt += 1
+            data, target = data.to(device), target.to(device)
+            output = torch.squeeze(model(data))
+            pred = torch.argmax(output).numpy()
+            correct += (pred == target.numpy())
+    print('\nTest set total: Accuracy: {}/{} ({}%)\n'.format(
+        correct, len(test_loader.dataset),
+        100. * correct / len(test_loader.dataset)))
 
-    model = models.mobilenet_v2(weights='DEFAULT')
+def load_model_from_torch() -> (ir.IRModule, ParametersT):
+    import torchvision
+    model = torchvision.models.mobilenet_v2(weights='DEFAULT')
     model = model.eval()
+    # begin test eval.
+    data_transform = torchvision.transforms.Compose([
+        torchvision.transforms.Resize(256),
+        torchvision.transforms.CenterCrop(224),
+        torchvision.transforms.ToTensor(),
+        torchvision.transforms.Normalize([0.485,0.456,0.406], [0.229,0.224,0.225])
+    ])
+    dataset_ = torchvision.datasets.ImageFolder('~/.mxnet/datasets/imagenet/val', transform=data_transform)
+    test_loader = torch.utils.data.DataLoader(dataset_)
+    from utility import utility
+    utility.print_dataLoader_first(test_loader)
+    test_accuracy(model, test_loader)
+    # finish test eval.
     input_data = torch.randn(data_shape)
     script_module = torch.jit.trace(model, [input_data]).eval()
     return tvm.relay.frontend.from_pytorch(
