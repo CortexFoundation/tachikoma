@@ -15,13 +15,13 @@ from tvm.mrt import stats, dataset
 from tvm.mrt import utils
 
 batch_size = 16
-image_shape = (3, 64, 64)
+image_shape = (3, 32, 32)
 data_shape = (batch_size,) + image_shape
 
 def load_model_from_torch() -> (ir.IRModule, ParametersT):
     from torchvision import models
 
-    model = models.alexnet()
+    model = models.vgg11(weights='DEFAULT')
     model = model.eval()
     input_data = torch.randn(data_shape)
     script_module = torch.jit.trace(model, [input_data]).eval()
@@ -36,7 +36,7 @@ expr: ir.RelayExpr = func.body
 from tvm.mrt.trace import Trace
 from tvm.mrt.opns import *
 from tvm.mrt.symbol import *
-tr = Trace.from_expr(expr, params, model_name="alexnet")
+tr = Trace.from_expr(expr, params, model_name="vgg11")
 tr.checkpoint()
 tr.print(param_config={ "use_all": True, })
 

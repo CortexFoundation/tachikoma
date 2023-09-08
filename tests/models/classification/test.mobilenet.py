@@ -15,13 +15,13 @@ from tvm.mrt import stats, dataset
 from tvm.mrt import utils
 
 batch_size = 16
-image_shape = (3, 32, 32)
+image_shape = (3, 28, 28)
 data_shape = (batch_size,) + image_shape
 
 def load_model_from_torch() -> (ir.IRModule, ParametersT):
     from torchvision import models
 
-    model = models.vgg11()
+    model = models.mobilenet_v2(weights='DEFAULT')
     model = model.eval()
     input_data = torch.randn(data_shape)
     script_module = torch.jit.trace(model, [input_data]).eval()
@@ -36,35 +36,100 @@ expr: ir.RelayExpr = func.body
 from tvm.mrt.trace import Trace
 from tvm.mrt.opns import *
 from tvm.mrt.symbol import *
-tr = Trace.from_expr(expr, params, model_name="vgg11")
+tr = Trace.from_expr(expr, params, model_name="mobilenet_v2")
+#  tr = tr.subgraph(onames=["%11"])
 tr.checkpoint()
-tr.print(param_config={ "use_all": True, })
+tr.log()
+#  tr.print(short=True, param_config={ "use_all": True, })
 
 from tvm.mrt import fuse
 from tvm.mrt import op
-fuse_tr = tr.checkpoint_transform(
-        fuse.FuseTupleGetItem.apply(),
-        fuse.FuseBatchNorm.apply(),
-        fuse.FuseAvgPool2D.apply(),
-        fuse.FuseNaiveSoftmax.apply(),
-        tr_name = "fuse",
-        # force=True,
-        )
-
 from tvm.mrt.calibrate import Calibrator, SymmetricMinMaxSampling
 
+#  const_tr = tr.checkpoint_transform(
+#          force=True,)
+#  const_tr.log()
+
+fuse_tr = tr.checkpoint_transform(
+        fuse.FuseConstant.apply(),
+        #  fuse.FuseTupleGetItem.apply(),
+        #  fuse.FuseDropout.apply(),
+        #  fuse.FuseBatchNorm.apply(),
+        tr_name = "fuse",
+        force=True,
+        )
+fuse_tr.log()
+#  fuse_tr.print(short=True)
+
+fuse_tr = fuse_tr.checkpoint_transform(
+        fuse.FuseAvgPool2D.apply(),
+        fuse.FuseNaiveSoftmax.apply(),
+        tr_name = "fuse-post",
+        #  force=True,
+        )
+fuse_tr.log()
+
+from tvm.mrt.dataset_torch import TorchImageNet
+ds = TorchImageNet(
+        batch_size=batch_size,
+        img_size=image_shape[1:],)
+data, _ = ds.next()
+
+#  calib_tr = fuse_tr.checkpoint_transform(
+#          Calibrator.apply(data=tvm.nd.array(data)),
+#          print_af=True,
+#          force=True,
+#  )
+
+fuse_tr = fuse_tr.checkpoint_transform(
+        fuse.FuseTupleGetItem.apply(),
+        fuse.FuseDropout.apply(),
+        fuse.FuseBatchNorm.apply(),
+        fuse.FuseNaiveMathmatic.apply(),
+        )
+fuse_tr.log()
+
+
 calib_tr = fuse_tr.checkpoint_transform(
-        Calibrator.apply(random_config={
-            "enabled": True,
-            "absmax": 1.0, }),
-        print_bf=True, print_af=True,
+        Calibrator.apply(data=tvm.nd.array(data)),
+        #  Calibrator.apply(random_config={
+        #      "enabled": True,
+        #      "absmax": 1.0, }),
+        #  print_bf=True,
+        print_af=True,
+        force=True,
 )
+
+sample_tr = calib_tr.checkpoint_transform(
+        SymmetricMinMaxSampling.apply(),
+        #  print_bf=True,
+        print_af=True,
+        #  force=True,
+        )
+sample_tr.log()
+
+#  from tvm.mrt.precision import PrecisionAnnotator
+
+#  prec_tr = sample_tr.checkpoint_transform(
+#          PrecisionAnnotator.apply(),
+#          print_bf=True, print_af=True,
+#          )
+#  prec_tr.log()
+
+from tvm.mrt.discrete import Discretor2
+dis_tr = sample_tr.checkpoint_transform(
+        Discretor2.apply(),
+        print_bf=True, print_af=True,
+        force=True,
+        )
+dis_tr.log()
+sys.exit(0)
+
 
 from tvm.mrt.rules import slm
 from tvm.mrt.quantize import Quantizer
 
 dt_tr = calib_tr.checkpoint_transform(
-        SymmetricMinMaxSampling.apply(),
         slm.SymmetricLinearDiscretor.apply(),
         )
 # dt_tr.print(short=True)

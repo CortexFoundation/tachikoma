@@ -22,3 +22,8 @@ def export_model_to_onnx():
     )
     print("onnx_model exported!")
 
+def print_dataLoader_first(data_loader):
+    for data, target in data_loader:
+        print(data, data.shape, target.tolist())
+        break
+    #sys.exit(-1)

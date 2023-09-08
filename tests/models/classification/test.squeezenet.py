@@ -21,7 +21,7 @@ data_shape = (batch_size,) + image_shape
 def load_model_from_torch() -> (ir.IRModule, ParametersT):
     from torchvision import models
 
-    model = models.squeezenet1_0()
+    model = models.squeezenet1_0(weights='DEFAULT')
     model = model.eval()
     input_data = torch.randn(data_shape)
     script_module = torch.jit.trace(model, [input_data]).eval()
