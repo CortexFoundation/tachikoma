@@ -3,6 +3,7 @@ import typing
 import tvm
 import numpy as np
 
+OpOutputT = typing.Union[tvm.nd.NDArray, list]
 ParametersT = typing.Dict[str, tvm.nd.NDArray]
 AttrsT = typing.Dict[str, typing.Any]
 

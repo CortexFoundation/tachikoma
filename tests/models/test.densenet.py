@@ -37,8 +37,10 @@ from tvm.mrt.trace import Trace
 from tvm.mrt.opns import *
 from tvm.mrt.symbol import *
 tr = Trace.from_expr(expr, params, model_name="densenet121")
-tr.checkpoint()
-tr.print(param_config={ "use_all": True, })
+#  tr = tr.subgraph(onames=["%6"])
+#  tr.checkpoint()
+#  tr.print(param_config={ "use_all": True, })
+tr.log()
 
 from tvm.mrt import fuse
 from tvm.mrt import op
@@ -47,42 +49,78 @@ fuse_tr = tr.checkpoint_transform(
         fuse.FuseBatchNorm.apply(),
         fuse.FuseAvgPool2D.apply(),
         fuse.FuseNaiveSoftmax.apply(),
+        fuse.FuseNaiveMathmatic.apply(),
+        fuse.FuseConstant.apply(),
         tr_name = "fuse",
-        # force=True,
+        #  force=True,
         )
+fuse_tr.log()
+
+from tvm.mrt.dataset_torch import TorchImageNet
+ds = TorchImageNet(
+        batch_size=batch_size,
+        img_size=image_shape[1:],)
+data, _ = ds.next()
+# fuse_tr.bind_dataset(ds)
 
 from tvm.mrt.calibrate import Calibrator, SymmetricMinMaxSampling
 
 calib_tr = fuse_tr.checkpoint_transform(
-        Calibrator.apply(random_config={
-            "enabled": True,
-            "absmax": 1.0, }),
+        Calibrator.apply(data=tvm.nd.array(data)),
         print_bf=True, print_af=True,
+        #  force=True,
 )
+calib_tr.log()
+# calib_tr.print()
+# print(type(calib_tr.symbol))
 
-from tvm.mrt.rules import slm
-from tvm.mrt.quantize import Quantizer
-
-dt_tr = calib_tr.checkpoint_transform(
+sample_tr = calib_tr.checkpoint_transform(
         SymmetricMinMaxSampling.apply(),
-        slm.SymmetricLinearDiscretor.apply(),
+        print_af=True, print_bf=True,
         )
-# dt_tr.print(short=True)
-dt_tr: Trace = dt_tr.checkpoint_transform(
-        Quantizer.apply(),
-        # print_bf=True, print_af=True,
-        # force=True,
-)
+sample_tr.log()
+
+#  fuse_tr = sample_tr.checkpoint_transform(
+#          fuse.FuseAvgPool2D.apply(),
+#          tr_name="fuse-avg-pool2d", force=True,
+#          )
+#  fuse_tr.log()
+#  sys.exit()
+
+from tvm.mrt.discrete import Discretor
+
+dis_tr = sample_tr.checkpoint_transform(
+        Discretor.apply(),
+        fuse.FuseConstant.apply(),
+        print_bf=True, print_af=True,
+        force=True,
+        )
+dis_tr.log()
 
 from tvm.mrt.fixed_point import FixPoint, Simulator
-sim_tr = dt_tr.checkpoint_transform(
-        Simulator.apply(),
-        # force=True,
+sim_tr = dis_tr.checkpoint_transform(
+        Simulator.apply(with_clip=False, with_round=False),
+        tr_name="sim",
+        force=True,
         )
+sim_tr.log()
+
+config = {
+        "device": tvm.runtime.cuda(1),
+        "target": tvm.target.cuda() }
+runtime.multiple_validate(
+        tr.populate(**config),
+        sample_tr.populate(**config),
+        sim_tr.populate(**config),
+        dataset=ds,
+        stats_type=stats.ClassificationOutput,
+        max_iter_num=20,
+)
+
 # sim_tr.log()
 # sim_tr.print(short=True)
 
-qt_tr = dt_tr.checkpoint_transform(
+qt_tr = dis_tr.checkpoint_transform(
         FixPoint.apply(),
         # print_bf = True, print_af = True,
         # force=True,

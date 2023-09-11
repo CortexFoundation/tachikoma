@@ -42,12 +42,10 @@ def run_executor(
     return [ rt_mod.get_output(i).numpy() \
             for i in range(rt_mod.get_num_outputs())]
 
-OutputDataType = typing.List[np.ndarray]
-
 def infer(expr: RelayExpr, params: ParametersT,
         device: tvm.runtime.Device = tvm.runtime.cpu(),
         target: tvm.target.Target = tvm.target.arm_cpu(),
-) -> OutputDataType:
+) -> OpOutputT:
     # target = tvm.target.cuda()
     # with tvm.transform.PassContext(opt_level=3):
     #     lib = relay.build_module.build(

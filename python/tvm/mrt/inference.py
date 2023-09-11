@@ -8,24 +8,25 @@ from .transform import WithParameters
 from . import runtime
 
 def run(sym: WithParameters,
-        args_data: typing.List[np.ndarray],
-) -> typing.Union[np.ndarray, list]:
+        args_data: typing.List[OpOutputT],
+) -> OpOutputT:
     assert sym.is_operator(), sym
-    assert [c.is_param() for c in sym.args]
+    #  assert [c.is_param() for c in sym.args]
 
     if sym.is_op(TUPLE_GET_ITEM):
-        return args_data[sym.parsed.index]
+        return args_data[0][sym.parsed.index]
     elif sym.is_op(REQUANT):
-        return sym.parsed.rescale * args_data[0]
+        return tvm.nd.array(sym.parsed.rescale * args_data[0].numpy())
 
     expr = symbol2expr(sym)
-    params = {c.name: tvm.nd.array(args_data[i]) \
-            for i, c in enumerate(sym.args)}
+    params = { c.name: args_data[i] for i, c in enumerate(sym.args) }
+    #  params = {c.name: tvm.nd.array(args_data[i]) \
+    #          for i, c in enumerate(sym.args)}
     out = runtime.infer(expr, params)
-    if isinstance(out, tvm.nd.NDArray):
-        out = out.numpy()
-    else:
-        out = [ o.numpy() for o in out ]
+    #  if isinstance(out, tvm.nd.NDArray):
+    #      out = out.numpy()
+    #  else:
+    #      out = [ o.numpy() for o in out ]
     return out
 
 def _mx_executor(sym: Symbol, inputs):

@@ -33,6 +33,11 @@ class WithScale(Symbol):
 ScaleRulesT = typing.Callable[[WithScale], typing.Any]
 _INFER_SCALE_RULES: typing.Dict[str, ScaleRulesT] = {}
 
+def register_scale_rules(*op_names, rule: ScaleRulesT = None):
+    assert rule is not None
+    for op in op_names:
+        _INFER_SCALE_RULES[op] = rule
+
 def scale_rules(*op_names):
     def _add_rules(f: ScaleRulesT):
         for op in op_names:
@@ -40,26 +45,22 @@ def scale_rules(*op_names):
         return f
     return _add_rules
 
-def _scale_index(s: WithScale, index: int):
+def scale_index(s: WithScale, index: int):
     return s.args[index].scale
 
-@scale_rules(TUPLE)
-def _scale_tuple(s: WithScale):
-    return [a.scale for a in s.args]
+#  @scale_rules(TUPLE)
+#  def scale_tuple(s: WithScale):
+#      return [a.scale for a in s.args]
 
-@scale_rules(TUPLE_GET_ITEM)
-def _scale_tuple_get_item(s: WithScale):
-    return s.args[0].scale[s.parsed.index]
+#  @scale_rules(TUPLE_GET_ITEM)
+#  def scale_tuple_get_item(s: WithScale):
+#      return s.args[0].scale[s.parsed.index]
 
-@scale_rules(CONV2D, DENSE, MUL)
-def _scale_nn(s: WithScale):
+def scale_nn(s: WithScale):
     return s.args[0].scale * s.args[1].scale
 
-@scale_rules(REQUANT, PCLIP, RS_PCLIP)
-@scale_rules(SUM,  RIGHT_SHIFT)
-@scale_rules(CLIP, SQUEEZE, RESHAPE, RELU, MAX_POOL2D)
-@scale_rules(ADD, SUB, BIAS_ADD)
-def _scale_identity(s: WithScale):
+#  @scale_rules(REQUANT, PCLIP, RS_PCLIP)
+def scale_identity(s: WithScale):
     return s.args[0].scale
 
 def infer_scale(symbol: WithScale):
@@ -70,7 +71,7 @@ def infer_scale(symbol: WithScale):
                     ) % sym.name
             return
         assert sym.op_name in _INFER_SCALE_RULES, (
-                "infer scale error for unknown op:%s"
+                "infer scale not support for op:%s"
                 ) % sym.op_name
         sym.scale = _INFER_SCALE_RULES[sym.op_name](sym)
         return sym

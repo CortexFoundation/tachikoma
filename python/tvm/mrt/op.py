@@ -14,7 +14,7 @@ def subgraph(symbol: Symbol, inames=[], onames=[]):
     out = []
     def _find(sym: Symbol):
         if sym.name in inames:
-            return sym.copy(op_name=VAR, args=[])
+            return as_variable(sym)
         elif sym.name in onames:
             out.append(sym)
 
@@ -23,11 +23,22 @@ def subgraph(symbol: Symbol, inames=[], onames=[]):
     out = out[0] if len(out) else tuple(*out)
     return out
 
-def retrieve_operator(symbol: Symbol) -> Symbol:
-    args = [ variable(a.name, a.shape, a.dtype) \
-            for a in symbol.args ]
-    return Symbol.base(symbol, args=args)
+def variable(name, shape, dtype) -> Symbol:
+    """ Create varible for symbol. """
+    return Symbol.from_dict({},
+            name=name, op_name = VAR,
+            args = [], extra_attrs = {
+                "shape": shape,
+                "dtype": dtype, })
 
+def as_variable(symbol: Symbol) -> Symbol:
+    return symbol.copy(op_name=VAR, args=[], attrs={
+        "shape": symbol.shape,
+        "dtype": symbol.dtype,
+        })
+
+def retrieve_operator(symbol: Symbol) -> Symbol:
+    return symbol.copy(args=[as_variable(c) for c in symbol.args])
 
 def infer_type(symbol: Symbol) -> Symbol:
     from tvm import relay, ir
@@ -40,7 +51,7 @@ def infer_type(symbol: Symbol) -> Symbol:
 
 @dataclass(repr=False)
 class InferType(Symbol):
-    def __post_init__(self):
+    def __call__(self):
         assert is_operator(self)
 
         if type(self) is InferType:
@@ -51,6 +62,7 @@ class InferType(Symbol):
         else:
             self.shape = self._infer_shape()
             self.dtype = self._infer_type()
+        return self
 
     def _infer_type(self):
         assert all([self.args[0].dtype == a.dtype \
@@ -68,14 +80,15 @@ def _new_op(op_name, *args,
         extra_attrs=None, **attrs) -> Symbol:
     return Symbol.from_dict({},
             name=N.n(), op_name=op_name,
-            args=args, attrs=attrs,
+            args=args or [], attrs=attrs or {},
             extra_attrs=extra_attrs or {})
 
-def _register_op(op_name,
+def _register_op(
+        op_name,
         infer_type: typing.Type[InferType] = InferType):
     def _op(*args, **attrs) -> Symbol:
         op = _new_op(op_name, *args, **attrs)
-        return infer_type.base(op)
+        return infer_type.base(op)()
     return _op
 
 Tuple = _register_op(TUPLE)
@@ -93,6 +106,8 @@ right_shift = _register_op(RIGHT_SHIFT)
 # astype = _register_op(AS_TYPE)
 cast = _register_op(CAST)
 #  flatten = _register_op(FLATTEN)
+
+repeat = _register_op(REPEAT)
 reshape = _register_op(RESHAPE)
 
 add = _register_op(ADD)
@@ -102,14 +117,6 @@ mul = _register_op(MUL)
 requant = _register_op(REQUANT, FirstLikeInferType)
 pclip = _register_op(PCLIP, FirstLikeInferType)
 rs_pclip = _register_op(RS_PCLIP, FirstLikeInferType)
-
-def variable(name, shape, dtype) -> Symbol:
-    """ Create varible for symbol. """
-    return Symbol.from_dict({},
-            name=name, op_name = VAR,
-            args = [], extra_attrs = {
-                "shape": shape,
-                "dtype": dtype, })
 
 def is_operator(symbol: Symbol, params: ParametersT = {}):
     return symbol.op_name != VAR

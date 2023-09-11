@@ -9,8 +9,8 @@ from .symbol import *
 from .utils import *
 from .calibrate import Sampling
 from .precision import WithPrecision, QuantizedInfo, infer_precision
-from .scaler import WithScale, infer_scale
-from .transform import Pass, Transformer
+from .scaler import *
+from .transform import Transformer
 
 __ALL__ = [
         "Discretor",
@@ -62,6 +62,7 @@ class QuantInfo(WithScale, WithPrecision, Sampling):
 
         if info not in self.requant_ops:
             curr_scale = self.scale if self.scale_defined else 1
+            #TODO: add pass to check rescale=1 and duplicate requant
             out = op.requant(
                     self,
                     rescale=scale/curr_scale,
@@ -72,7 +73,7 @@ class QuantInfo(WithScale, WithPrecision, Sampling):
             self.requant_ops[info] = out
         return self.requant_ops[info]
 
-RequantRulesT = typing.Callable[[QuantInfo], DiscreteInfo]
+RequantRulesT = typing.Callable[[QuantInfo], typing.List[DiscreteInfo]]
 """ Returns expected scale and precision.
 
     None, None indicate that none operation to requant.
@@ -81,65 +82,93 @@ _DISCRETE_REQUANT_RULES: typing.Dict[str, RequantRulesT] = {}
 OpRulesT = typing.Callable[[QuantInfo], Symbol]
 _DISCRETE_OP_RULES: typing.Dict[str, OpRulesT] = {}
 
-def requant_rules(*op_names):
-    def _add_rules(f: RequantRulesT):
-        for op in op_names:
-            _DISCRETE_REQUANT_RULES[op] = f
-        return f
-    return _add_rules
+_requant_identity = lambda s: [DiscreteInfo() for _ in s.args]
+_op_identity = lambda s: s
 
-def op_rules(*op_names):
-    def _add_rules(f: OpRulesT):
-        for op in op_names:
-            _DISCRETE_OP_RULES[op] = f
-        return f
-    return _add_rules
+def register_rules(*op_names,
+        requant_rule: RequantRulesT | None = None,
+        op_rule: OpRulesT | None = None,
+        scale_rule: ScaleRulesT | None = None):
+    for op in op_names:
+        if requant_rule is not None:
+            _DISCRETE_REQUANT_RULES[op] = requant_rule
+        if op_rule is not None:
+            _DISCRETE_OP_RULES[op] = op_rule
+        if scale_rule is not None:
+            register_scale_rules(op, rule=scale_rule)
 
-@requant_rules(MAX_POOL2D)
-@requant_rules(RELU, CLIP, RESHAPE, SQUEEZE)
-def _identity(s: QuantInfo):
-    return [DiscreteInfo() for c in s.args]
+def register_rules_with_default(*op_names,
+        requant_rule: RequantRulesT | None = None,
+        op_rule: OpRulesT | None = None,
+        scale_rule: ScaleRulesT | None = None):
+    return register_rules(*op_names,
+            requant_rule=requant_rule or _requant_identity,
+            op_rule=op_rule or _op_identity,
+            scale_rule=scale_rule or scale_identity)
 
-def syms_prec(syms: typing.List[QuantInfo], prec: int):
-    return [DiscreteInfo(precision=prec) for s in syms]
-def args_prec(s: QuantInfo, prec: int):
-    return syms_prec(s.args, prec)
+def args_max_prec(prec: int):
+    def _rule(s: QuantInfo):
+        return [DiscreteInfo(precision=prec) for _ in s.args]
+    return _rule
 
-requant_rules(VAR)(lambda s: 0)
-requant_rules(CONV2D, DENSE)(lambda s: args_prec(s, 8))
-requant_rules(MUL)(lambda s: args_prec(s, 8))
-requant_rules(SUM)(lambda s: args_prec(s, 10))
+register_rules_with_default(
+        CONV2D, DENSE, MUL,
+        requant_rule=args_max_prec(8),
+        scale_rule=scale_nn)
+register_rules_with_default(SUM, requant_rule=args_max_prec(10))
 
-@requant_rules(ADD, SUB, BIAS_ADD)
-def add_sub_rules(s: QuantInfo):
+def uniform_arg_scales(s: QuantInfo):
     std_prec = 15
     # standard max precision for add/sub children.
 
-    assert len(s.args) == 2
-    A: QuantInfo = s.args[0]
-    B: QuantInfo = s.args[1]
-    assert A.is_operator() or B.is_operator(), "need fuse constant"
-    if A.scale_defined and A.precision < std_prec:
-        scaleA = A.scale
-    else:
-        scaleA = A.precision_to_scale(std_prec)
+    assert len(s.args) > 0
+    #  raw_print(s)
+    assert any([c.is_operator() for c in s.args]), "Need fuse constant: %s" % s
+    scales = []
+    for arg in s.args:
+        if arg.scale_defined and arg.precision < std_prec:
+            scale = arg.scale
+        else:
+            scale = arg.precision_to_scale(std_prec)
+        scales.append(scale)
 
-    if B.scale_defined and B.precision < std_prec:
-        scaleB = B.scale
-    else:
-        scaleB = B.precision_to_scale(std_prec)
+    target_scale = min(scales)
+    return [DiscreteInfo(scale=target_scale) for c in s.args]
 
-    scale = min(scaleA, scaleB)
-    return [DiscreteInfo(scale=scale) for c in s.args]
+#  def uniform_add_sub_scales(s: QuantInfo):
+#      assert len(s.args) == 2
+#      A: QuantInfo = s.args[0]
+#      B: QuantInfo = s.args[1]
+#      assert A.is_operator() or B.is_operator(), "need fuse constant"
+#      if A.scale_defined and A.precision < std_prec:
+#          scaleA = A.scale
+#      else:
+#          scaleA = A.precision_to_scale(std_prec)
 
-@op_rules(CLIP)
-def _op_clip(s: QuantInfo):
+#      if B.scale_defined and B.precision < std_prec:
+#          scaleB = B.scale
+#      else:
+#          scaleB = B.precision_to_scale(std_prec)
+
+#      scale = min(scaleA, scaleB)
+#      return [DiscreteInfo(scale=scale) for c in s.args]
+
+register_rules_with_default(
+        ADD, SUB, BIAS_ADD, requant_rule=uniform_arg_scales)
+register_rules_with_default(
+        CONCAT, requant_rule=uniform_arg_scales)
+
+register_rules_with_default(
+        MAX_POOL2D, RELU, RESHAPE, SQUEEZE)
+
+def op_clip_rules(s: QuantInfo):
     scale = s.args[0].scale
     s.set_extra_attrs(
             a_min=s.parsed.a_min * scale,
             a_max=s.parsed.a_max * scale)
     return s.copy()
 
+register_rules_with_default(CLIP, op_rule=op_clip_rules)
 
 @dataclass(repr=False)
 class Discretor(QuantInfo):
@@ -174,25 +203,26 @@ class Discretor(QuantInfo):
 
         orig_names = [a.name for a in self.args]
 
+        assert self.op_name in _DISCRETE_REQUANT_RULES, (
+                "requant rules not support for op:{}"
+                ).format(self.op_name)
+        assert self.op_name in _DISCRETE_OP_RULES, (
+                "op rewrite rules not support for op:{}"
+                ).format(self.op_name)
+
         arg_dts = _DISCRETE_REQUANT_RULES[self.op_name](self)
-        #  print("arg dts:", [(a.scale, a.precision) for a in arg_dts])
         for i, arg in enumerate(self.args):
             self.args[i] = arg.rescale(arg_dts[i])
-            #  print(self.args[i])
 
-        out = self
-        if self.op_name in _DISCRETE_OP_RULES:
-            out = _DISCRETE_OP_RULES[self.op_name](out).like(self)
+        out = _DISCRETE_OP_RULES[self.op_name](self).like(self)
 
         new = op.subgraph(out, inames=[a.name for a in self.args])
-        raw_print(new)
+        #  raw_print(new)
         out.scale = infer_scale(new)
         out.precision = self.scale_to_precision(out.scale)
 
         out = op.pclip(out, precision=out.precision).like(
                 out, extra_attrs=out.extra_attrs)
-        #  out.set_extra_attrs(
-        #          data=self.data, scale=scale, precision=precision)
-        raw_print(op.subgraph(out, inames=orig_names))
+        #  raw_print(op.subgraph(out, inames=orig_names))
         return out
 

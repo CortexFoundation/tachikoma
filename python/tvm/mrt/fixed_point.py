@@ -9,7 +9,7 @@ from .precision import *
 from .utils import number_to_bits
 from .attrs import PClipAttrs, RequantAttrs
 from .symbol import filter_operators
-from .transform import Transformer, Pass
+from .transform import Transformer
 
 @dataclass(repr=False)
 class Simulator(Transformer, QuantizedInfo):

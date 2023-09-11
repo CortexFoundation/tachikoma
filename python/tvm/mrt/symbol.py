@@ -89,8 +89,13 @@ class _BaseSymbol:
         try:
             out = cls(**data)
         except Exception as e:
-            print(cls, list(data.keys()))
-            raise e
+            #  print(cls, list(data.keys()))
+            #  raise e
+            raise RuntimeError((
+                "Error for type:{} create from dict "
+                "op:{} name:{} attrs:{}"
+                ).format(get_class_name(cls),
+                    data["op_name"], data["name"], data["attrs"]))
         return out
     def to_dict(self, **kwargs) -> dict:
         data = dataclass_to_dict(self)
@@ -102,14 +107,25 @@ class _BaseSymbol:
         return data
 
     def __repr__(self, **attrs) -> str:
-        args_info = "({})".format(
-                ", ".join([i.name for i in self.args]))
-        oattrs = {k: v for k, v in self.attrs.items()}
-        oattrs.update(attrs)
-        oattrs.update(self.extra_attrs)
-        return "{:30} = {:>15}{:30} /* attrs */ {}".format(
-                self.name, self.op_name, args_info,
-                _format_printer(oattrs))
+        def _uniform(n: str, max_size: int) -> str:
+            if len(n) <= max_size:
+                return n
+            return "..." + n[3-max_size:]
+
+        arg_len = 40 - 2
+        if len(self.args) > 0:
+            arg_len = (arg_len-2*(len(self.args)-1)) // len(self.args)
+            arg_len = max(arg_len, 4)
+        args_info = "({})".format(", ".join(
+            [_uniform(i.name, arg_len) for i in self.args]))
+        #  oattrs = {k: v for k, v in self.attrs.items()}
+        #  oattrs.update(attrs)
+        #  oattrs.update(self.extra_attrs)
+        return "{:20} = {:>15}{:40} /* attrs */ {} | {}".format(
+                _uniform(self.name, 20),
+                self.op_name, args_info,
+                _format_printer(attrs),
+                _format_printer(sefl.extra_attrs))
 
 
 @dataclass
@@ -288,7 +304,7 @@ def filter_operators(*op_names: typing.List[str]):
     def _pass(f):
         @wraps(f)
         def _wrapper(sym: Symbol, *args, **kw) -> typing.Any:
-            if any([ sym.is_op(n) for n in op_names ]):
+            if sym.is_op(*op_names):
                 return f(sym, *args, **kw)
         return _wrapper
     return _pass

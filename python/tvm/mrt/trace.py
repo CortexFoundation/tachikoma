@@ -326,12 +326,14 @@ class Trace:
         tr_name = tr_name or callback.__name__
         new_params = {k: v for k, v in self.params.items()}
         def _tfm(sym: Symbol):
-            print_bf and print("[{}]<< {}".format(tr_name, sym))
+            print_bf and print("[{}]<< {}".format(
+                callback.__name__, sym))
             out = callback(sym, new_params)
-            print_af and print("[{}]>> {}".format(tr_name, out))
+            print_af and print("[{}]>> {}".format(
+                callback.__name__, out))
             return out
 
-        print("Apply transformer: {}".format(tr_name))
+        print("Apply transformer: {}".format(callback.__name__))
         with N(callback.__name__):
             new_symbol = transform(self.symbol, _tfm)
 

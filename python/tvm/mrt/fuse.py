@@ -11,6 +11,8 @@ from .utils import N
 from .transform import Transformer
 from .inference import np_executor, run
 
+# TODO: add op pass register map.
+
 class FuseDropout(Transformer):
     @filter_operators(DROP_OUT)
     def __call__(self):
@@ -20,13 +22,20 @@ class FuseConstant(Transformer):
     def __call__(self: Transformer):
         if self.is_operator() and all([c.is_param() for c in self.args]):
             #  print("fuse constant:", self)
-            data = inference.run(self, [c.numpy() for c in self.args])
+            data = inference.run(
+                    self, [c.ndarray() for c in self.args])
             return self.as_parameter(data)
-
-            #  inputs = [c.numpy() for c in self.args]
-            #  data = np_executor(self, inputs)
-            #  out = self.from_np_data(data)
-            #  return out
+        elif self.is_op(ADD, SUB, BIAS_ADD):
+            strips = []
+            for arg in self.args:
+                if arg.is_param() and np.abs(arg.numpy()).max() == 0:
+                    strips.append(arg)
+            args = [a for a in self.args if a not in strips]
+            if len(args) == 1:
+                return args[0]
+        elif self.is_op(REQUANT):
+            if self.parsed.rescale == 1:
+                return self.args[0]
 
 class FuseBatchNorm(Transformer):
     @filter_operators(BATCH_NORM)
@@ -78,7 +87,7 @@ class FuseBatchNorm(Transformer):
             W = X.from_np_data(gamma.reshape(reshp))
             out = op.mul(X, W)
 
-        B = self.from_np_data(bias)
+        B = out.like(self).from_np_data(bias)
         out = op.bias_add(out, B, axis=parsed.axis)
         return out.like(self)
 
@@ -91,19 +100,75 @@ class FuseTupleGetItem(Transformer):
         return X
 
 class FuseAvgPool2D(Transformer):
-    @filter_operators(GLOBAL_AVG_POOL2D)
     def __call__(self):
-        X = self.args[0]
-        parsed: GlobalAvgPool2DAttrs = self.parsed
+        out = self._fuse_adaptive_avg_pool2d()
+        out = out or self._fuse_avg_pool2d()
+        return out
+
+    @filter_operators(AVG_POOL2D)
+    def _fuse_avg_pool2d(self):
+        X: Transformer = self.args[0]
+        parsed: AvgPool2DAttrs = self.parsed
+        assert parsed.layout == "NCHW"
+        # TODO: ignore for unstrict mode
+        assert parsed.count_include_pad == True
+        attrs = {
+            "kernel_size": parsed.pool_size,
+            "strides": parsed.strides,
+            "padding": parsed.padding,
+            "dilation": parsed.dilation,
+            "data_layout": parsed.layout,
+            "groups": X.shape[1],
+            "channels": X.shape[1],
+            }
+        W_shape = (X.shape[1], 1, *parsed.pool_size)
+        W = X.from_np_data(np.full(
+            W_shape, 1 / product(parsed.pool_size)))
+        out = op.nn_conv2d(X, W, **attrs)
+        return out.like(self)
+
+
+    @filter_operators(ADAPTIVE_AVG_POOL2D)
+    def _fuse_adaptive_avg_pool2d(self):
+        X: Transformer = self.args[0]
+        parsed: AdaptiveAvgPool2DAttrs = self.parsed
+        assert parsed.layout == "NCHW"
+        ins = X.shape[2:]
+        ous = parsed.output_size or ins
+        if not isinstance(ous, (list, tuple)):
+            ous = (ous, ous)
+        parsed.output_size = ous
 
         assert len(X.shape) == 4
-        assert all([s == 1 for s in parsed.output_size])
-        assert parsed.layout == "NCHW"
-        scale = 1 / np.product(X.shape[-2:])
-        out = op.sum(X, axis=list(range(4))[-2:],
-                keepdims=True, exclude=False)
-        scale = self.from_np_data(scale.astype(X.dtype))
-        return op.mul(out, scale).like(self)
+        if all([s == 1 for s in parsed.output_size]):
+            scale = 1 / np.product(X.shape[-2:])
+            out = op.sum(X, axis=list(range(4))[-2:],
+                    keepdims=True, exclude=False)
+            scale = self.from_np_data(scale.astype(X.dtype))
+            return op.mul(out, scale).like(self)
+        elif ous[0] > ins[0] or ous[1] > ins[1]:
+            assert all([s == 1 for s in ins])
+            out = op.repeat(X, repeats=ous[0], axis=-2)
+            out = op.repeat(out, repeats=ous[1], axis=-1)
+            return out.like(self)
+
+        # calculate the attributes refers to:
+        # https://stackoverflow.com/questions/53841509/how-does-adaptive-pooling-in-pytorch-work
+        strides = [i // o for i, o in zip(ins, ous)]
+        kernel = [i-(o-1)*s for i, o, s in zip(ins, ous, strides)]
+        attrs = {
+            "kernel_size": kernel,
+            "strides": strides,
+            "padding": (0, 0),
+            "dilation": (1, 1),
+            "data_layout": parsed.layout,
+            "groups": X.shape[1],
+            "channels": X.shape[1],
+        }
+        W_shape = (X.shape[1], 1, *kernel)
+        W = X.from_np_data(np.full(W_shape, 1 / product(kernel)))
+        out = op.nn_conv2d(X, W, **attrs)
+        return out.like(self)
 
 class FuseNaiveSoftmax(Transformer):
     def __call__(self):

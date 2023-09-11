@@ -14,6 +14,7 @@ from tvm.mrt import runtime
 from tvm.mrt import stats, dataset
 from tvm.mrt import utils
 
+#TODO: error data threshold is too small.
 batch_size = 16
 image_shape = (3, 28, 28)
 data_shape = (batch_size,) + image_shape
@@ -52,9 +53,6 @@ from tvm.mrt.calibrate import Calibrator, SymmetricMinMaxSampling
 
 fuse_tr = tr.checkpoint_transform(
         fuse.FuseConstant.apply(),
-        #  fuse.FuseTupleGetItem.apply(),
-        #  fuse.FuseDropout.apply(),
-        #  fuse.FuseBatchNorm.apply(),
         tr_name = "fuse",
         force=True,
         )
@@ -75,35 +73,26 @@ ds = TorchImageNet(
         img_size=image_shape[1:],)
 data, _ = ds.next()
 
-#  calib_tr = fuse_tr.checkpoint_transform(
-#          Calibrator.apply(data=tvm.nd.array(data)),
-#          print_af=True,
-#          force=True,
-#  )
-
 fuse_tr = fuse_tr.checkpoint_transform(
         fuse.FuseTupleGetItem.apply(),
         fuse.FuseDropout.apply(),
         fuse.FuseBatchNorm.apply(),
         fuse.FuseNaiveMathmatic.apply(),
+        #  force=True,
         )
 fuse_tr.log()
 
 
 calib_tr = fuse_tr.checkpoint_transform(
         Calibrator.apply(data=tvm.nd.array(data)),
-        #  Calibrator.apply(random_config={
-        #      "enabled": True,
-        #      "absmax": 1.0, }),
         #  print_bf=True,
         print_af=True,
-        force=True,
+        #  force=True,
 )
 
 sample_tr = calib_tr.checkpoint_transform(
         SymmetricMinMaxSampling.apply(),
-        #  print_bf=True,
-        print_af=True,
+        #  print_bf=True, print_af=True,
         #  force=True,
         )
 sample_tr.log()
@@ -116,38 +105,24 @@ sample_tr.log()
 #          )
 #  prec_tr.log()
 
-from tvm.mrt.discrete import Discretor2
+from tvm.mrt.discrete import Discretor
 dis_tr = sample_tr.checkpoint_transform(
-        Discretor2.apply(),
-        print_bf=True, print_af=True,
+        Discretor.apply(),
+        fuse.FuseConstant.apply(),
+        #  print_bf=True, print_af=True,
         force=True,
         )
 dis_tr.log()
-sys.exit(0)
-
-
-from tvm.mrt.rules import slm
-from tvm.mrt.quantize import Quantizer
-
-dt_tr = calib_tr.checkpoint_transform(
-        slm.SymmetricLinearDiscretor.apply(),
-        )
-# dt_tr.print(short=True)
-dt_tr: Trace = dt_tr.checkpoint_transform(
-        Quantizer.apply(),
-        # print_bf=True, print_af=True,
-        # force=True,
-)
 
 from tvm.mrt.fixed_point import FixPoint, Simulator
-sim_tr = dt_tr.checkpoint_transform(
+sim_tr = dis_tr.checkpoint_transform(
         Simulator.apply(),
         # force=True,
         )
 # sim_tr.log()
 # sim_tr.print(short=True)
 
-qt_tr = dt_tr.checkpoint_transform(
+qt_tr = dis_tr.checkpoint_transform(
         FixPoint.apply(),
         # print_bf = True, print_af = True,
         # force=True,

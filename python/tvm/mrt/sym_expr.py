@@ -53,7 +53,10 @@ def expr2symbol(expr: RelayExpr) -> Symbol:
             name = node.name_hint or N.n(prefix="input_")
             symbol_map[node] = op.variable(name, shape, dtype)
         elif isinstance(node, relay.Call):
-            args = [symbol_map[i] for i in node.args]
+            if node.op.name == CONCAT:
+                args = [ symbol_map[f] for f in node.args[0].fields ]
+            else:
+                args = [symbol_map[i] for i in node.args]
             nattrs = node.attrs or {}
             attrs.update({k: nattrs[k] for k in nattrs.keys()})
             _format_containers(attrs)
@@ -91,10 +94,10 @@ def symbol2expr(symbol: Symbol, expr_map={}) -> RelayExpr:
                 "name_hint": sym.name,
             })
 
-        if sym.is_op(op.TUPLE):
+        if sym.is_op(TUPLE):
             out = relay.Tuple(args)
-        # elif sym.is_op(op.AS_TYPE):
-        #     out = args[0].astype(attrs["target"])
+        elif sym.is_op(CONCAT):
+            out = relay.concatenate(args, **attrs)
         else:
             try:
                 out = eval("relay." + sym.op_name)(*args, **attrs)
