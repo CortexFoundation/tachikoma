@@ -177,12 +177,13 @@ class FuseNaiveSoftmax(Transformer):
         assert self.is_variable() or not self.args[0].is_op(SOFTMAX, LOG_SOFTMAX)
         return self
 
-class FuseNaiveMathmatic(Transformer):
-    def __call__(self):
-        if self.is_op(BIAS_ADD):
-            X, B = self.args
-            if B.is_param() and np.abs(B.numpy()).max() == 0:
-                return X
+# move to fuse constant
+#  class FuseNaiveMathmatic(Transformer):
+#      def __call__(self):
+#          if self.is_op(BIAS_ADD):
+#              X, B = self.args
+#              if B.is_param() and np.abs(B.numpy()).max() == 0:
+#                  return X
 
 
 

@@ -94,6 +94,12 @@ def symbol2expr(symbol: Symbol, expr_map={}) -> RelayExpr:
                 "name_hint": sym.name,
             })
 
+        # tvm dropout output is not tuple.
+        #  if sym.is_op(TUPLE_GET_ITEM):
+        #      if sym.args[0].is_op(DROP_OUT):
+        #          expr_map[sym.name] = args[0]
+        #          return
+
         if sym.is_op(TUPLE):
             out = relay.Tuple(args)
         elif sym.is_op(CONCAT):

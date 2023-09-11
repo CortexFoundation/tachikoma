@@ -49,7 +49,7 @@ fuse_tr = tr.checkpoint_transform(
         fuse.FuseBatchNorm.apply(),
         fuse.FuseAvgPool2D.apply(),
         fuse.FuseNaiveSoftmax.apply(),
-        fuse.FuseNaiveMathmatic.apply(),
+        #  fuse.FuseNaiveMathmatic.apply(),
         fuse.FuseConstant.apply(),
         tr_name = "fuse",
         #  force=True,

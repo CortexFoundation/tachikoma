@@ -10,6 +10,27 @@ import torchvision as tv
 from .types import DataLabelT
 from . import dataset, utils
 
+class TorchWrapperDataset(dataset.Dataset):
+    def __init__(self, data_loader: DataLoader):
+        self._loader = data_loader
+        self._iter = iter(data_loader)
+        self._len = len(data_loader)
+
+    def reset(self):
+        self._iter = iter(data_loader)
+
+    def __len__(self):
+        return self._len
+
+    def next(self) -> typing.Optional[DataLabelT]:
+        try:
+            data, label = next(self._iter)
+            return data.numpy(), label.numpy()
+        except Exception as e:
+            #  raise e
+            print("error:", e)
+            return None, None
+
 class TorchImageNet(dataset.ImageNet):
     def __init__(self, batch_size = 1, img_size=(28, 28)):
         self._img_size = img_size

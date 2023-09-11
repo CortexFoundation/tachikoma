@@ -118,14 +118,14 @@ class _BaseSymbol:
             arg_len = max(arg_len, 4)
         args_info = "({})".format(", ".join(
             [_uniform(i.name, arg_len) for i in self.args]))
-        #  oattrs = {k: v for k, v in self.attrs.items()}
-        #  oattrs.update(attrs)
+        oattrs = {k: v for k, v in self.extra_attrs.items()}
+        oattrs.update(attrs)
         #  oattrs.update(self.extra_attrs)
-        return "{:20} = {:>15}{:40} /* attrs */ {} | {}".format(
+        return "{:>20} = {:>15}{:40} /* attrs */ {} | {}".format(
                 _uniform(self.name, 20),
                 self.op_name, args_info,
-                _format_printer(attrs),
-                _format_printer(self.extra_attrs))
+                _format_printer(self.attrs),
+                _format_printer(oattrs))
 
 
 @dataclass

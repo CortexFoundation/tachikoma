@@ -15,7 +15,7 @@ from tvm.mrt import utils
 
 #TODO: error data threshold is too small.
 batch_size = 16
-image_shape = (3, 28, 28)
+image_shape = (3, 256, 256)
 data_shape = (batch_size,) + image_shape
 
 def test_accuracy(model, test_loader):
@@ -35,23 +35,39 @@ def test_accuracy(model, test_loader):
         correct, len(test_loader.dataset),
         100. * correct / len(test_loader.dataset)))
 
-from tvm.mrt.dataset_torch import TorchImageNet
-ds = TorchImageNet(
-        batch_size=batch_size,
-        img_size=image_shape[1:],)
+from tvm.mrt.dataset_torch import TorchImageNet, TorchWrapperDataset
+#  ds = TorchImageNet(
+#          batch_size=batch_size,
+#          img_size=image_shape[1:],)
+#  data, _ = ds.next()
+
+import torchvision
+data_transform = torchvision.transforms.Compose([
+    torchvision.transforms.Resize(image_shape[-2:]),
+    torchvision.transforms.CenterCrop(224),
+    torchvision.transforms.ToTensor(),
+    torchvision.transforms.Normalize([0.485,0.456,0.406], [0.229,0.224,0.225])
+])
+dataset_ = torchvision.datasets.ImageFolder(
+        '~/.mxnet/datasets/imagenet/val',
+        transform=data_transform)
+test_loader = torch.utils.data.DataLoader(
+        dataset_, batch_size=batch_size)
+ds = TorchWrapperDataset(test_loader)
 data, _ = ds.next()
+#  test_accuracy(model, test_loader)
+# finish test eval.
 
 def load_model_from_torch() -> (ir.IRModule, ParametersT):
-    import torchvision
     model = torchvision.models.mobilenet_v2(weights='DEFAULT')
     model = model.eval()
     # begin test eval.
-    data_transform = torchvision.transforms.Compose([
-        torchvision.transforms.Resize(256),
-        torchvision.transforms.CenterCrop(224),
-        torchvision.transforms.ToTensor(),
-        torchvision.transforms.Normalize([0.485,0.456,0.406], [0.229,0.224,0.225])
-    ])
+    #  data_transform = torchvision.transforms.Compose([
+    #      torchvision.transforms.Resize(256),
+    #      torchvision.transforms.CenterCrop(224),
+    #      torchvision.transforms.ToTensor(),
+    #      torchvision.transforms.Normalize([0.485,0.456,0.406], [0.229,0.224,0.225])
+    #  ])
     #  dataset_ = torchvision.datasets.ImageFolder('~/.mxnet/datasets/imagenet/val', transform=data_transform)
     #  test_loader = torch.utils.data.DataLoader(dataset_)
     #  from utility import utility
@@ -71,11 +87,29 @@ expr: ir.RelayExpr = func.body
 from tvm.mrt.trace import Trace
 from tvm.mrt.opns import *
 from tvm.mrt.symbol import *
+
+with open("/tmp/expr.log", "w") as f:
+    f.write(str(expr))
+
 tr = Trace.from_expr(expr, params, model_name="mobilenet_v2")
 #  tr = tr.subgraph(onames=["%11"])
 tr.checkpoint()
 tr.log()
 #  tr.print(short=True, param_config={ "use_all": True, })
+
+with open("/tmp/expr-trans.log", "w") as f:
+    f.write(str(expr))
+
+config = {
+        "device": tvm.runtime.cuda(1),
+        "target": tvm.target.cuda() }
+runtime.multiple_validate(
+        tr.populate(**config),
+        dataset=ds,
+        stats_type=stats.ClassificationOutput,
+        max_iter_num=20,
+)
+sys.exit()
 
 from tvm.mrt import fuse
 from tvm.mrt import op
@@ -105,7 +139,7 @@ fuse_tr = fuse_tr.checkpoint_transform(
         fuse.FuseTupleGetItem.apply(),
         fuse.FuseDropout.apply(),
         fuse.FuseBatchNorm.apply(),
-        fuse.FuseNaiveMathmatic.apply(),
+        #  fuse.FuseNaiveMathmatic.apply(),
         #  force=True,
         )
 fuse_tr.log()
