@@ -35,6 +35,12 @@ def test_accuracy(model, test_loader):
         correct, len(test_loader.dataset),
         100. * correct / len(test_loader.dataset)))
 
+from tvm.mrt.dataset_torch import TorchImageNet
+ds = TorchImageNet(
+        batch_size=batch_size,
+        img_size=image_shape[1:],)
+data, _ = ds.next()
+
 def load_model_from_torch() -> (ir.IRModule, ParametersT):
     import torchvision
     model = torchvision.models.mobilenet_v2(weights='DEFAULT')
@@ -46,11 +52,11 @@ def load_model_from_torch() -> (ir.IRModule, ParametersT):
         torchvision.transforms.ToTensor(),
         torchvision.transforms.Normalize([0.485,0.456,0.406], [0.229,0.224,0.225])
     ])
-    dataset_ = torchvision.datasets.ImageFolder('~/.mxnet/datasets/imagenet/val', transform=data_transform)
-    test_loader = torch.utils.data.DataLoader(dataset_)
-    from utility import utility
-    utility.print_dataLoader_first(test_loader)
-    test_accuracy(model, test_loader)
+    #  dataset_ = torchvision.datasets.ImageFolder('~/.mxnet/datasets/imagenet/val', transform=data_transform)
+    #  test_loader = torch.utils.data.DataLoader(dataset_)
+    #  from utility import utility
+    #  utility.print_dataLoader_first(test_loader)
+    #  test_accuracy(model, test_loader)
     # finish test eval.
     input_data = torch.randn(data_shape)
     script_module = torch.jit.trace(model, [input_data]).eval()
@@ -94,12 +100,6 @@ fuse_tr = fuse_tr.checkpoint_transform(
         #  force=True,
         )
 fuse_tr.log()
-
-from tvm.mrt.dataset_torch import TorchImageNet
-ds = TorchImageNet(
-        batch_size=batch_size,
-        img_size=image_shape[1:],)
-data, _ = ds.next()
 
 fuse_tr = fuse_tr.checkpoint_transform(
         fuse.FuseTupleGetItem.apply(),
@@ -156,6 +156,18 @@ qt_tr = dis_tr.checkpoint_transform(
         # force=True,
 )
 qt_tr.print(short=False)
+
+config = {
+        "device": tvm.runtime.cuda(1),
+        "target": tvm.target.cuda() }
+runtime.multiple_validate(
+        tr.populate(**config),
+        sim_tr.populate(**config),
+        dataset=ds,
+        stats_type=stats.ClassificationOutput,
+        max_iter_num=20,
+)
+sys.exit()
 
 from tvm.mrt.zkml import circom, transformer, model as ZkmlModel
 

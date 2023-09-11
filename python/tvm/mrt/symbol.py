@@ -125,7 +125,7 @@ class _BaseSymbol:
                 _uniform(self.name, 20),
                 self.op_name, args_info,
                 _format_printer(attrs),
-                _format_printer(sefl.extra_attrs))
+                _format_printer(self.extra_attrs))
 
 
 @dataclass

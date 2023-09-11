@@ -263,6 +263,9 @@ def eval_single_image():
 #  eval_single_image()
 #  sys.exit(0)
 
+config = {
+        "device": tvm.runtime.cuda(1),
+        "target": tvm.target.cuda() }
 runtime.multiple_validate(
         tr.populate(**config),
         sim_tr.populate(**config),
@@ -273,3 +276,4 @@ runtime.multiple_validate(
         stats_type=stats.ClassificationOutput,
         max_iter_num=20,
 )
+sys.exit()
