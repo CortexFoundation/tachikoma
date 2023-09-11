@@ -4,7 +4,6 @@ ROOT = os.getcwd()
 sys.path.insert(0, os.path.join(ROOT, "python"))
 
 import numpy as np
-from PIL import Image
 import torch
 
 import tvm
@@ -14,15 +13,45 @@ from tvm.mrt import runtime
 from tvm.mrt import stats, dataset
 from tvm.mrt import utils
 
+#TODO: error data threshold is too small.
 batch_size = 16
-image_shape = (3, 32, 32)
+image_shape = (3, 28, 28)
 data_shape = (batch_size,) + image_shape
 
-def load_model_from_torch() -> (ir.IRModule, ParametersT):
-    from torchvision import models
+def test_accuracy(model, test_loader):
+    #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cpu")
+    model.eval()
+    correct = 0
+    iter_cnt = 0
+    with torch.no_grad():
+        for data, target in test_loader:
+            iter_cnt += 1
+            data, target = data.to(device), target.to(device)
+            output = torch.squeeze(model(data))
+            pred = torch.argmax(output).numpy()
+            correct += (pred == target.numpy())
+    print('\nTest set total: Accuracy: {}/{} ({}%)\n'.format(
+        correct, len(test_loader.dataset),
+        100. * correct / len(test_loader.dataset)))
 
-    model = models.densenet121()
+def load_model_from_torch() -> (ir.IRModule, ParametersT):
+    import torchvision
+    model = torchvision.models.mobilenet_v2(weights='DEFAULT')
     model = model.eval()
+    # begin test eval.
+    data_transform = torchvision.transforms.Compose([
+        torchvision.transforms.Resize(256),
+        torchvision.transforms.CenterCrop(224),
+        torchvision.transforms.ToTensor(),
+        torchvision.transforms.Normalize([0.485,0.456,0.406], [0.229,0.224,0.225])
+    ])
+    dataset_ = torchvision.datasets.ImageFolder('~/.mxnet/datasets/imagenet/val', transform=data_transform)
+    test_loader = torch.utils.data.DataLoader(dataset_)
+    from utility import utility
+    utility.print_dataLoader_first(test_loader)
+    test_accuracy(model, test_loader)
+    # finish test eval.
     input_data = torch.randn(data_shape)
     script_module = torch.jit.trace(model, [input_data]).eval()
     return tvm.relay.frontend.from_pytorch(
@@ -36,22 +65,32 @@ expr: ir.RelayExpr = func.body
 from tvm.mrt.trace import Trace
 from tvm.mrt.opns import *
 from tvm.mrt.symbol import *
-tr = Trace.from_expr(expr, params, model_name="densenet121")
-#  tr = tr.subgraph(onames=["%6"])
-#  tr.checkpoint()
-#  tr.print(param_config={ "use_all": True, })
+tr = Trace.from_expr(expr, params, model_name="mobilenet_v2")
+#  tr = tr.subgraph(onames=["%11"])
+tr.checkpoint()
 tr.log()
+#  tr.print(short=True, param_config={ "use_all": True, })
 
 from tvm.mrt import fuse
 from tvm.mrt import op
+from tvm.mrt.calibrate import Calibrator, SymmetricMinMaxSampling
+
+#  const_tr = tr.checkpoint_transform(
+#          force=True,)
+#  const_tr.log()
+
 fuse_tr = tr.checkpoint_transform(
-        fuse.FuseTupleGetItem.apply(),
-        fuse.FuseBatchNorm.apply(),
-        fuse.FuseAvgPool2D.apply(),
-        fuse.FuseNaiveSoftmax.apply(),
-        fuse.FuseNaiveMathmatic.apply(),
         fuse.FuseConstant.apply(),
         tr_name = "fuse",
+        force=True,
+        )
+fuse_tr.log()
+#  fuse_tr.print(short=True)
+
+fuse_tr = fuse_tr.checkpoint_transform(
+        fuse.FuseAvgPool2D.apply(),
+        fuse.FuseNaiveSoftmax.apply(),
+        tr_name = "fuse-post",
         #  force=True,
         )
 fuse_tr.log()
@@ -61,62 +100,53 @@ ds = TorchImageNet(
         batch_size=batch_size,
         img_size=image_shape[1:],)
 data, _ = ds.next()
-# fuse_tr.bind_dataset(ds)
 
-from tvm.mrt.calibrate import Calibrator, SymmetricMinMaxSampling
+fuse_tr = fuse_tr.checkpoint_transform(
+        fuse.FuseTupleGetItem.apply(),
+        fuse.FuseDropout.apply(),
+        fuse.FuseBatchNorm.apply(),
+        fuse.FuseNaiveMathmatic.apply(),
+        #  force=True,
+        )
+fuse_tr.log()
+
 
 calib_tr = fuse_tr.checkpoint_transform(
         Calibrator.apply(data=tvm.nd.array(data)),
-        print_bf=True, print_af=True,
+        #  print_bf=True,
+        print_af=True,
         #  force=True,
 )
-calib_tr.log()
-# calib_tr.print()
-# print(type(calib_tr.symbol))
 
 sample_tr = calib_tr.checkpoint_transform(
         SymmetricMinMaxSampling.apply(),
-        print_af=True, print_bf=True,
+        #  print_bf=True, print_af=True,
+        #  force=True,
         )
 sample_tr.log()
 
-#  fuse_tr = sample_tr.checkpoint_transform(
-#          fuse.FuseAvgPool2D.apply(),
-#          tr_name="fuse-avg-pool2d", force=True,
+#  from tvm.mrt.precision import PrecisionAnnotator
+
+#  prec_tr = sample_tr.checkpoint_transform(
+#          PrecisionAnnotator.apply(),
+#          print_bf=True, print_af=True,
 #          )
-#  fuse_tr.log()
-#  sys.exit()
+#  prec_tr.log()
 
 from tvm.mrt.discrete import Discretor
-
 dis_tr = sample_tr.checkpoint_transform(
         Discretor.apply(),
         fuse.FuseConstant.apply(),
-        print_bf=True, print_af=True,
+        #  print_bf=True, print_af=True,
         force=True,
         )
 dis_tr.log()
 
 from tvm.mrt.fixed_point import FixPoint, Simulator
 sim_tr = dis_tr.checkpoint_transform(
-        Simulator.apply(with_clip=False, with_round=False),
-        tr_name="sim",
-        force=True,
+        Simulator.apply(),
+        # force=True,
         )
-sim_tr.log()
-
-config = {
-        "device": tvm.runtime.cuda(1),
-        "target": tvm.target.cuda() }
-runtime.multiple_validate(
-        tr.populate(**config),
-        sample_tr.populate(**config),
-        sim_tr.populate(**config),
-        dataset=ds,
-        stats_type=stats.ClassificationOutput,
-        max_iter_num=20,
-)
-
 # sim_tr.log()
 # sim_tr.print(short=True)
 

@@ -5,7 +5,6 @@ sys.path.insert(0, os.path.join(ROOT, "python"))
 
 import numpy as np
 from PIL import Image
-import torch
 
 import tvm
 from tvm import ir
@@ -15,13 +14,14 @@ from tvm.mrt import stats, dataset
 from tvm.mrt import utils
 
 batch_size = 16
-image_shape = (3, 32, 32)
+image_shape = (3, 28, 28)
 data_shape = (batch_size,) + image_shape
 
 def load_model_from_torch() -> (ir.IRModule, ParametersT):
+    import torch
     from torchvision import models
 
-    model = models.vgg11()
+    model = models.resnet18(weights='DEFAULT')
     model = model.eval()
     input_data = torch.randn(data_shape)
     script_module = torch.jit.trace(model, [input_data]).eval()
@@ -36,7 +36,7 @@ expr: ir.RelayExpr = func.body
 from tvm.mrt.trace import Trace
 from tvm.mrt.opns import *
 from tvm.mrt.symbol import *
-tr = Trace.from_expr(expr, params, model_name="vgg11")
+tr = Trace.from_expr(expr, params, model_name="resnet18")
 tr.checkpoint()
 tr.print(param_config={ "use_all": True, })
 
@@ -46,7 +46,6 @@ fuse_tr = tr.checkpoint_transform(
         fuse.FuseTupleGetItem.apply(),
         fuse.FuseBatchNorm.apply(),
         fuse.FuseAvgPool2D.apply(),
-        fuse.FuseNaiveSoftmax.apply(),
         tr_name = "fuse",
         # force=True,
         )
@@ -99,6 +98,7 @@ symbol, params = transformer.change_name(symbol, params)
 # set input as params
 symbol_first = ZkmlModel.visit_first(symbol)
 #print(">>> before circom gen ...", symbol_first, symbol_first.is_input(), symbol_first.is_param())
+import torch
 input_data = torch.randint(255, image_shape)
 params[symbol_first.name] = input_data
 circom_out, circom_gen_map = transformer.model2circom(symbol, params)

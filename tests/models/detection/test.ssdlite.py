@@ -15,16 +15,17 @@ from tvm.mrt import stats, dataset
 from tvm.mrt import utils
 
 batch_size = 16
-image_shape = (3, 36, 36)
+image_shape = (1, 28, 28)
 data_shape = (batch_size,) + image_shape
 
 def load_model_from_torch() -> (ir.IRModule, ParametersT):
     from torchvision import models
 
-    model = models.efficientnet_b2()
+    model = models.detection.ssdlite320_mobilenet_v3_large(weights='DEFAULT')
     model = model.eval()
     input_data = torch.randn(data_shape)
-    script_module = torch.jit.trace(model, [input_data]).eval()
+    script_module = torch.jit.trace(model, [input_data])
+    script_module = script_module.eval()
     return tvm.relay.frontend.from_pytorch(
             script_module, [ ("input", data_shape) ])
 
@@ -36,7 +37,7 @@ expr: ir.RelayExpr = func.body
 from tvm.mrt.trace import Trace
 from tvm.mrt.opns import *
 from tvm.mrt.symbol import *
-tr = Trace.from_expr(expr, params, model_name="efficientnet_b2")
+tr = Trace.from_expr(expr, params, model_name="ssdlite")
 tr.checkpoint()
 tr.print(param_config={ "use_all": True, })
 

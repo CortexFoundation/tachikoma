@@ -14,15 +14,14 @@ from tvm.mrt import runtime
 from tvm.mrt import stats, dataset
 from tvm.mrt import utils
 
-#TODO: error data threshold is too small.
 batch_size = 16
-image_shape = (3, 28, 28)
+image_shape = (3, 32, 32)
 data_shape = (batch_size,) + image_shape
 
 def load_model_from_torch() -> (ir.IRModule, ParametersT):
     from torchvision import models
 
-    model = models.mobilenet_v2()
+    model = models.densenet121(weights='DEFAULT')
     model = model.eval()
     input_data = torch.randn(data_shape)
     script_module = torch.jit.trace(model, [input_data]).eval()
@@ -37,32 +36,22 @@ expr: ir.RelayExpr = func.body
 from tvm.mrt.trace import Trace
 from tvm.mrt.opns import *
 from tvm.mrt.symbol import *
-tr = Trace.from_expr(expr, params, model_name="mobilenet_v2")
-#  tr = tr.subgraph(onames=["%11"])
-tr.checkpoint()
+tr = Trace.from_expr(expr, params, model_name="densenet121")
+#  tr = tr.subgraph(onames=["%6"])
+#  tr.checkpoint()
+#  tr.print(param_config={ "use_all": True, })
 tr.log()
-#  tr.print(short=True, param_config={ "use_all": True, })
 
 from tvm.mrt import fuse
 from tvm.mrt import op
-from tvm.mrt.calibrate import Calibrator, SymmetricMinMaxSampling
-
-#  const_tr = tr.checkpoint_transform(
-#          force=True,)
-#  const_tr.log()
-
 fuse_tr = tr.checkpoint_transform(
-        fuse.FuseConstant.apply(),
-        tr_name = "fuse",
-        force=True,
-        )
-fuse_tr.log()
-#  fuse_tr.print(short=True)
-
-fuse_tr = fuse_tr.checkpoint_transform(
+        fuse.FuseTupleGetItem.apply(),
+        fuse.FuseBatchNorm.apply(),
         fuse.FuseAvgPool2D.apply(),
         fuse.FuseNaiveSoftmax.apply(),
-        tr_name = "fuse-post",
+        fuse.FuseNaiveMathmatic.apply(),
+        fuse.FuseConstant.apply(),
+        tr_name = "fuse",
         #  force=True,
         )
 fuse_tr.log()
@@ -72,53 +61,62 @@ ds = TorchImageNet(
         batch_size=batch_size,
         img_size=image_shape[1:],)
 data, _ = ds.next()
+# fuse_tr.bind_dataset(ds)
 
-fuse_tr = fuse_tr.checkpoint_transform(
-        fuse.FuseTupleGetItem.apply(),
-        fuse.FuseDropout.apply(),
-        fuse.FuseBatchNorm.apply(),
-        fuse.FuseNaiveMathmatic.apply(),
-        #  force=True,
-        )
-fuse_tr.log()
-
+from tvm.mrt.calibrate import Calibrator, SymmetricMinMaxSampling
 
 calib_tr = fuse_tr.checkpoint_transform(
         Calibrator.apply(data=tvm.nd.array(data)),
-        #  print_bf=True,
-        print_af=True,
+        print_bf=True, print_af=True,
         #  force=True,
 )
+calib_tr.log()
+# calib_tr.print()
+# print(type(calib_tr.symbol))
 
 sample_tr = calib_tr.checkpoint_transform(
         SymmetricMinMaxSampling.apply(),
-        #  print_bf=True, print_af=True,
-        #  force=True,
+        print_af=True, print_bf=True,
         )
 sample_tr.log()
 
-#  from tvm.mrt.precision import PrecisionAnnotator
-
-#  prec_tr = sample_tr.checkpoint_transform(
-#          PrecisionAnnotator.apply(),
-#          print_bf=True, print_af=True,
+#  fuse_tr = sample_tr.checkpoint_transform(
+#          fuse.FuseAvgPool2D.apply(),
+#          tr_name="fuse-avg-pool2d", force=True,
 #          )
-#  prec_tr.log()
+#  fuse_tr.log()
+#  sys.exit()
 
 from tvm.mrt.discrete import Discretor
+
 dis_tr = sample_tr.checkpoint_transform(
         Discretor.apply(),
         fuse.FuseConstant.apply(),
-        #  print_bf=True, print_af=True,
+        print_bf=True, print_af=True,
         force=True,
         )
 dis_tr.log()
 
 from tvm.mrt.fixed_point import FixPoint, Simulator
 sim_tr = dis_tr.checkpoint_transform(
-        Simulator.apply(),
-        # force=True,
+        Simulator.apply(with_clip=False, with_round=False),
+        tr_name="sim",
+        force=True,
         )
+sim_tr.log()
+
+config = {
+        "device": tvm.runtime.cuda(1),
+        "target": tvm.target.cuda() }
+runtime.multiple_validate(
+        tr.populate(**config),
+        sample_tr.populate(**config),
+        sim_tr.populate(**config),
+        dataset=ds,
+        stats_type=stats.ClassificationOutput,
+        max_iter_num=20,
+)
+
 # sim_tr.log()
 # sim_tr.print(short=True)
 
