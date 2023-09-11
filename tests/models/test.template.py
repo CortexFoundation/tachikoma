@@ -39,7 +39,7 @@ def load_model_from_mx() -> (ir.IRModule, ParametersT):
     return relay.frontend.from_mxnet(symbol, arg_params=params)
 
 batch_size = 16
-image_shape = (3, 224, 224) # TODO: change the model's input shape
+image_shape = (3, 112, 112) # TODO: change the model's input shape
 data_shape = (batch_size,) + image_shape
 
 # TODO: set the dataset for target model
@@ -48,7 +48,7 @@ import torch
 import torchvision as tv
 data_transform = tv.transforms.Compose([
     tv.transforms.Resize(256),
-    tv.transforms.CenterCrop(224),
+    tv.transforms.CenterCrop(image_shape[1]),
     tv.transforms.ToTensor(),
     tv.transforms.Normalize(
         [0.485,0.456,0.406], [0.229,0.224,0.225])
@@ -77,7 +77,8 @@ config = {
 #  model = getattr(tv.models, model_name)(
 #          weights=tv.models.ResNet18_Weights.IMAGENET1K_V1)
 model_name = "mobilenet_v2"
-model = getattr(tv.models, model_name)(weights="DEFAULT")
+#  model = getattr(tv.models, model_name)(weights="DEFAULT")
+model = getattr(tv.models, model_name)()
 model = model.eval()
 input_data = torch.randn(data_shape)
 script_module = torch.jit.trace(model, [input_data]).eval()
@@ -95,7 +96,7 @@ tr = Trace.from_expr(expr, params, model_name=model_name)
 tr.checkpoint()
 tr.log()
 
-# TODO: test model inference accuracy
+# TODO: test model inference accuracy, uncomment this if don't need.
 runtime.multiple_validate(
         tr.populate(**config),
         dataset=ds,
