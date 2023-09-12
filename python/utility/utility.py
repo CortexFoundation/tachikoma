@@ -1,6 +1,6 @@
 # benchFileOut = open("benchFileOut.log","a")
 # benchFileOut.write("\nTest_Title\n")
-def dotBenchTime(benchFileOut, stime, label):
+def dot_bench_time(benchFileOut, stime, label):
     import time
     etime = time.time()
     print("{}:".format(label), etime - stime)
@@ -8,6 +8,12 @@ def dotBenchTime(benchFileOut, stime, label):
     return etime
 # benchFileOut.flush()
 # benchFileOut.close()
+
+def print_model_flops_params(model, input_data):
+    import thop
+    flops, params = thop.profile(model, inputs=input_data)
+    print('FLOPs = ' + str(flops/1000**3) + 'G')
+    print('Params = ' + str(params/1000**2) + 'M')
 
 def export_model_to_onnx():
     import torch

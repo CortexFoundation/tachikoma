@@ -14,8 +14,8 @@ from tvm.mrt import stats, dataset
 from tvm.mrt import utils
 
 #TODO: error data threshold is too small.
-batch_size = 16
-image_shape = (3, 256, 256)
+batch_size = 1
+image_shape = (3, 224, 224)
 data_shape = (batch_size,) + image_shape
 
 def test_accuracy(model, test_loader):
@@ -31,6 +31,7 @@ def test_accuracy(model, test_loader):
             output = torch.squeeze(model(data))
             pred = torch.argmax(output).numpy()
             correct += (pred == target.numpy())
+
     print('\nTest set total: Accuracy: {}/{} ({}%)\n'.format(
         correct, len(test_loader.dataset),
         100. * correct / len(test_loader.dataset)))
@@ -48,6 +49,7 @@ data_transform = torchvision.transforms.Compose([
     torchvision.transforms.ToTensor(),
     torchvision.transforms.Normalize([0.485,0.456,0.406], [0.229,0.224,0.225])
 ])
+data_transform = torchvision.models.MobileNet_V2_Weights.IMAGENET1K_V1.transforms()
 dataset_ = torchvision.datasets.ImageFolder(
         '~/.mxnet/datasets/imagenet/val',
         transform=data_transform)
@@ -75,6 +77,7 @@ def load_model_from_torch() -> (ir.IRModule, ParametersT):
     #  test_accuracy(model, test_loader)
     # finish test eval.
     input_data = torch.randn(data_shape)
+    input_data = data_transform(input_data)
     script_module = torch.jit.trace(model, [input_data]).eval()
     return tvm.relay.frontend.from_pytorch(
             script_module, [ ("input", data_shape) ])
@@ -109,7 +112,7 @@ runtime.multiple_validate(
         stats_type=stats.ClassificationOutput,
         max_iter_num=20,
 )
-sys.exit()
+#sys.exit()
 
 from tvm.mrt import fuse
 from tvm.mrt import op
@@ -201,7 +204,7 @@ runtime.multiple_validate(
         stats_type=stats.ClassificationOutput,
         max_iter_num=20,
 )
-sys.exit()
+#sys.exit()
 
 from tvm.mrt.zkml import circom, transformer, model as ZkmlModel
 

@@ -63,7 +63,7 @@ def map_component(sym: Symbol) -> CircomGenerator:
         "mul_scalar": "MulScalar",
         "add_scalar": "AddScalar",
         "subtract_scalar": "SubScalar",
-        "clip": "Clip",
+        "clip": "Clip{}D".format(len(sym.shape)),
 
         "multiply": "MulScalar",
         "right_shift": "RightShift",
@@ -136,6 +136,7 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
             shape_pad[2] = shape_pad[2] + padding[2] + padding[3]
             attrs_pad["shape"] = shape_pad
             sym_pad.attrs = attrs_pad
+            sym_pad.shape = shape_pad
             inputs_pad = [inputs[0]]
             sym_pad.args = inputs_pad
 
@@ -146,6 +147,7 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
 
             sym.args[0] = sym_pad
             sym.attrs["shape"] = attrs["shape"]
+            sym.shape = attrs["shape"]
             sym.attrs["padding"] = [0]
             # start generate map
             attrs = get_merged_attrs(sym)
@@ -170,6 +172,7 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
                 sym_fl.name = name+"_flatten"
                 sym_fl.op_name = "flatten"
                 sym_fl.attrs["shape"] = [attrs["shape"][0]]
+                sym_fl.shape = [attrs["shape"][0]]
                 # start generate map
                 attrs_fl = get_merged_attrs(sym_fl)
                 inputs_fl = [generator_map[i.name] for i in sym_fl.args]
@@ -179,6 +182,7 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
                 # process reshape op
                 sym_rs = sym.copy(args=[sym_fl])
                 sym_rs.attrs["shape"] = attrs["shape"]
+                sym_rs.shape = attrs["shape"]
 
             # start generate map
             attrs = get_merged_attrs(sym_rs)
@@ -209,6 +213,7 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
                 sym.attrs["a_max"] = abs(int(np.power(2, precision-1)-1))
                 sym.attrs["a_min"] = -1 * sym.attrs["a_max"]
                 sym.attrs["shape"] = sym.args[0].shape
+                sym.shape = sym.args[0].shape
                 # start generate map
                 attrs = get_merged_attrs(sym)
                 inputs = [generator_map[i.name] for i in sym.args]
@@ -224,6 +229,7 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
                 # start generate map
                 attrs_flatten = get_merged_attrs(sym_flatten)
                 attrs_flatten["shape"] = [int(np.prod(sym.args[0].shape))]
+                sym_flatten.shape = attrs_flatten["shape"]
                 inputs = [generator_map[i.name] for i in sym_flatten.args]
                 gen = map_component(sym_flatten)(sym_flatten.name, inputs, attrs_flatten)
                 circom_ops.add(gen.comp.op_name)
@@ -234,8 +240,9 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
                 sym_clip.op_name = "clip"
                 sym_clip.name = name+"_clip"
                 precision = sym.attrs["precision"]
-                # todo calculate
+                # MARK: all convert sym.shape = xxx
                 sym_clip.attrs["shape"] = attrs_flatten["shape"]
+                sym_clip.shape = attrs_flatten["shape"]
                 sym_clip.attrs["a_max"] = abs(int(np.power(2, precision-1)-1))
                 sym_clip.attrs["a_min"] = -1 * sym_clip.attrs["a_max"]
                 attrs_clip = get_merged_attrs(sym_clip)
@@ -250,6 +257,7 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
                 sym_reshape.name = name
                 sym_reshape.op_name = "reshape"
                 sym_reshape.attrs["shape"] = sym_flatten.args[0].shape
+                sym_reshape.shape = sym_flatten.args[0].shape
                 # start generate map
                 attrs_reshape = get_merged_attrs(sym_reshape)
                 inputs = [generator_map[i.name] for i in sym_reshape.args]
@@ -271,6 +279,7 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
                 sym_flatten.name = name+"_flatten"
                 sym_flatten.op_name = "flatten"
                 sym_flatten.attrs["shape"] = [int(np.prod(sym.args[0].shape))]
+                sym_flatten.shape = [int(np.prod(sym.args[0].shape))]
                 # start generate map
                 attrs_flatten = get_merged_attrs(sym_flatten)
                 inputs = [generator_map[i.name] for i in sym_flatten.args]
@@ -295,6 +304,7 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
                 sym_reshape.name = name
                 sym_reshape.op_name = "reshape"
                 sym_reshape.attrs["shape"] = sym_flatten.args[0].shape
+                sym_reshape.shape = sym_flatten.args[0].shape
                 # start generate map
                 attrs_reshape = get_merged_attrs(sym_reshape)
                 inputs = [generator_map[i.name] for i in sym_reshape.args]

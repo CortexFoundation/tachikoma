@@ -61,7 +61,7 @@ template ReLU3D (c,h,w) {
     }
 }
 
-template Clip(iShape, min, max) {
+template Clip1D(iShape, min, max) {
     signal input in[iShape];
     signal output out[iShape];
 
@@ -96,29 +96,71 @@ template Clip(iShape, min, max) {
     }
 }
 
-/*
-template Clip(iShape, min, max) {
-    signal input in[iShape];
-    signal output out[iShape];
+template Clip2D(iShape, H, min, max) {
+    signal input in[iShape][H];
+    signal output out[iShape][H];
 
+    component ltmin[iShape][H];
+    component swmin[iShape][H];
+    component ltmax[iShape][H];
+    component swmax[iShape][H];
     for (var i=0; i < iShape; i++) {
-        component compMin = CompConstant(min);
-        compMin.in <== in[i];
+        for (var j=0; j < H; j++) {
+            ltmin[i][j] = LessThan_Full();
+            ltmin[i][j].a <== in[i][j];
+            ltmin[i][j].b <== min;
 
-        switcherMin = Switcher();
-        switcher.sel <== compMin.out;
-        switcher.L <== min;
-        switcher.R <== in[i];
+            swmin[i][j] = Switcher();
+            swmin[i][j].sel <== ltmin[i][j].out;
+            swmin[i][j].L <== in[i][j];
+            swmin[i][j].R <== min;
 
-        component compMax = CompConstant(max);
-        compMax.in <== switcher.outL;
+            ltmax[i][j] = LessThan_Full();
+            ltmax[i][j].a <== swmin[i][j].outL;
+            ltmax[i][j].b <== max;
 
-        switcherMax = Switcher();
-        switcherMax.sel = compMax.out;
-        switcher.L <== in[i];
-        switcher.R <== max;
+            swmax[i][j] = Switcher();
+            swmax[i][j].sel <== ltmax[i][j].out;
+            swmax[i][j].L <== max;
+            swmax[i][j].R <== swmin[i][j].outL;
 
-        out[i] <== switcher.outL;
+            out[i][j] <== swmax[i][j].outL;
+        }
     }
 }
-*/
+
+template Clip3D(iShape, H, W, min, max) {
+    signal input in[iShape][H][W];
+    signal output out[iShape][H][W];
+
+    component ltmin[iShape][H][W];
+    component swmin[iShape][H][W];
+    component ltmax[iShape][H][W];
+    component swmax[iShape][H][W];
+    for (var i=0; i < iShape; i++) {
+        for (var j=0; j < H; j++) {
+            for (var k=0; k < W; k++) {
+                ltmin[i][j][k] = LessThan_Full();
+                ltmin[i][j][k].a <== in[i][j][k];
+                ltmin[i][j][k].b <== min;
+
+                swmin[i][j][k] = Switcher();
+                swmin[i][j][k].sel <== ltmin[i][j][k].out;
+                swmin[i][j][k].L <== in[i][j][k];
+                swmin[i][j][k].R <== min;
+
+                ltmax[i][j][k] = LessThan_Full();
+                ltmax[i][j][k].a <== swmin[i][j][k].outL;
+                ltmax[i][j][k].b <== max;
+
+                swmax[i][j][k] = Switcher();
+                swmax[i][j][k].sel <== ltmax[i][j][k].out;
+                swmax[i][j][k].L <== max;
+                swmax[i][j][k].R <== swmin[i][j][k].outL;
+
+                out[i][j][k] <== swmax[i][j][k].outL;
+            }
+        }
+    }
+}
+

@@ -70,12 +70,13 @@ class OutputGenerator(CircomGenerator):
 class OperatorGenerator(CircomGenerator):
     def apply(self):
         input_shapes = [inp.shape for inp in self.inputs]
-        # check input shape dimensions match
+        # check input shape dimensions match operators in cirom circuit operator
         # print(self.comp.input_dims, input_shapes, self.info(), self.comp.input_names)
 
         assert len(self.comp.input_names) == len(self.inputs)
         # op dim contains 1-dim batch, not support in circom circuits
         for shape in zip(self.comp.input_dims, input_shapes):
+            # model input shape dimensions should match cirom circuit operator shape
             assert shape[0] == len(shape[1]), (
                 "{}({}) shape dim not matched, "
                 "{} vs. {}, maybe apply shape-adaptor pass."
@@ -87,7 +88,7 @@ class OperatorGenerator(CircomGenerator):
                     self.comp.input_names, input_shapes) ]
 
         args = self.arguments()
-        # all arguments must be integers.
+        # all arguments of circom circuit must be integers.
         assert all([isinstance(a, int) for a in args]), self.info()
         self.circom_args = ", ".join([
             str(s) for s in self.arguments()])
@@ -313,9 +314,19 @@ class Squeeze_CHWGenerator(OperatorGenerator):
         assert(len(iShape)==3 and iShape[1]==1 and iShape[2]==1)
         return [ *self.inputs[0].shape ]
 
-class ClipGenerator(OperatorGenerator):
+class Clip1DGenerator(OperatorGenerator):
     def arguments(self):
         return [ self.shape[0],
                 self.attrs["a_min"], self.attrs["a_max"] ]
 
+class Clip2DGenerator(OperatorGenerator):
+    def arguments(self):
+        return [ self.shape[0], self.shape[1],
+                self.attrs["a_min"], self.attrs["a_max"] ]
 
+class Clip3DGenerator(OperatorGenerator):
+    def arguments(self):
+        return [ self.shape[0], self.shape[1], self.shape[2],
+    # TODO: add shape adapter!!!
+    # TODO: all convert to int after mrt!!!
+                int(self.attrs["a_min"]), int(self.attrs["a_max"]) ]

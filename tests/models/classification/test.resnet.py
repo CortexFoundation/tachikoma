@@ -19,11 +19,12 @@ data_shape = (batch_size,) + image_shape
 
 def load_model_from_torch() -> (ir.IRModule, ParametersT):
     import torch
-    from torchvision import models
+    import torchvision
 
-    model = models.resnet18(weights='DEFAULT')
+    model = torchvision.models.resnet18(weights='DEFAULT')
     model = model.eval()
-    input_data = torch.randn(data_shape)
+    data_transform = torchvision.models.ResNet18_Weights.IMAGENET1K_V1.transforms()
+    input_data = data_transform(torch.randn(data_shape))
     script_module = torch.jit.trace(model, [input_data]).eval()
     return tvm.relay.frontend.from_pytorch(
             script_module, [ ("input", data_shape) ])

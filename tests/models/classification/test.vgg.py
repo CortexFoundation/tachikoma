@@ -15,15 +15,15 @@ from tvm.mrt import stats, dataset
 from tvm.mrt import utils
 
 batch_size = 16
-image_shape = (3, 32, 32)
+image_shape = (3, 224, 224)
 data_shape = (batch_size,) + image_shape
 
 def load_model_from_torch() -> (ir.IRModule, ParametersT):
-    from torchvision import models
-
-    model = models.vgg11(weights='DEFAULT')
+    import torchvision
+    model = torchvision.models.vgg11(weights='DEFAULT')
     model = model.eval()
-    input_data = torch.randn(data_shape)
+    data_transform = torchvision.models.VGG11_Weights.IMAGENET1K_V1.transforms()
+    input_data = data_transform(torch.randn(data_shape))
     script_module = torch.jit.trace(model, [input_data]).eval()
     return tvm.relay.frontend.from_pytorch(
             script_module, [ ("input", data_shape) ])
