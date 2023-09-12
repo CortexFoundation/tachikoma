@@ -145,3 +145,12 @@ class BatchNormAttrs(_BaseAttrs):
     epsilon: float = 1e-5
     center: bool = True
     scale: bool = True
+
+@dataclass
+@register_attrs(MEAN)
+class MeanAttrs(_BaseAttrs):
+    axis: typing.Optional[int]
+    keepdims: bool
+    exclude: bool
+
+

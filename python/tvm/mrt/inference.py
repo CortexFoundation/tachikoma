@@ -9,6 +9,8 @@ from . import runtime
 
 def run(sym: WithParameters,
         args_data: typing.List[OpOutputT],
+        device: tvm.runtime.Device = tvm.runtime.cpu(),
+        target: tvm.target.Target = tvm.target.arm_cpu(),
 ) -> OpOutputT:
     assert sym.is_operator(), sym
     #  assert [c.is_param() for c in sym.args]
@@ -22,7 +24,7 @@ def run(sym: WithParameters,
     params = { c.name: args_data[i] for i, c in enumerate(sym.args) }
     #  params = {c.name: tvm.nd.array(args_data[i]) \
     #          for i, c in enumerate(sym.args)}
-    out = runtime.infer(expr, params)
+    out = runtime.infer(expr, params, device, target)
     #  if isinstance(out, tvm.nd.NDArray):
     #      out = out.numpy()
     #  else:

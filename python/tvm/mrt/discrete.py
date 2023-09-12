@@ -81,6 +81,7 @@ RequantRulesT = typing.Callable[[QuantInfo], typing.List[DiscreteInfo]]
 _DISCRETE_REQUANT_RULES: typing.Dict[str, RequantRulesT] = {}
 OpRulesT = typing.Callable[[QuantInfo], Symbol]
 _DISCRETE_OP_RULES: typing.Dict[str, OpRulesT] = {}
+_DISCRETE_CLIP_RULES: typing.Dict[str, bool] = {}
 
 _requant_identity = lambda s: [DiscreteInfo() for _ in s.args]
 _op_identity = lambda s: s
@@ -88,7 +89,8 @@ _op_identity = lambda s: s
 def register_rules(*op_names,
         requant_rule: RequantRulesT | None = None,
         op_rule: OpRulesT | None = None,
-        scale_rule: ScaleRulesT | None = None):
+        scale_rule: ScaleRulesT | None = None,
+        with_clip: bool | None = None):
     for op in op_names:
         if requant_rule is not None:
             _DISCRETE_REQUANT_RULES[op] = requant_rule
@@ -96,15 +98,20 @@ def register_rules(*op_names,
             _DISCRETE_OP_RULES[op] = op_rule
         if scale_rule is not None:
             register_scale_rules(op, rule=scale_rule)
+        if with_clip is not None:
+            _DISCRETE_CLIP_RULES[op] = with_clip
 
 def register_rules_with_default(*op_names,
         requant_rule: RequantRulesT | None = None,
         op_rule: OpRulesT | None = None,
-        scale_rule: ScaleRulesT | None = None):
-    return register_rules(*op_names,
-            requant_rule=requant_rule or _requant_identity,
-            op_rule=op_rule or _op_identity,
-            scale_rule=scale_rule or scale_identity)
+        scale_rule: ScaleRulesT | None = None,
+        with_clip: bool = True):
+    return register_rules(
+            *op_names,
+            requant_rule    = requant_rule or _requant_identity,
+            op_rule         = op_rule or _op_identity,
+            scale_rule      = scale_rule or scale_identity,
+            with_clip       = with_clip)
 
 def args_max_prec(prec: int):
     def _rule(s: QuantInfo):
@@ -159,7 +166,10 @@ register_rules_with_default(
         CONCAT, requant_rule=uniform_arg_scales)
 
 register_rules_with_default(
-        MAX_POOL2D, RELU, RESHAPE, SQUEEZE)
+        MAX_POOL2D, RELU, RESHAPE, SQUEEZE, SPLIT)
+
+register_rules_with_default(
+        TUPLE_GET_ITEM, TRANSPOSE)
 
 def op_clip_rules(s: QuantInfo):
     scale = s.args[0].scale
@@ -221,8 +231,12 @@ class Discretor(QuantInfo):
         out.scale = infer_scale(new)
         out.precision = self.scale_to_precision(out.scale)
 
-        out = op.pclip(out, precision=out.precision).like(
-                out, extra_attrs=out.extra_attrs)
+        # TODO: add skip for some operators
+        same_scale = all([a.scale == out.scale for a in self.args])
+        same_data = all([a.data == out.data for a in self.args])
+        if not (same_scale and same_data):
+            out = op.pclip(out, precision=out.precision).like(
+                    out, extra_attrs=out.extra_attrs)
         #  raw_print(op.subgraph(out, inames=orig_names))
         return out
 

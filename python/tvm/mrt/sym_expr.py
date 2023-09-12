@@ -82,6 +82,13 @@ def expr2symbol(expr: RelayExpr) -> Symbol:
 
 def symbol2expr(symbol: Symbol, expr_map={}) -> RelayExpr:
     expr_map.clear()
+    def _make_expr(sym: Symbol, args, attrs) -> relay.expr.Expr:
+        try:
+            return eval("relay." + sym.op_name)(*args, **attrs)
+        except Exception as e:
+            print(sym, [type(a) for a in args], attrs)
+            raise e
+
     def _cast_symbol(sym: Symbol):
         args = [expr_map[i.name] for i in sym.args]
 
@@ -89,6 +96,17 @@ def symbol2expr(symbol: Symbol, expr_map={}) -> RelayExpr:
         # operator creator don't need shape or dtype attrs,
         #   except for the variable.
         if op.is_variable(sym):
+            if isinstance(sym.dtype, (list, tuple)):
+                inputs = []
+                for i, (s, d) in enumerate(zip(sym.shape, sym.dtype)):
+                    attrs.update({
+                        "shape": s, "dtype": d,
+                        "name_hint": "%s.%s" % (sym.name, i)})
+                    out = _make_expr(sym, args, attrs)
+                    inputs.append(out)
+                expr_map[sym.name] = relay.Tuple(inputs)
+                return
+
             attrs.update({
                 "shape": sym.shape, "dtype": sym.dtype,
                 "name_hint": sym.name,
@@ -105,11 +123,7 @@ def symbol2expr(symbol: Symbol, expr_map={}) -> RelayExpr:
         elif sym.is_op(CONCAT):
             out = relay.concatenate(args, **attrs)
         else:
-            try:
-                out = eval("relay." + sym.op_name)(*args, **attrs)
-            except Exception as e:
-                print(sym, [type(a) for a in args], attrs)
-                raise e
+            out = _make_expr(sym, args, attrs)
 
         if isinstance(out, relay.TupleWrapper):
             out = out.tuple_value

@@ -48,18 +48,9 @@ def scale_rules(*op_names):
 def scale_index(s: WithScale, index: int):
     return s.args[index].scale
 
-#  @scale_rules(TUPLE)
-#  def scale_tuple(s: WithScale):
-#      return [a.scale for a in s.args]
-
-#  @scale_rules(TUPLE_GET_ITEM)
-#  def scale_tuple_get_item(s: WithScale):
-#      return s.args[0].scale[s.parsed.index]
-
 def scale_nn(s: WithScale):
     return s.args[0].scale * s.args[1].scale
 
-#  @scale_rules(REQUANT, PCLIP, RS_PCLIP)
 def scale_identity(s: WithScale):
     return s.args[0].scale
 

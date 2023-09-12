@@ -7,7 +7,7 @@ from . import op, inference
 from .opns import *
 from .symbol import *
 from .attrs import *
-from .utils import N
+from .utils import N, product
 from .transform import Transformer
 from .inference import np_executor, run
 
@@ -95,9 +95,11 @@ class FuseTupleGetItem(Transformer):
     @filter_operators(TUPLE_GET_ITEM)
     def __call__(self):
         X: Symbol = self.args[0]
-        assert X.is_op(BATCH_NORM, DROP_OUT), X.name
-        assert self.parsed.index == 0
-        return X
+        if X.is_op(BATCH_NORM, DROP_OUT):
+            return X
+        #  assert X.is_op(BATCH_NORM, DROP_OUT), X.name
+        #  assert self.parsed.index == 0
+        #  return X
 
 class FuseAvgPool2D(Transformer):
     def __call__(self):
@@ -176,6 +178,26 @@ class FuseNaiveSoftmax(Transformer):
             return self.args[0]
         assert self.is_variable() or not self.args[0].is_op(SOFTMAX, LOG_SOFTMAX)
         return self
+
+class FuseMean(Transformer):
+    @filter_operators(MEAN)
+    def __call__(self):
+        X: Transformer = self.args[0]
+        #  max_axis = len(X.shape)
+        #  axis = X.attrs.get("axis", None)
+        #  axis = axis or [i for i in range(max_axis)]
+        #  axis = [a if a >= 0 else a + max_axis for a in axis]
+        #  assert all([a >= 0 and a < max_axis for a in axis])
+        #  if exclude:
+        #      axis = [a for a in range(max_axis) if a not in axis]
+        #  axis_len = product([X.shape[a] for a in axis])
+
+        out = op.sum(X, **self.attrs)
+        scale = self.from_np_data(np.array(
+            1. * product(out.shape) / product(X.shape)))
+        out = op.mul(out, scale)
+        return out.like(self)
+
 
 # move to fuse constant
 #  class FuseNaiveMathmatic(Transformer):

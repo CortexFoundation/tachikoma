@@ -98,6 +98,9 @@ class Trace:
                 self.sym_params.append(sym)
         visit(self.symbol, _init)
 
+        if len(self.sym_inputs) > 1:
+            print([str(s) for s in self.sym_inputs])
+            assert False
         self.params = {s.name: self.params[s.name] \
                 for s in self.sym_params}
 
