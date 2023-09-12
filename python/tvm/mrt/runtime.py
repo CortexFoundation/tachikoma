@@ -20,9 +20,9 @@ def create_executor(
         opt_level=0,
 ) -> graph_executor.GraphModule:
     # print(ir.IRModule.from_expr(expr), "|", list(params.keys()))
-    for k, d in params.items():
-        if d.dtype == "float64":
-            print(k, d.dtype)
+    #  for k, d in params.items():
+    #      if d.dtype == "float64":
+    #          print(k, d.dtype)
     with tvm.transform.PassContext(opt_level=opt_level):
         lib = relay.build_module.build(
                 ir.IRModule.from_expr(expr),
@@ -46,19 +46,6 @@ def infer(expr: RelayExpr, params: ParametersT,
         device: tvm.runtime.Device = tvm.runtime.cpu(),
         target: tvm.target.Target = tvm.target.arm_cpu(),
 ) -> OpOutputT:
-    # target = tvm.target.cuda()
-    # with tvm.transform.PassContext(opt_level=3):
-    #     lib = relay.build_module.build(
-    #             ir.IRModule.from_expr(expr),
-    #             target=target,
-    #             params=params)
-
-    # rt_mod: relay.build_module.GraphExecutor = graph_executor.GraphModule(lib["default"](device))
-    # #  rt_mod.set_input("input", data)
-    # rt_mod.run()
-    # return [rt_mod.get_output(i).numpy() \
-    #         for i in range(rt_mod.get_num_outputs())]
-
     result = tvm.relay.create_executor(
         "graph", mod=ir.IRModule.from_expr(expr),
         device=device, target=target,

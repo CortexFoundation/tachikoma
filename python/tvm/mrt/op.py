@@ -100,6 +100,7 @@ nn_batch_norm = _register_op(BATCH_NORM)
 bias_add = _register_op(BIAS_ADD)
 
 sum = _register_op(SUM)
+#  mean = _register_op(MEAN)
 clip = _register_op(CLIP)
 ceil = _register_op(CEIL)
 right_shift = _register_op(RIGHT_SHIFT)
