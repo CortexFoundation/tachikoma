@@ -61,6 +61,8 @@ class N:
     def register_global_scope(name=""):
         N._set_name_scope(N(name))
 
+N.register_global_scope()
+
 def extend_fname(prefix, with_ext=False):
     """ Get the precision of the data.
 

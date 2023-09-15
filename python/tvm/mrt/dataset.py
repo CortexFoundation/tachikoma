@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import typing
 
 from os import path
@@ -9,14 +11,17 @@ from .types import *
 class Dataset:
     def next(self) -> typing.Optional[DataLabelT]:
         """ get next data, None if end. """
-        raise RuntimeError("Base Dataset Error")
+        raise RuntimeError("Base Dataset Error: next")
 
     def reset(self):
         """ reset dataset internal reader status. """
-        raise RuntimeError("Base Dataset Error")
+        raise RuntimeError("Base Dataset Error: reset")
+
+    def resize(self, batch_size: int) -> Dataset:
+        raise RuntimeError("Base Dataset Error: batch resize")
 
     def __len__(self):
-        raise RuntimeError("Base Dataset Error")
+        raise RuntimeError("Base Dataset Error: __len__")
 
     def label(self, index):
         return index

@@ -8,10 +8,28 @@ from tvm.contrib import graph_executor
 from tvm.ir import RelayExpr
 
 from .types import *
+from .symbol import Symbol
 from .dataset import Dataset
 from .stats import Statistics
 
 __all__ = ["infer"]
+
+def validate_runtime_inputs(
+        sym_inputs: typing.List[Symbol],
+        data: typing.Optional[np.ndarray] = None,
+        data_dict: ParametersT = {}) -> ParametersT:
+    input_dict = {}
+    for sym in sym_inputs:
+        val = data_dict.get(sym.name, data)
+        assert val is not None
+        val = tvm.nd.array(val)
+        assert sym.shape == list(val.shape), (
+                "{}: {} vs. {}"
+                ).format(sym.name, sym.shape, val.shape)
+        assert sym.dtype == val.dtype, (
+                "{} vs. {}").format(sym.dtype, val.dtype)
+        input_dict[sym.name] = val
+    return input_dict
 
 def create_executor(
         expr: RelayExpr, params: ParametersT,
@@ -19,10 +37,6 @@ def create_executor(
         target: tvm.target.Target = tvm.target.arm_cpu(),
         opt_level=0,
 ) -> graph_executor.GraphModule:
-    # print(ir.IRModule.from_expr(expr), "|", list(params.keys()))
-    #  for k, d in params.items():
-    #      if d.dtype == "float64":
-    #          print(k, d.dtype)
     with tvm.transform.PassContext(opt_level=opt_level):
         lib = relay.build_module.build(
                 ir.IRModule.from_expr(expr),
@@ -43,13 +57,14 @@ def run_executor(
             for i in range(rt_mod.get_num_outputs())]
 
 def infer(expr: RelayExpr, params: ParametersT,
-        device: tvm.runtime.Device = tvm.runtime.cpu(),
-        target: tvm.target.Target = tvm.target.arm_cpu(),
-) -> OpOutputT:
+        **kwargs) -> OpOutputT:
+    """
+        @param device: tvm.runtime.cpu() | None
+        @param target: tvm.target.arm_cpu() | "llvm"
+    """
     result = tvm.relay.create_executor(
         "graph", mod=ir.IRModule.from_expr(expr),
-        device=device, target=target,
-    ).evaluate()(**params)
+        **kwargs).evaluate()(**params)
     return result
 
 def as_numpy(res) -> typing.List[tvm.nd.NDArray]:
@@ -57,34 +72,6 @@ def as_numpy(res) -> typing.List[tvm.nd.NDArray]:
         return [ res.numpy(), ]
     else:
         return [ o.numpy() for o in res ]
-
-
-def validator(expr: RelayExpr, params: ParametersT, name: str,
-        device=runtime.cpu(0), ):
-    target = "llvm"
-    with tvm.transform.PassContext(opt_level=3):
-        lib = relay.build_module.build(
-                ir.IRModule.from_expr(expr),
-                target=target,
-                params=params)
-    mod: relay.build_module.GraphExecutor = graph_executor.GraphModule(lib["default"](device))
-
-    input_names = []
-    for v in relay.analysis.free_vars(expr):
-        if v.name_hint not in params:
-            input_names.append(v.name_hint)
-
-    assert len(input_names) == 1
-    assert mod.get_num_outputs() == 1
-    input_name = input_names[0]
-
-    def _run(dl: DataLabelT) -> DataLabelT:
-        data, label = dl
-        mod.set_input(input_name, dl)
-        mod.run()
-        return mod.get_output(0).numpy, dl
-    _run.__name__ = name
-    return _run
 
 
 ValidateFunctionT = typing.Callable[[np.ndarray], np.ndarray]

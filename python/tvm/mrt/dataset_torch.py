@@ -13,11 +13,16 @@ from . import dataset, utils
 class TorchWrapperDataset(dataset.Dataset):
     def __init__(self, data_loader: DataLoader):
         self._loader = data_loader
-        self._iter = iter(data_loader)
-        self._len = len(data_loader)
+        self._iter = iter(self._loader)
+        self._len = len(self._loader)
 
     def reset(self):
-        self._iter = iter(data_loader)
+        self._iter = iter(self._loader)
+
+    def resize(self, batch_size: int) -> dataset.Dataset:
+        return TorchWrapperDataset(DataLoader(
+            self._loader.dataset,
+            batch_size=batch_size))
 
     def __len__(self):
         return self._len
