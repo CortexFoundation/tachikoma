@@ -49,6 +49,20 @@ def infer_type(symbol: Symbol) -> Symbol:
     expr = mod["main"].body
     return sym_expr.expr2symbol(expr)
 
+def graph_like(new: Symbol, old: Symbol) -> Symbol:
+    old_sym_iter = iter(sym2list(old))
+    def _sym_like(sym: Symbol):
+        target = next(old_sym_iter)
+        assert target.op_name == sym.op_name
+        sym.attrs.update({
+            k: v for k, v in target.attrs.items() \
+                if k not in sym.attrs })
+        sym.extra_attrs.update({
+            k: v for k, v in target.extra_attrs.items() \
+                if k not in sym.extra_attrs })
+        return sym.like(target)
+    return transform(new, _sym_like)
+
 @dataclass(repr=False)
 class InferType(Symbol):
     def __call__(self):

@@ -20,7 +20,6 @@ from .utils import N
 
 @dataclass(repr=False)
 class WithParameters(Symbol):
-    """ Type TransformerT for Trace """
     parsed: _BaseAttrs = field(repr=False)
     params: ParametersT = field(repr=False)
     """ Parameters should not be changed in transformer,
@@ -73,6 +72,11 @@ class WithParameters(Symbol):
     def is_operator(self) -> bool:
         return op.is_operator(self, self.params)
 
+TransformerT = typing.Callable[[Symbol, ParametersT], Symbol]
+""" Transformer Callback Function Type,
+        inherited from WithParameters.
+"""
+
 @dataclass(repr=False)
 class Transformer(WithParameters):
     """ Symbol Transformer """
@@ -83,6 +87,23 @@ class Transformer(WithParameters):
                 update_dict has the `origin` key by default.
         """
         return super().to_dict(origin=self, **kwargs)
+
+    @classmethod
+    def get_transformer(cls, name: typing.Optional[str] = None):
+        name = name or cls.__name__
+        def _func(symbol: Symbol, params: ParametersT, **kwargs):
+            def _run(sym: Symbol):
+                out = cls.base(sym, params=params)
+                out = out(**kwargs) or out
+                assert isinstance(out, cls), (
+                        "transform output type should be {}, "
+                        "but get {}"
+                        ).format(cls, type(out))
+                return out
+            with N(name):
+                return transform(symbol, _run)
+        _func.__name__ = name
+        return _func
 
     @classmethod
     def apply(cls, *args, **kw):
@@ -101,11 +122,6 @@ class Transformer(WithParameters):
         _tfm.__name__ = cls.__name__
         return _tfm
 
-    def __call__(self, *args, **kw) -> Symbol:
+    def __call__(self, *args, **kw) -> typing.Optional[Transformer]:
         raise NotImplementedError()
-
-class Quantizer(Transformer):
-    def expect_max_precision(self, max_prec) -> Quantizer:
-        """ Requantization Method  """
-        raise NotImplementedError("")
 

@@ -9,11 +9,8 @@ from . import runtime
 
 def run(sym: WithParameters,
         args_data: typing.List[OpOutputT],
-        device: tvm.runtime.Device = tvm.runtime.cpu(),
-        target: tvm.target.Target = tvm.target.arm_cpu(),
-) -> OpOutputT:
+        **kwargs) -> OpOutputT:
     assert sym.is_operator(), sym
-    #  assert [c.is_param() for c in sym.args]
 
     if sym.is_op(TUPLE_GET_ITEM):
         return args_data[0][sym.parsed.index]
@@ -22,14 +19,7 @@ def run(sym: WithParameters,
 
     expr = symbol2expr(sym)
     params = { c.name: args_data[i] for i, c in enumerate(sym.args) }
-    #  params = {c.name: tvm.nd.array(args_data[i]) \
-    #          for i, c in enumerate(sym.args)}
-    out = runtime.infer(expr, params, device, target)
-    #  if isinstance(out, tvm.nd.NDArray):
-    #      out = out.numpy()
-    #  else:
-    #      out = [ o.numpy() for o in out ]
-    return out
+    return runtime.infer(expr, params, **kwargs)
 
 def _mx_executor(sym: Symbol, inputs):
     from mxnet import nd
