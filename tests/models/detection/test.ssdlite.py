@@ -20,11 +20,19 @@ data_shape = (batch_size,) + image_shape
 
 def load_model_from_torch() -> (ir.IRModule, ParametersT):
     import torchvision
+
     model = torchvision.models.detection.ssdlite320_mobilenet_v3_large(weights=torchvision.models.detection.SSDLite320_MobileNet_V3_Large_Weights.DEFAULT)
     model = model.eval()
+    # TODO: test prediction, delete later
+    x = [torch.rand(3, 320, 320), torch.rand(3, 500, 400)]
+    predictions = model(x)
+    print("predictions are:", predictions)
+
+    #print("layer are:", list(model.children())[-1])
+    #model = torch.nn.Sequential(*(list(model.children())[0:]))
     data_transform = torchvision.models.detection.SSDLite320_MobileNet_V3_Large_Weights.COCO_V1.transforms()
     input_data = data_transform(torch.randn(data_shape))
-    script_module = torch.jit.trace(model, [input_data]).eval()
+    script_module = torch.jit.trace(model, input_data).eval()
     return tvm.relay.frontend.from_pytorch(
             script_module, [ ("input", data_shape) ])
 
