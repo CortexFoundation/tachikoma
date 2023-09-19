@@ -20,9 +20,9 @@ data_shape = (batch_size,) + image_shape
 
 def load_model_from_torch() -> (ir.IRModule, ParametersT):
     import torchvision
-    model = torchvision.models.detection.ssdlite320_mobilenet_v3_large(weights=torchvision.models.detection.SSDLite320_MobileNet_V3_Large_Weights.DEFAULT)
+    model = torchvision.models.detection.fasterrcnn_resnet50_fpn(weights=torchvision.models.detection.FasterRCNN_ResNet50_FPN_Weights.DEFAULT)
     model = model.eval()
-    data_transform = torchvision.models.detection.SSDLite320_MobileNet_V3_Large_Weights.COCO_V1.transforms()
+    data_transform = torchvision.models.detection.FasterRCNN_ResNet50_FPN_Weights.COCO_V1.transforms()
     input_data = data_transform(torch.randn(data_shape))
     script_module = torch.jit.trace(model, [input_data]).eval()
     return tvm.relay.frontend.from_pytorch(
@@ -36,7 +36,7 @@ expr: ir.RelayExpr = func.body
 from tvm.mrt.trace import Trace
 from tvm.mrt.opns import *
 from tvm.mrt.symbol import *
-tr = Trace.from_expr(expr, params, model_name="ssdlite")
+tr = Trace.from_expr(expr, params, model_name="faster_rcnn")
 tr.checkpoint()
 tr.print(param_config={ "use_all": True, })
 
