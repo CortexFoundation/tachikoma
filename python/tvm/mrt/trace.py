@@ -95,6 +95,7 @@ class Trace:
         if stat_type is not None:
             assert issubclass(stat_type, Statistics)
             self._stat_type = stat_type
+        return self
 
     def validate_accuracy(self,
             *traces: typing.List[Trace],
@@ -255,6 +256,7 @@ class Trace:
         with open(fname, "w") as f:
             with redirect_stdout(f):
                 self.print(**kwargs)
+        return self
 
     def subgraph(self, inames=[], onames=[]) -> Trace:
         out = op.subgraph(self.symbol, inames, onames)
