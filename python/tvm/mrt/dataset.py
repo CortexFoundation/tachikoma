@@ -317,5 +317,3 @@ class MemoryDataset(Dataset):
 
     def reset(self):
         self._index = 0
-
-

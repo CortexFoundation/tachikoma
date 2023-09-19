@@ -43,9 +43,9 @@ class OutputGenerator(CircomGenerator):
         for inp in self.inputs:
             code = inp.fill_circom(code)
 
-        circom_shape = ["["+str(s)+"]" for s in self.shape]
+        circom_shape_lst = ["["+str(s)+"]" for s in self.shape]
         code = inject_signal(code, "signal output {}{};".format(
-                    self.name, "".join(circom_shape)))
+                    self.name, "".join(circom_shape_lst)))
 
         circom_shape = "{main}"
         for idx, dim in enumerate(self.shape):
@@ -70,10 +70,13 @@ class OutputGenerator(CircomGenerator):
 class OperatorGenerator(CircomGenerator):
     def apply(self):
         input_shapes = [inp.shape for inp in self.inputs]
-        # check input shape dimensions match
-        #  print(self.comp.input_dims, input_shapes, self.info())
+        # check input shape dimensions match operators in cirom circuit operator
+        # print(self.comp.input_dims, input_shapes, self.info(), self.comp.input_names)
+
         assert len(self.comp.input_names) == len(self.inputs)
+        # op dim contains 1-dim batch, not support in circom circuits
         for shape in zip(self.comp.input_dims, input_shapes):
+            # model input shape dimensions should match cirom circuit operator shape
             assert shape[0] == len(shape[1]), (
                 "{}({}) shape dim not matched, "
                 "{} vs. {}, maybe apply shape-adaptor pass."
@@ -85,7 +88,7 @@ class OperatorGenerator(CircomGenerator):
                     self.comp.input_names, input_shapes) ]
 
         args = self.arguments()
-        # all arguments must be integers.
+        # all arguments of circom circuit must be integers.
         assert all([isinstance(a, int) for a in args]), self.info()
         self.circom_args = ", ".join([
             str(s) for s in self.arguments()])
@@ -127,7 +130,8 @@ class Element1DMulGenerator(ShapeGenerator):
 #  class ElementMulGenerator(ElementGenerator):
 #      pass
 
-class Conv2D_CHWGenerator(OperatorGenerator):
+# just for test, invalid now
+class Conv2D_NCHWGenerator(OperatorGenerator):
     def arguments(self):
         padding = self.attrs["padding"]
         assert all([p == 0 for p in padding])
@@ -140,20 +144,68 @@ class Conv2D_CHWGenerator(OperatorGenerator):
         kernel_size = kernel_size[0]
         return [ *self.inputs[0].shape, filters, kernel_size, 1, ]
 
+class Conv2D_CHWGenerator(OperatorGenerator):
+    def arguments(self):
+
+        strides = self.attrs["strides"] if len(self.attrs["strides"]) > 0 else [1]
+        assert all([s == strides[0] for s in strides])
+        padding = self.attrs["padding"]
+        assert all([p == 0 for p in padding])
+        dilation = self.attrs["dilation"]
+        assert all([d == 1 for d in dilation])
+
+        filters = self.attrs["channels"]
+        kernel_size = self.attrs["kernel_size"]
+        if isinstance(kernel_size, int):
+            kernel_size = [kernel_size, kernel_size]
+        assert kernel_size[0] == kernel_size[1]
+        kernel_size = kernel_size[0]
+        return [ *self.inputs[0].shape, filters, kernel_size, strides[0], ]
+
+class MaxPool2DGenerator(OperatorGenerator):
+    def arguments(self):
+        strides = self.attrs["strides"] if len(self.attrs["strides"]) > 0 else [1]
+        assert all([s == strides[0] for s in strides])
+        padding = self.attrs["padding"]
+        assert all([p == 0 for p in padding])
+        dilation = self.attrs["dilation"]
+        assert all([d == 1 for d in dilation])
+        pool_size = self.attrs["pool_size"]
+        assert all([p == pool_size[0] for p in pool_size])
+
+        return [ *self.inputs[0].shape, pool_size[0], strides[0], ]
+
+
 class Pad2DGenerator(OperatorGenerator):
     def arguments(self):
         pad_value = self.attrs.get("scalar", None)
         if pad_value is None:
             pad_value = self.attrs["pad_value"]
-        pad_width = [[p, p] if isinstance(p, int) else p \
-                for p in self.attrs["pad_width"]]
-
-        for pt in pad_width[:-2]:
-            assert pt[0] == 0
-            assert pt[1] == 0
-        pad_width = [i for p in pad_width[-2:] for i in p]
-
+        pad_width = [p for p in self.attrs["padding"]]
         return [ *self.inputs[0].shape, pad_value, *pad_width ]
+
+class BiasAdd1Generator(OperatorGenerator):
+    def arguments(self):
+        assert len(self.inputs) == 2
+        assert len(self.inputs[0].shape) == 1
+        assert len(self.inputs[1].shape) == 1
+        assert self.inputs[0].shape[0] == self.inputs[1].shape[0]
+        return [ *self.inputs[0].shape ]
+class BiasAdd2Generator(OperatorGenerator):
+    def arguments(self):
+        assert len(self.inputs) == 2
+        assert len(self.inputs[0].shape) == 2
+        assert len(self.inputs[1].shape) == 1
+        assert self.inputs[0].shape[0] == self.inputs[1].shape[0]
+        return [ *self.inputs[0].shape ]
+class BiasAdd3Generator(OperatorGenerator):
+    def arguments(self):
+        assert len(self.inputs) == 2
+        assert len(self.inputs[0].shape) == 3
+        assert len(self.inputs[1].shape) == 1
+        assert self.inputs[0].shape[0] == self.inputs[1].shape[0]
+        return [ *self.inputs[0].shape ]
+
 
 class Resize2DGenerator(OperatorGenerator):
     def arguments(self):
@@ -217,14 +269,64 @@ class AddScalarGenerator(ScalarGenerator):
 class SubScalarGenerator(ScalarGenerator):
     pass
 
+#class MulScalarGenerator(OperatorGenerator):
+#    def arguments(self):
+#        return [ *self.shape,  ]
 class RightShiftGenerator(OperatorGenerator):
     def arguments(self):
-        return [ self.shape[0], self.attrs["shift_bit"], ]
+        return [ *self.shape, self.attrs["scalar"]]
 
+class ReLU1DGenerator(OperatorGenerator):
+    def arguments(self):
+        return [ *self.shape ]
+class ReLU2DGenerator(OperatorGenerator):
+    def arguments(self):
+        return [ *self.shape ]
+class ReLU3DGenerator(OperatorGenerator):
+    def arguments(self):
+        return [ *self.shape ]
 
-class ClipGenerator(OperatorGenerator):
+class Pass1DGenerator(OperatorGenerator):
+    def arguments(self):
+        return [ *self.inputs[0].shape ]
+class Pass2DGenerator(OperatorGenerator):
+    def arguments(self):
+        return [ *self.inputs[0].shape ]
+class Pass3DGenerator(OperatorGenerator):
+    def arguments(self):
+        return [ *self.inputs[0].shape ]
+class Pass4DGenerator(OperatorGenerator):
+    def arguments(self):
+        return [ *self.inputs[0].shape ]
+class Pass5DGenerator(OperatorGenerator):
+    def arguments(self):
+        return [ *self.inputs[0].shape ]
+
+class Sum_CHWGenerator(OperatorGenerator):
+    def arguments(self):
+        keepdims = self.attrs["keepdims"]
+        assert(keepdims == None or keepdims == True)
+        return [ *self.inputs[0].shape ]
+
+class Squeeze_CHWGenerator(OperatorGenerator):
+    def arguments(self):
+        iShape = self.inputs[0].shape
+        assert(len(iShape)==3 and iShape[1]==1 and iShape[2]==1)
+        return [ *self.inputs[0].shape ]
+
+class Clip1DGenerator(OperatorGenerator):
     def arguments(self):
         return [ self.shape[0],
                 self.attrs["a_min"], self.attrs["a_max"] ]
 
+class Clip2DGenerator(OperatorGenerator):
+    def arguments(self):
+        return [ self.shape[0], self.shape[1],
+                self.attrs["a_min"], self.attrs["a_max"] ]
 
+class Clip3DGenerator(OperatorGenerator):
+    def arguments(self):
+        return [ self.shape[0], self.shape[1], self.shape[2],
+    # TODO: add shape adapter!!!
+    # TODO: all convert to int after mrt!!!
+                int(self.attrs["a_min"]), int(self.attrs["a_max"]) ]

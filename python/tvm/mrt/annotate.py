@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 from .opns import *
 from .transform import Pass, Transformer
-from .precision import QuantizedInfo
+from .precision import WithPrecision, QuantizedInfo
 from .discrete import Discretor
 
 __ALL__ = [ "ArgAnnotator" ]
@@ -37,6 +37,7 @@ class ArgAnnotator(Pass):
 
 ArgAnnotator.test(VAR)(lambda x: [])
 ArgAnnotator.test(CONV2D, DENSE)(ArgAnnotator.with_prec, 8)
+# ArgAnnotator.test(LOG_SOFTMAX)(ArgAnnotator.with_prec, 8)
 ArgAnnotator.test(BIAS_ADD)(ArgAnnotator.first_like)
 ArgAnnotator.test(MUL)(ArgAnnotator.with_prec, 16)
 ArgAnnotator.test(ADD, SUB)(ArgAnnotator.first_like)
@@ -44,3 +45,4 @@ ArgAnnotator.test(TUPLE, TUPLE_GET_ITEM)(ArgAnnotator.identity)
 ArgAnnotator.test(SUM)(ArgAnnotator.with_prec, 16)
 ArgAnnotator.test(RELU, MAX_POOL2D)(ArgAnnotator.identity)
 ArgAnnotator.test(SQUEEZE, RESHAPE)(ArgAnnotator.identity)
+

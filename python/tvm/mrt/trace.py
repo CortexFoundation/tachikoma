@@ -20,6 +20,7 @@ from .discrete import Discretor
 from .types import *
 from .symbol import *
 from .sym_expr import *
+from .dataset import Dataset
 
 VisitorT = typing.Callable[[Symbol, ParametersT], None]
 TransformerT = typing.Callable[[Symbol, ParametersT], typing.Optional[Symbol]]
@@ -42,6 +43,24 @@ class ParamSymbol(Transformer):
                 attrs["tdtype"] = self.dtype
         return super().__repr__(**attrs)
 
+def uniform_input_data(
+        sym_inputs: typing.List[Symbol],
+        data: typing.Optional[np.ndarray] = None,
+        data_dict: ParametersT = {}):
+    input_dict = {}
+    for sym in sym_inputs:
+        val = data_dict.get(sym.name, data)
+        assert val is not None
+        #  val = self._preprocess_input(sym, val)
+        val = tvm.nd.array(val)
+        assert sym.shape == list(val.shape), (
+                "{}: {} vs. {}").format(
+                        sym.name, sym.shape, val.shape)
+        assert sym.dtype == val.dtype, (
+                "{} vs. {}").format(sym.dtype, val.dtype)
+        input_dict[sym.name] = val
+    return input_dict
+
 @dataclass
 class Trace:
     """ Only use visitor mode in Trace. """
@@ -55,8 +74,11 @@ class Trace:
     _model_name: str = "unknown-model"
     sym_inputs: typing.List[Symbol] = field(init=False)
     sym_params: typing.List[Symbol] = field(init=False)
+    dataset: typing.optional[Dataset] = field(
+            init=False, default=None)
     _executor: graph.GraphModule = field(init=False, default=None)
 
+    uniform_func = uniform_input_data
     BASE_DIR: typing.ClassVar[str] = "./data"
 
     def __post_init__(self):
@@ -69,13 +91,16 @@ class Trace:
                 data = self.params[sym.name]
                 assert sym.shape == list(data.shape), (
                     "param:{} shape inconsistent: {} vs. {}"
-                ).format(sym.name, sym.shape, pshape)
+                ).format(sym, sym.shape, data.shape)
                 assert sym.dtype == data.dtype, (
                     "params:{} dtype inconsistent: {} vs. {}"
                 ).format(sym.name, sym.dtype, data.dtype)
                 self.sym_params.append(sym)
         visit(self.symbol, _init)
 
+        if len(self.sym_inputs) > 1:
+            print([str(s) for s in self.sym_inputs])
+            assert False
         self.params = {s.name: self.params[s.name] \
                 for s in self.sym_params}
 
@@ -87,38 +112,33 @@ class Trace:
     def input_shapes(self) -> typing.List[ShapeT]:
         return [i.attrs["shape"] for i in self.sym_inputs]
 
-    def _preprocess_input(self, sym: Symbol, data):
-        if "dt_type" not in sym.extra_attrs:
-            return data
-        dt_type = eval(sym.extra_attrs["dt_type"])
-        dt: Discretor = dt_type.base(sym)
-        return dt.mapping(data).astype(sym.dtype)
+    def bind_dataset(self, dataset: Dataset, uniform_func = None):
+        self.uniform_func = uniform_func or self.uniform_func
 
-    def _postprocess_output(self, sym: Symbol, data):
-        if "dt_type" not in sym.extra_attrs:
-            return data
-        dt_type = eval(sym.extra_attrs["dt_type"])
-        dt: Discretor = dt_type.base(sym)
-        print("restore output")
-        return dt.restore(data)
+        dataset.reset()
+        data, label = dataset.next()
+        # verify and assert the input data
+        input_data = self.uniform_func(self.sym_inputs, data)
+
+        dataset.reset()
+        self.dataset = dataset
 
     def as_input_dict(self,
-            data: typing.Optional[np.ndarray] = None,
-            data_dict: ParametersT = {},
-            ) -> ParametersT:
-        input_dict = {}
-        for sym in self.sym_inputs:
-            val = data_dict.get(sym.name, data)
-            assert val is not None
-            val = self._preprocess_input(sym, val)
-            val = tvm.nd.array(val)
-            assert sym.shape == list(val.shape), (
-                    "{}: {} vs. {}").format(
-                            sym.name, sym.shape, val.shape)
-            assert sym.dtype == val.dtype, (
-                "{} vs. {}").format(sym.dtype, val.dtype)
-            input_dict[sym.name] = val
-        return input_dict
+           data: typing.Optional[np.ndarray] = None,
+           data_dict: ParametersT = {},
+           ) -> ParametersT:
+       input_dict = {}
+       for sym in self.sym_inputs:
+           val = data_dict.get(sym.name, data)
+           assert val is not None
+           val = tvm.nd.array(val)
+           assert sym.shape == list(val.shape), (
+                   "{}: {} vs. {}").format(
+                           sym.name, sym.shape, val.shape)
+           assert sym.dtype == val.dtype, (
+               "{} vs. {}").format(sym.dtype, val.dtype)
+           input_dict[sym.name] = val
+       return input_dict
 
     def populate(self, **kwargs) -> runtime.ValidateFunctionT:
         if self._executor is None:
@@ -127,15 +147,15 @@ class Trace:
                     **kwargs)
 
         def _run(data: np.ndarray) -> np.ndarray:
+            # data = self.uniform_func(self.sym_inputs, data)
             data = self.as_input_dict(data)
             # for n, val in data.items():
             #     print("input", n, np.abs(val.numpy()).max(),
             #             val.numpy().flatten()[:5])
             res = runtime.run_executor(self._executor, data)
             assert len(res) == 1
-            res = res[0]
             # print("output", self.symbol, np.abs(res).max())
-            return self._postprocess_output(self.symbol, res)
+            return res[0]
         _run.__name__ = self.name
         return _run
 
@@ -143,15 +163,6 @@ class Trace:
             data: typing.Optional[np.ndarray] = None,
             **kwargs,) -> np.ndarray:
         return self.populate(**kwargs)(data)
-
-    def random_run(self) -> typing.List[np.ndarray]:
-        data = {}
-        for sym in self.sym_inputs:
-            shape = sym.attrs["shape"]
-            dtype = sym.attrs["dtype"]
-            np_data = np.random.randn(*shape).astype(dtype)
-            data[sym.name] = tvm.nd.array(np_data)
-        return self.run(data_dict=data)
 
     def infer_type(self) -> Trace:
         tr = Trace.from_expr(
@@ -318,20 +329,22 @@ class Trace:
         tr_name = tr_name or callback.__name__
         new_params = {k: v for k, v in self.params.items()}
         def _tfm(sym: Symbol):
-            print_bf and print("[{}]<< {}".format(tr_name, sym))
+            print_bf and print("[{}]<< {}".format(
+                callback.__name__, sym))
             out = callback(sym, new_params)
-            print_af and print("[{}]>> {}".format(tr_name, out))
+            print_af and print("[{}]>> {}".format(
+                callback.__name__, out))
             return out
 
-        print("Apply transformer: {}".format(tr_name))
-        with N(tr_name):
+        print("Apply transformer: {}".format(callback.__name__))
+        with N(callback.__name__):
             new_symbol = transform(self.symbol, _tfm)
 
         return Trace(tr_name, new_symbol, new_params,
                 _loaded=False, _model_name=self._model_name)
 
 
-    def _get_checkpoint_path(self, tr_name):
+    def _get_checkpoint_path(self, tr_name: str = None):
         base_dir = os.path.join(self.BASE_DIR, self._model_name)
         os.makedirs(base_dir, exist_ok=True)
 
@@ -357,14 +370,14 @@ class Trace:
         if force or not path.exists(tr_path):
             tr = self
             for cb in callbacks:
-                tr = tr.transform(cb, **kwargs)
+                tr = tr.transform(cb, tr_name=tr_name, **kwargs)
             tr.dump(tr_path)
             print("Dumped checkpoint: {:20} into {}".format(
-                tr_name, tr_path))
+                tr.name, tr_path))
             return tr
         tr = Trace.load(tr_path)
         print("Loaded checkpoint: {:20} from {}".format(
-            tr_name, tr_path))
+            tr.name, tr_path))
         return tr
 
     def checkpoint(self, tr_name: str = None):

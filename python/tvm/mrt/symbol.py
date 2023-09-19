@@ -34,6 +34,10 @@ class _BaseSymbol:
     """
     extra_attrs: typing.Dict[str, typing.Any]
     """ extra attributes will be inherited automatically. """
+    name: str
+    op_name: str
+    args: typing.List[Symbol]
+    attrs: typing.Dict[str, typing.Any]
 
     @classmethod
     def update_extra_attrs(cls, data_dict, **kwargs):
@@ -41,7 +45,7 @@ class _BaseSymbol:
         extra_attrs.update(kwargs)
         data_dict["extra_attrs"] = extra_attrs
         return data_dict
-    def set_extra_attrs(self, **kwargs) -> Symbol:
+    def set_extra_attrs(self, **kwargs) -> _BaseSymbol:
         self.extra_attrs.update(kwargs)
         return self
 
@@ -53,10 +57,14 @@ class _BaseSymbol:
         return cls.from_dict(symbol.to_dict(), **kwargs)
     def like(self, other: Symbol, **kwargs) -> Symbol:
         """ cast current symbol to child class. """
+        #  assert self.shape == other.shape, "%s vs.\n %s" % (self, other)
+        #  assert self.dtype == other.dtype , "%s vs.\n %s" % (self, other)
         data = other.to_dict()
         data.update(self.to_dict())
+        # copy extra attrs by default.
+        #  data["extra_attrs"] = other.extra_attrs
         return type(other).from_dict(data, **kwargs)
-    def copy(self, **kwargs) -> typing.Type[Symbol]:
+    def copy(self, **kwargs) -> typing.Type[_BaseSymbol]:
         """ clone current symbol. """
         return type(self).from_dict(
             self.to_dict(), **kwargs) # kwargs override self
@@ -81,8 +89,13 @@ class _BaseSymbol:
         try:
             out = cls(**data)
         except Exception as e:
-            print(cls, list(data.keys()))
-            raise e
+            #  print(cls, list(data.keys()))
+            #  raise e
+            raise RuntimeError((
+                "Error for type:{} create from dict "
+                "op:{} name:{} attrs:{}"
+                ).format(get_class_name(cls),
+                    data["op_name"], data["name"], data["attrs"]))
         return out
     def to_dict(self, **kwargs) -> dict:
         data = dataclass_to_dict(self)
@@ -94,14 +107,26 @@ class _BaseSymbol:
         return data
 
     def __repr__(self, **attrs) -> str:
-        args_info = "({})".format(
-                ", ".join([i.name for i in self.args]))
-        oattrs = {k: v for k, v in self.attrs.items()}
+        def _uniform(n: str, max_size: int) -> str:
+            if len(n) <= max_size:
+                return n
+            return "..." + n[3-max_size:]
+
+        arg_len = 40 - 2
+        if len(self.args) > 0:
+            arg_len = (arg_len-2*(len(self.args)-1)) // len(self.args)
+            arg_len = max(arg_len, 4)
+        args_info = "({})".format(", ".join(
+            [_uniform(i.name, arg_len) for i in self.args]))
+        oattrs = {k: v for k, v in self.extra_attrs.items()}
         oattrs.update(attrs)
-        oattrs.update(self.extra_attrs)
-        return "{:30} = {:>15}{:30} /* attrs */ {}".format(
-                self.name, self.op_name, args_info,
+        #  oattrs.update(self.extra_attrs)
+        return "{:>20} = {:>15}{:40} /* attrs */ {} | {}".format(
+                _uniform(self.name, 20),
+                self.op_name, args_info,
+                _format_printer(self.attrs),
                 _format_printer(oattrs))
+
 
 @dataclass
 class Symbol(_BaseSymbol):
@@ -154,9 +179,20 @@ class Symbol(_BaseSymbol):
         return super().to_dict(**kwargs)
     def __repr__(self, **attrs) -> str:
         return super().__repr__(**attrs)
+    def info(self, **attrs) -> str:
+        return super().__repr__(**attrs)
+#        inputs_info = [
+#            "{}@{}".format(i.name, i.attrs.get("shape", None)) \
+#            for i in self.args]
+#        return "{} = {}({}) /* attrs */ \t{}".format(
+#            self.name, self.op_name,
+#            ", ".join(inputs_info),
+#            self.attrs)
 
     # Naive Methods
     def is_op(self, *op_names) -> bool:
+        """ Check current symbol is in the op name list. """
+        assert len(op_names) > 0
         return self.op_name in op_names
 
     @property
@@ -165,6 +201,7 @@ class Symbol(_BaseSymbol):
     @shape.setter
     def shape(self, val):
         self.extra_attrs["shape"] = list(val)
+
     @property
     def dtype(self):
         return self.extra_attrs.get("dtype", None)
@@ -172,7 +209,15 @@ class Symbol(_BaseSymbol):
     def dtype(self, val):
         self.extra_attrs["dtype"] = val
 
+    @property
+    def subgraph(self):
+        return self.extra_attrs.get("subgraph", None)
+    def set_subgraph(self, val):
+        self.extra_attrs["subgraph"] = val
+
     def __hash__(self) -> int:
+        return hash(str(self))
+    def hash(self) -> int:
         return hash(str(self))
 
 def _topo_sort(symbol: Symbol, sym_list: typing.List[Symbol]):
@@ -183,7 +228,7 @@ def _topo_sort(symbol: Symbol, sym_list: typing.List[Symbol]):
     sym_list.append(symbol)
 
 def sym2list(symbol: Symbol) -> typing.List[Symbol]:
-    sym_list = []
+    sym_list: typing.List[Symbol]  = []
     _topo_sort(symbol, sym_list)
     return sym_list
 
@@ -206,7 +251,7 @@ def dump_json(symbol: Symbol) -> _SymbolJsonT:
 def load_json(data: _SymbolJsonT, **extra_attrs) -> Symbol:
     nodes: _SymbolNodesT = data["nodes"]
 
-    sym_map = {}
+    sym_map: typing.Dict = {}
     for node in nodes:
         args = [sym_map[a] for a in node["args"]]
         sym_type: typing.Type[Symbol] = eval(node["_class_type"])
@@ -233,7 +278,7 @@ def transform(symbol: Symbol, callback: _TransformerT) -> Symbol:
         Only the return value indicates mutation, while changing
         attributes in parameter passed in args does nothing.
     """
-    sym_map = {}
+    sym_map: typing.Dict = {}
     for sym in sym2list(symbol):
         args = [sym_map[c.name] for c in sym.args]
         # pre-clone symbol, to avoid misleading usage in callback
@@ -259,7 +304,7 @@ def filter_operators(*op_names: typing.List[str]):
     def _pass(f):
         @wraps(f)
         def _wrapper(sym: Symbol, *args, **kw) -> typing.Any:
-            if any([ sym.is_op(n) for n in op_names ]):
+            if sym.is_op(*op_names):
                 return f(sym, *args, **kw)
         return _wrapper
     return _pass

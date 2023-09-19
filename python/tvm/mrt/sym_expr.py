@@ -53,7 +53,10 @@ def expr2symbol(expr: RelayExpr) -> Symbol:
             name = node.name_hint or N.n(prefix="input_")
             symbol_map[node] = op.variable(name, shape, dtype)
         elif isinstance(node, relay.Call):
-            args = [symbol_map[i] for i in node.args]
+            if node.op.name == CONCAT:
+                args = [ symbol_map[f] for f in node.args[0].fields ]
+            else:
+                args = [symbol_map[i] for i in node.args]
             nattrs = node.attrs or {}
             attrs.update({k: nattrs[k] for k in nattrs.keys()})
             _format_containers(attrs)
@@ -79,6 +82,13 @@ def expr2symbol(expr: RelayExpr) -> Symbol:
 
 def symbol2expr(symbol: Symbol, expr_map={}) -> RelayExpr:
     expr_map.clear()
+    def _make_expr(sym: Symbol, args, attrs) -> relay.expr.Expr:
+        try:
+            return eval("relay." + sym.op_name)(*args, **attrs)
+        except Exception as e:
+            print(sym, [type(a) for a in args], attrs)
+            raise e
+
     def _cast_symbol(sym: Symbol):
         args = [expr_map[i.name] for i in sym.args]
 
@@ -86,21 +96,34 @@ def symbol2expr(symbol: Symbol, expr_map={}) -> RelayExpr:
         # operator creator don't need shape or dtype attrs,
         #   except for the variable.
         if op.is_variable(sym):
+            if isinstance(sym.dtype, (list, tuple)):
+                inputs = []
+                for i, (s, d) in enumerate(zip(sym.shape, sym.dtype)):
+                    attrs.update({
+                        "shape": s, "dtype": d,
+                        "name_hint": "%s.%s" % (sym.name, i)})
+                    out = _make_expr(sym, args, attrs)
+                    inputs.append(out)
+                expr_map[sym.name] = relay.Tuple(inputs)
+                return
+
             attrs.update({
                 "shape": sym.shape, "dtype": sym.dtype,
                 "name_hint": sym.name,
             })
 
-        if sym.is_op(op.TUPLE):
+        # tvm dropout output is not tuple.
+        if sym.is_op(TUPLE_GET_ITEM):
+            if sym.args[0].is_op(DROP_OUT):
+                expr_map[sym.name] = args[0]
+                return
+
+        if sym.is_op(TUPLE):
             out = relay.Tuple(args)
-        # elif sym.is_op(op.AS_TYPE):
-        #     out = args[0].astype(attrs["target"])
+        elif sym.is_op(CONCAT):
+            out = relay.concatenate(args, **attrs)
         else:
-            try:
-                out = eval("relay." + sym.op_name)(*args, **attrs)
-            except Exception as e:
-                print(sym, [type(a) for a in args], attrs)
-                raise e
+            out = _make_expr(sym, args, attrs)
 
         if isinstance(out, relay.TupleWrapper):
             out = out.tuple_value

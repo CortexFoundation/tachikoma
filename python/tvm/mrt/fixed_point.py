@@ -9,43 +9,46 @@ from .precision import *
 from .utils import number_to_bits
 from .attrs import PClipAttrs, RequantAttrs
 from .symbol import filter_operators
-from .transform import Transformer, Pass
+from .transform import Transformer
 
 @dataclass(repr=False)
 class Simulator(Transformer, QuantizedInfo):
-    def map_requant(self):
-        X: Simulator = self.args[0]
-        rescale = self.parsed.rescale
-        rescale = X.from_const_data(rescale)
-        out = op.mul(X, rescale).like(self,
-                extra_attrs=self.extra_attrs)
-        pos = self.int_max()
-        # out = op.clip(out, a_min=-pos, a_max=pos).like(self,
-        #         extra_attrs=self.extra_attrs)
+    def round(self, out: Transformer):
+        #  data_0_5 = self.from_const_data(0.5)
+        #  out = op.add(out, data_0_5)
+        #  out = op.ceil(out)
+        orig_dtype = out.dtype
+        out = op.cast(out, dtype="int32")
+        out = op.cast(out, dtype=orig_dtype)
         return out
 
-    def map_pclip(self):
-        X: Simulator = self.args[0]
-        pos = self.int_max()
-        out = X
-        # out = op.clip(X, a_min=-pos, a_max=pos).like(self)
-        return out
+    def __call__(self, with_clip=False, with_round=False):
+        out: Transformer = self
+        if self.is_input():
+            """ input is the original float data, skip. """
+            return out
 
-    def __call__(self):
-        if self.is_op(PCLIP):
-            return self.map_pclip()
-        elif self.is_op(REQUANT):
-            return self.map_requant()
+        if self.is_param() and with_round:
+            out = self.round(out)
+
+        if self.is_op(PCLIP, REQUANT):
+            out: Simulator = self.args[0]
+            if self.is_op(REQUANT):
+                rescale = self.parsed.rescale
+                rescale = self.from_const_data(rescale)
+                out = op.mul(out, rescale)
+                if with_round:
+                    out = self.round(out)
+            if with_clip:
+                pos = self.int_max()
+                out = op.clip(out, a_min=-pos, a_max=pos)
+        return out.like(self)
 
 
 @dataclass(repr=False)
 class FixPoint(Transformer, QuantizedInfo):
-    def like(self, other: Symbol, copy=False, **kwargs):
-        out = super().like(other, **kwargs)
-        copy and out.set_extra_attrs(**other.extra_attrs)
-        return out
-
     def map_requant(self) -> FixPoint:
+        self.validate_precision()
         X: FixPoint = self.args[0]
         parsed: RequantAttrs = self.parsed
 
@@ -70,21 +73,22 @@ class FixPoint(Transformer, QuantizedInfo):
         return out.like(self)
 
     def map_pclip(self) -> FixPoint:
+        self.validate_precision()
         X: FixPoint = self.args[0]
         pos = self.int_max()
         out = X
         out = op.pclip(X, precision=self.precision).like(self)
-        # out = op.clip(X, a_min=-pos, a_max=pos).like(self)
+        #  out = op.clip(X, a_min=-pos, a_max=pos).like(self)
         return out
 
     def __call__(self):
-        self.validate_precision()
         self.dtype = "int8" if self.precision <= 8 else "int32"
 
         out = self
         if self.is_input():
             pass
         elif self.is_param():
+            self.validate_precision()
             data = np.round(self.numpy()).astype(self.dtype)
             absmax = np.abs(data).max()
             assert absmax <= self.int_max()
@@ -96,8 +100,9 @@ class FixPoint(Transformer, QuantizedInfo):
         # elif self.is_op(CONV2D, DENSE):
         #     out.attrs["out_dtype"] = "int32"
 
-        if self.is_operator() and self.precision <= 8:
-            out = op.cast(out, dtype="int8")
+        #  if self.is_operator():
+        #      out = op.cast(out, dtype="int32")
+        #      out = op.cast(out, dtype="float32")
 
         # inames = [a.name for a in self.args]
         # tmp = op.subgraph(out, inames)
@@ -105,7 +110,7 @@ class FixPoint(Transformer, QuantizedInfo):
         # assert self.dtype == tmp.dtype, (
         #         "expected {}, but get {}, in \n{}"
         # ).format(self.dtype, tmp.dtype, tmp)
-        return out.like(self, copy=True)
+        return out.like(self, extra_attrs=self.extra_attrs)
 
 def cvm_float(number, bits=24):
     """ Recalculate the float value within the given range of bits.

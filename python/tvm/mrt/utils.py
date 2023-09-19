@@ -81,8 +81,8 @@ def extend_fname(prefix, with_ext=False):
         ret.append("%s.ext"%prefix)
     return tuple(ret)
 
+from dataclasses import dataclass, fields, Field
 def dataclass_to_dict(dc: dataclass, check_repr=False) -> dict:
-    from dataclasses import dataclass, fields, Field
     def _check(f: Field):
         checked = True
         if check_repr:
@@ -120,6 +120,10 @@ def number_to_bits(number: float) -> int:
     number = math.fabs(number)
     number = math.floor(number + 0.5)
     return 1 + math.ceil(math.log2(number + 1))
+
+def bits_to_number(bit: int) -> float:
+    assert bit > 0
+    return float((2 ** (bit - 1)) - 1)
 
 def count_to_bits(count: int):
     """

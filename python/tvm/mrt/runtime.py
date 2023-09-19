@@ -10,7 +10,6 @@ from tvm.ir import RelayExpr
 from .types import *
 from .dataset import Dataset
 from .stats import Statistics
-from . import symbol
 
 __all__ = ["infer"]
 
@@ -21,9 +20,9 @@ def create_executor(
         opt_level=0,
 ) -> graph_executor.GraphModule:
     # print(ir.IRModule.from_expr(expr), "|", list(params.keys()))
-    for k, d in params.items():
-        if d.dtype == "float64":
-            print(k, d.dtype)
+    #  for k, d in params.items():
+    #      if d.dtype == "float64":
+    #          print(k, d.dtype)
     with tvm.transform.PassContext(opt_level=opt_level):
         lib = relay.build_module.build(
                 ir.IRModule.from_expr(expr),
@@ -43,33 +42,15 @@ def run_executor(
     return [ rt_mod.get_output(i).numpy() \
             for i in range(rt_mod.get_num_outputs())]
 
-OutputDataType = typing.List[np.ndarray]
-
 def infer(expr: RelayExpr, params: ParametersT,
         device: tvm.runtime.Device = tvm.runtime.cpu(),
         target: tvm.target.Target = tvm.target.arm_cpu(),
-) -> OutputDataType:
-    # target = tvm.target.cuda()
-    # with tvm.transform.PassContext(opt_level=3):
-    #     lib = relay.build_module.build(
-    #             ir.IRModule.from_expr(expr),
-    #             target=target,
-    #             params=params)
-
-    # rt_mod: relay.build_module.GraphExecutor = graph_executor.GraphModule(lib["default"](device))
-    # #  rt_mod.set_input("input", data)
-    # rt_mod.run()
-    # return [rt_mod.get_output(i).numpy() \
-    #         for i in range(rt_mod.get_num_outputs())]
-
+) -> OpOutputT:
     result = tvm.relay.create_executor(
         "graph", mod=ir.IRModule.from_expr(expr),
         device=device, target=target,
     ).evaluate()(**params)
     return result
-    # if isinstance(result, tvm.runtime.NDArray):
-    #     result = [ result, ]
-    # return [ r.numpy() for r in result ]
 
 def as_numpy(res) -> typing.List[tvm.nd.NDArray]:
     if isinstance(res, tvm.nd.NDArray):

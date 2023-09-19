@@ -1,5 +1,5 @@
 from functools import wraps
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, Field
 
 import tvm
 
@@ -10,12 +10,16 @@ from .op import *
 class _BaseAttrs:
     @classmethod
     def parse(cls, attrs: AttrsT):
-        fkeys = [f.name for f in fields(cls) ]
+        ftypes = {f.name: f.type for f in fields(cls)}
         try:
-            data = {k: attrs[k] for k in fkeys}
+            data = {k: attrs[k] for k in ftypes}
+            #  for k, v in data.items():
+            #      assert isinstance(v, ftypes[k]), (
+            #              "{}({}) vs. {} in {}"
+            #              ).format(type(v), v, ftypes[k], cls.__name__)
         except Exception as e:
             print("Attr parsed error, expect: {}, get {}.".format(
-                fkeys, list(attrs.keys())
+                list(ftypes.keys()), list(attrs.keys())
             ))
             raise e
         return cls(**data)
@@ -44,6 +48,12 @@ def _format_as_tuple(attrs: AttrsT, *keys):
     return attrs
 
 @dataclass
+@register_attrs(CLIP)
+class ClipAttrs(_BaseAttrs):
+    a_min: float
+    a_max: float
+
+@dataclass
 @register_attrs(PCLIP)
 class PClipAttrs(_BaseAttrs):
     precision: int
@@ -52,18 +62,43 @@ class PClipAttrs(_BaseAttrs):
 @register_attrs(REQUANT)
 class RequantAttrs(PClipAttrs):
     rescale: float
+    precision: int
 
 @dataclass
-@register_attrs(GLOBAL_AVG_POOL2D)
-class GlobalAvgPool2DAttrs(_BaseAttrs):
-    output_size: typing.Tuple[int, int]
+@register_attrs(ADAPTIVE_AVG_POOL2D)
+class AdaptiveAvgPool2DAttrs(_BaseAttrs):
+    layout: str = "NCHW"
+    out_layout: typing.Optional[str] = None
+    output_size: typing.Optional[typing.Tuple[int, int]] = None
+
+@dataclass
+@register_attrs(AVG_POOL2D)
+class AvgPool2DAttrs(_BaseAttrs):
+    pool_size: typing.Union[int, typing.Tuple[int]]
+    strides: typing.Tuple[int]
+    dilation: typing.Union[int, typing.Tuple[int]]
+    padding: typing.Tuple[int]
     layout: str
-    out_layout: str
+    ceil_mode: bool
+    count_include_pad: bool
+
+    @classmethod
+    def parse(cls, attrs: AttrsT):
+        attrs.setdefault("layout", "NCHW")
+        attrs.setdefault("ceil_mode", False)
+        attrs.setdefault("count_include_pad", True)
+        return super().parse(attrs)
 
 @dataclass
 @register_attrs(TUPLE_GET_ITEM)
 class TupleGetItemAttrs(_BaseAttrs):
     index: int
+
+@dataclass
+@register_attrs(DENSE)
+class DenseAttrs(_BaseAttrs):
+    units: int
+    out_dtype: str
 
 @dataclass
 @register_attrs(CONV2D)
@@ -95,11 +130,12 @@ class Conv2DAttrs(_BaseAttrs):
     @classmethod
     def parse(cls, attrs: AttrsT):
         attrs = _format_as_tuple(attrs,
-                "strides", "dilation", "kernel_size")
-        padding = attrs["padding"]
-        if isinstance(padding, int):
-            padding = [ padding ] * 4
-        attrs["padding"] = padding
+                "strides", "dilation",
+                "kernel_size", "padding")
+        attrs.setdefault("kernel_layout", "OIHW")
+        attrs.setdefault("data_layout", "NCHW")
+        attrs.setdefault("out_layout", "")
+        attrs.setdefault("out_dtype", "")
         return super().parse(attrs)
 
 @dataclass
@@ -109,3 +145,12 @@ class BatchNormAttrs(_BaseAttrs):
     epsilon: float = 1e-5
     center: bool = True
     scale: bool = True
+
+@dataclass
+@register_attrs(MEAN)
+class MeanAttrs(_BaseAttrs):
+    axis: typing.Optional[int]
+    keepdims: bool
+    exclude: bool
+
+

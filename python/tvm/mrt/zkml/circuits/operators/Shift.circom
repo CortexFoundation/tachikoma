@@ -27,6 +27,7 @@ template RightShift_Positive(iShape, shiftBit) {
 // processing negative numbers
 template RightShift(iShape, shiftBit) {
     signal input in[iShape];
+
     signal output out[iShape];
     
     component rightshift_positive[iShape];
@@ -95,3 +96,4 @@ template RightShift(iShape, shiftBit) {
     }
     */
 }
+
