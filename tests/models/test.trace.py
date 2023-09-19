@@ -76,34 +76,23 @@ expr: ir.RelayExpr = func.body
 from tvm.mrt import stats
 from tvm.mrt.trace import Trace
 tr = Trace.from_expr(expr, params, model_name=model_name)
-tr.bind_dataset(ds, stats.ClassificationOutput)
-tr.log()
+tr.bind_dataset(ds, stats.ClassificationOutput).log()
 
 # tr.validate_accuracy(max_iter_num=20, **config)
 # sys.exit()
 
-fuse_tr = tr.fuse()
-fuse_tr.log()
-
+fuse_tr = tr.fuse().log()
 calib_tr = fuse_tr.calibrate(
         # force=True,
-        batch_size=16)
-calib_tr.log()
+        batch_size=16).log()
 
-dis_tr = calib_tr.quantize()
-dis_tr.log()
+dis_tr = calib_tr.quantize().log()
 
-sim_tr = dis_tr.export()
-sim_tr.log()
-
-sim_clip_tr = dis_tr.export(with_clip=True)
-sim_clip_tr.log()
-
-sim_round_tr = dis_tr.export(with_round=True)
-sim_round_tr.log()
-
-sim_quant_tr = dis_tr.export(with_clip=True, with_round=True)
-sim_quant_tr.log()
+sim_tr = dis_tr.export().log()
+sim_clip_tr = dis_tr.export(with_clip=True).log()
+sim_round_tr = dis_tr.export(with_round=True).log()
+sim_quant_tr = dis_tr.export(
+        with_clip=True, with_round=True).log()
 
 tr.validate_accuracy(
         sim_tr,
