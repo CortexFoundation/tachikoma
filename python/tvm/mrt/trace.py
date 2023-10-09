@@ -163,7 +163,6 @@ class Trace:
 
         out: Trace = self
         for cb in callbacks:
-            print(config.Pass.G())
             params = {k: v for k, v in out.params.items()}
             print("Apply Trace: {:25} Transformer: {}".format(
                 tr_name, cb.__name__))

@@ -64,6 +64,8 @@ class N:
 
 N.register_global_scope()
 
+N.register_global_scope()
+
 def extend_fname(prefix, with_ext=False):
     """ Get the precision of the data.
 
