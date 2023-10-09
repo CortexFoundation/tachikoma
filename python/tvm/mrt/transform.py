@@ -35,24 +35,27 @@ class WithParameters(Symbol):
 
     def __repr__(self, **attrs):
         if self.is_param():
-            attrs["absmax"] = np.abs(self.numpy()).max()
+            attrs["absmax"] = np.abs(self.numpy()).max(initial=0)
         return super().__repr__(**attrs)
 
-    def ndarray(self) -> tvm.nd.NDArray:
+    def ndarray(self) -> OpOutputT:
         assert self.is_param(), (
             "{} is not parameter.").format(self.name)
         return self.params[self.name]
 
     def numpy(self) -> np.ndarray:
-        return self.ndarray().numpy()
+        return to_numpy(self.ndarray())
 
     def as_parameter(self, data: OpOutputT):
-        # TODO: move to symbol
-        assert isinstance(data, tvm.nd.NDArray)
-        self.params[self.name] = tvm.nd.array(
-                data.numpy().astype(self.dtype))
+        def _f(data, dtype):
+            if isinstance(data, list):
+                assert len(data) == len(dtype)
+                return [_f(d, t) for d, t in zip(data, dtype)]
+            assert isinstance(data, tvm.nd.NDArray), type(data)
+            return tvm.nd.array(data.numpy().astype(dtype))
+
+        self.params[self.name] = _f(data, self.dtype)
         return op.as_variable(self)
-        #  return self.copy(op_name=opns.VAR, args=[], attrs={})
 
     def from_const_data(self, data: typing.Union[int, float]) -> Symbol:
         return self.from_np_data(np.array(data))

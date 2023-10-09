@@ -38,6 +38,13 @@ ADD = "add"
 SUB = "sub"
 MUL = "multiply"
 
+# ======= auto generate op =========
+ARANGE = "arange"
+
+# ======= control flow op ===========
+IF = "if"
+ARGWHERE = "argwhere"
+
 # ======= mrt requant op ==========
 REQUANT = "mrt.requant"
 PCLIP = "mrt.pclip"

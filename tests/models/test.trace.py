@@ -94,6 +94,8 @@ sim_round_tr = dis_tr.export(with_round=True).log()
 sim_quant_tr = dis_tr.export(
         with_clip=True, with_round=True).log()
 
+circom_tr = dis_tr.export(use_simulator=False).log()
+
 tr.validate_accuracy(
         sim_tr,
         sim_clip_tr,

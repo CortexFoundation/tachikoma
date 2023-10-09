@@ -4,7 +4,7 @@ from .symbol import *
 from .types import ParametersT
 from .transform import Transformer
 
-from . import op
+from . import op, optype
 
 def set_input_shape(
         symbol: Symbol, params: ParametersT,
@@ -22,13 +22,14 @@ def set_input_shape(
         return sym
     out = transform(symbol, _set_shape)
 
-    out = op.infer_type(out)
-    out = op.graph_like(out, symbol)
-    return out
+    return optype.infer(out)
+    # out = op.infer_type(out)
+    # out = op.graph_like(out, symbol)
+    # return out
 
 def format_print(
         symbol: Symbol, params: ParametersT,
-        name: str, # hint name for print header
+        name: str = "", # hint name for print header
         prefix: int = 0, # prefix layers to print
         suffix: int = 0, # suffix layers to print
         short: bool = False, # 5 prefix and suffix by short
@@ -47,7 +48,7 @@ def format_print(
         info["total_layers"] += 1
         info["op_names"].add(sym.op_name)
         if op.is_param(sym, params):
-            info["params"] += np.product(sym.shape)
+            info["params"] += np.product(sym.shape or (0))
         info["ops"] += op.is_operator(sym)
 
     visit(symbol, _calc)

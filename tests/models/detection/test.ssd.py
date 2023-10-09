@@ -18,27 +18,75 @@ batch_size = 16
 image_shape = (3, 224, 224)
 data_shape = (batch_size,) + image_shape
 
+def dict_to_tuple(out_dict):
+    if "masks" in out_dict.keys():
+        return (out_dict["boxes"], out_dict["scores"], out_dict["labels"], out_dict["masks"])
+    return (out_dict["boxes"], out_dict["scores"], out_dict["labels"])
+
+class TraceWrapper(torch.nn.Module):
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+
+    def forward(self, inp):
+        out = self.model(inp)
+        return dict_to_tuple(out[0])
+
 def load_model_from_torch() -> (ir.IRModule, ParametersT):
     import torchvision
     model = torchvision.models.detection.ssd300_vgg16(weights=torchvision.models.detection.SSD300_VGG16_Weights.DEFAULT)
+    model = TraceWrapper(model)
     model = model.eval()
     data_transform = torchvision.models.detection.SSD300_VGG16_Weights.COCO_V1.transforms()
     input_data = data_transform(torch.randn(data_shape))
-    script_module = torch.jit.trace(model, [input_data]).eval()
+    # script_module = torch.jit.script(model, example_inputs=[input_data]) # .eval()
+    script_module = torch.jit.trace(model, [input_data])
+    # with open("/tmp/script.txt", "w") as f:
+    #     f.write(script_module.model.code)
+    #     f.write("\n\n\n")
+    #     f.write(script_module.code)
     return tvm.relay.frontend.from_pytorch(
-            script_module, [ ("input", data_shape) ])
+            script_module.eval(), [ ("input", data_shape) ])
 
-mod, params = load_model_from_torch()
-mod: tvm.IRModule = mod
-func: tvm.relay.function.Function = mod["main"]
-expr: ir.RelayExpr = func.body
+# mod, params = load_model_from_torch()
+# mod: tvm.IRModule = mod
+# func: tvm.relay.function.Function = mod["main"]
+# expr: ir.RelayExpr = func.body
+
+# with open("/tmp/expr.txt", "w") as f:
+#     f.write(expr.astext())
 
 from tvm.mrt.trace import Trace
-from tvm.mrt.opns import *
-from tvm.mrt.symbol import *
-tr = Trace.from_expr(expr, params, model_name="ssd300_vgg16")
-tr.checkpoint()
-tr.print(param_config={ "use_all": True, })
+
+# tr = Trace.from_expr(expr, params, model_name="ssd300_vgg16")
+# tr.dump()
+# tr.log()
+
+tr = Trace.load("./data/ssd300_vgg16/from_expr.trace")
+
+from tvm.mrt import config, optype, helper
+
+with config.Pass("fuse", log_before=True, log_after=True):
+    tr = tr.fuse().log()
+
+t = tr.subgraph(inames=["%822"], onames=["%823"])
+symbol = optype.infer(t.symbol)
+helper.format_print(symbol, t.params)
+t = Trace(t.model, "type_infer", symbol, t.params)
+out = t.eval(np.random.randint(0, 2, size=(8732,)))
+print(out.shape)
+sys.exit()
+
+with config.Pass(
+        name = "type_infer",
+        log_before = True, log_after = True):
+    symbol = optype.infer(tr.symbol)
+tr = Trace(tr.model_name, tr.tr_name, symbol, tr.params)
+
+# TODO: add infer shape & dtype
+# TODO: add subgraph for fuse
+
+sys.exit()
 
 from tvm.mrt import fuse
 from tvm.mrt import op

@@ -12,11 +12,11 @@ import tvm
 from tvm import relay, ir
 from tvm.contrib import graph_executor as graph
 
-from . import op, fuse, helper
+from . import runtime, config
+from . import op, optype, fuse, helper
 from . import calibrate as calib
 from . import discrete as dis
 from . import fixed_point as fp
-from . import runtime
 from .stats import *
 from .transform import Transformer, TransformerT
 from .discrete import Discretor
@@ -55,14 +55,16 @@ class Trace:
                 self._sym_inputs.append(sym)
             elif op.is_param(sym, self.params):
                 data = self.params[sym.name]
-                assert sym.shape == list(data.shape), (
+                assert sym.shape is None or \
+                        list(sym.shape) == list(data.shape), (
                     "param:{} shape inconsistent: {} vs. {}"
                 ).format(sym, sym.shape, data.shape)
                 assert sym.dtype == data.dtype, (
                     "params:{} dtype inconsistent: {} vs. {}"
                 ).format(sym.name, sym.dtype, data.dtype)
                 self._sym_params.append(sym)
-        visit(self.symbol, _init)
+        with config.Pass():
+            visit(self.symbol, _init)
 
         # if len(self._sym_inputs) > 1:
         #     print([str(s) for s in self._sym_inputs])
@@ -161,6 +163,7 @@ class Trace:
 
         out: Trace = self
         for cb in callbacks:
+            print(config.Pass.G())
             params = {k: v for k, v in out.params.items()}
             print("Apply Trace: {:25} Transformer: {}".format(
                 tr_name, cb.__name__))
@@ -260,10 +263,7 @@ class Trace:
 
     def subgraph(self, inames=[], onames=[]) -> Trace:
         out = op.subgraph(self.symbol, inames, onames)
-        return Trace("subgraph",
-                out, self.params,
-                _loaded=self._loaded,
-                model=self.model)
+        return self._new("subgraph", out, self.params)
 
     def _get_checkpoint_path(self, tr_name: str = None):
         base_dir = os.path.join(self.BASE_DIR, self.model)
@@ -272,8 +272,9 @@ class Trace:
         tr_name = tr_name or self.name
         return os.path.join(base_dir, tr_name + ".trace")
 
-    def dump(self, trace_path: str):
-        print("Dump Trace {:20} into {}".format(self.name, trace_path))
+    def dump(self, tr_path: str = None):
+        tr_path = tr_path or self._get_checkpoint_path()
+        print("Dump Trace {:20} into {}".format(self.name, tr_path))
         data = dump_json(self.symbol)
         data.update({
             "_model_name": self.model,
@@ -282,16 +283,16 @@ class Trace:
                     for k, v in self.params.items()},
         })
         try:
-            with open(trace_path, "wb") as f:
+            with open(tr_path, "wb") as f:
                 pickle.dump(data, f)
         except Exception as e:
             # clean generated empty path
-            os.remove(trace_path)
+            os.remove(tr_path)
             raise e
 
     @staticmethod
-    def load(trace_path: str) -> Trace:
-        with open(trace_path, "rb") as f:
+    def load(tr_path: str) -> Trace:
+        with open(tr_path, "rb") as f:
             data = pickle.load(f)
 
         model  = data["_model_name"]
@@ -299,7 +300,7 @@ class Trace:
         params = {k: tvm.nd.array(v) \
                 for k, v in data["params"].items()}
         symbol = load_json(data, params=params)
-        print("Load Trace {:20} from {}".format(name, trace_path))
+        print("Load Trace {:20} from {}".format(name, tr_path))
         return Trace(model, name, symbol, params)
 
     @staticmethod
@@ -307,6 +308,9 @@ class Trace:
             expr: RelayExpr, params: ParametersT,
             tr_name = "from_expr",
             model_name="unknown-model") -> Trace:
-        return Trace(model_name, tr_name, expr2symbol(expr), params)
+        print("Init  Trace {:20} from model {}'s' expr".format(
+            tr_name, model_name))
+        symbol, params = expr2symbol(expr, params)
+        return Trace(model_name, tr_name, symbol, params)
 
 

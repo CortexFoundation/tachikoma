@@ -26,83 +26,77 @@ def subgraph(symbol: Symbol, inames=[], onames=[]):
 def variable(name, shape, dtype) -> Symbol:
     """ Create varible for symbol. """
     return Symbol.from_dict({},
-            name=name, op_name = VAR,
-            args = [], extra_attrs = {
-                "shape": shape,
-                "dtype": dtype, })
+            name=name, op_name = VAR, args = [],
+            extra_attrs = { "shape": shape, "dtype": dtype })
 
 def as_variable(symbol: Symbol) -> Symbol:
-    return symbol.copy(op_name=VAR, args=[], attrs={
-        "shape": symbol.shape,
-        "dtype": symbol.dtype,
-        })
+    """ inherit extra attrs """
+    return symbol.copy(op_name=VAR, args=[], attrs={})
 
 def retrieve_operator(symbol: Symbol) -> Symbol:
     return symbol.copy(args=[as_variable(c) for c in symbol.args])
 
-def infer_type(symbol: Symbol) -> Symbol:
-    from tvm import relay, ir
-    from tvm.mrt import sym_expr
+# def infer_type(symbol: Symbol) -> Symbol:
+#     from tvm import relay, ir
+#     from tvm.mrt import sym_expr
 
-    expr = sym_expr.symbol2expr(symbol)
-    mod = relay.transform.InferType()(ir.IRModule.from_expr(expr))
-    expr = mod["main"].body
-    return sym_expr.expr2symbol(expr)
+#     expr = sym_expr.symbol2expr(symbol)
+#     mod = relay.transform.InferType()(ir.IRModule.from_expr(expr))
+#     expr = mod["main"].body
+#     return sym_expr.expr2symbol(expr)
 
-def graph_like(new: Symbol, old: Symbol) -> Symbol:
-    old_sym_iter = iter(sym2list(old))
-    def _sym_like(sym: Symbol):
-        target = next(old_sym_iter)
-        assert target.op_name == sym.op_name
-        sym.attrs.update({
-            k: v for k, v in target.attrs.items() \
-                if k not in sym.attrs })
-        sym.extra_attrs.update({
-            k: v for k, v in target.extra_attrs.items() \
-                if k not in sym.extra_attrs })
-        return sym.like(target)
-    return transform(new, _sym_like)
+# def graph_like(new: Symbol, old: Symbol) -> Symbol:
+#     old_sym_iter = iter(sym2list(old))
+#     def _sym_like(sym: Symbol):
+#         target = next(old_sym_iter)
+#         assert target.op_name == sym.op_name
+#         sym.attrs.update({
+#             k: v for k, v in target.attrs.items() \
+#                 if k not in sym.attrs })
+#         sym.extra_attrs.update({
+#             k: v for k, v in target.extra_attrs.items() \
+#                 if k not in sym.extra_attrs })
+#         return sym.like(target)
+#     return transform(new, _sym_like)
 
-@dataclass(repr=False)
-class InferType(Symbol):
-    def __call__(self):
-        assert is_operator(self)
+# @dataclass(repr=False)
+# class InferType(Symbol):
+#     def __call__(self):
+#         assert is_operator(self)
 
-        if type(self) is InferType:
-            sym = retrieve_operator(self)
-            sym = infer_type(sym)
-            self.shape = sym.shape
-            self.dtype = sym.dtype
-        else:
-            self.shape = self._infer_shape()
-            self.dtype = self._infer_type()
-        return self
+#         if type(self) is InferType:
+#             sym = retrieve_operator(self)
+#             sym = infer_type(sym)
+#             self.shape = sym.shape
+#             self.dtype = sym.dtype
+#         else:
+#             self.shape = self._infer_shape()
+#             self.dtype = self._infer_type()
+#         return self
 
-    def _infer_type(self):
-        assert all([self.args[0].dtype == a.dtype \
-                for a in self.args])
-        return self.args[0].dtype
+#     def _infer_type(self):
+#         assert all([self.args[0].dtype == a.dtype \
+#                 for a in self.args])
+#         return self.args[0].dtype
 
-    def _infer_shape(self) -> ShapeT:
-        raise NotImplementedError("")
+#     def _infer_shape(self) -> ShapeT:
+#         raise NotImplementedError("")
 
-@dataclass(repr=False)
-class FirstLikeInferType(InferType):
-    def _infer_shape(self) -> ShapeT:
-        return self.args[0].shape
-def _new_op(op_name, *args,
-        extra_attrs=None, **attrs) -> Symbol:
+# @dataclass(repr=False)
+# class FirstLikeInferType(InferType):
+#     def _infer_shape(self) -> ShapeT:
+#         return self.args[0].shape
+def _new_op(op_name, *args, extra_attrs=None, **attrs) -> Symbol:
     return Symbol.from_dict({},
             name=N.n(), op_name=op_name,
             args=args or [], attrs=attrs or {},
             extra_attrs=extra_attrs or {})
 
-def _register_op(
-        op_name,
-        infer_type: typing.Type[InferType] = InferType):
+def _register_op(op_name):
+    from . import optype
     def _op(*args, **attrs) -> Symbol:
         op = _new_op(op_name, *args, **attrs)
-        return infer_type.base(op)()
+        return optype.infer_single(op)
     return _op
 
 Tuple = _register_op(TUPLE)
@@ -129,9 +123,9 @@ add = _register_op(ADD)
 sub = _register_op(SUB)
 mul = _register_op(MUL)
 
-requant = _register_op(REQUANT, FirstLikeInferType)
-pclip = _register_op(PCLIP, FirstLikeInferType)
-rs_pclip = _register_op(RS_PCLIP, FirstLikeInferType)
+requant = _register_op(REQUANT)
+pclip = _register_op(PCLIP)
+rs_pclip = _register_op(RS_PCLIP)
 
 def is_operator(symbol: Symbol, params: ParametersT = {}):
     return symbol.op_name != VAR
