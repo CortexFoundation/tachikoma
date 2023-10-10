@@ -86,7 +86,9 @@ calib_tr = fuse_tr.calibrate(
         # force=True,
         batch_size=16).log()
 
-dis_tr = calib_tr.quantize().log()
+from tvm.mrt.config import Pass
+with Pass(log_before=True, log_after=True):
+    dis_tr = calib_tr.quantize().log()
 
 sim_tr = dis_tr.export().log()
 sim_clip_tr = dis_tr.export(with_clip=True).log()
@@ -94,7 +96,7 @@ sim_round_tr = dis_tr.export(with_round=True).log()
 sim_quant_tr = dis_tr.export(
         with_clip=True, with_round=True).log()
 
-circom_tr = dis_tr.export(use_simulator=False).log()
+circom_tr = dis_tr.export(force=True, use_simulator=False).log()
 
 tr.validate_accuracy(
         sim_tr,

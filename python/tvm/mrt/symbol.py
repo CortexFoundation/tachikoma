@@ -186,7 +186,8 @@ class Symbol(_BaseSymbol):
 
     @property
     def shape(self) -> ShapeT:
-        return self.extra_attrs.get("shape", None)
+        shp = self.extra_attrs.get("shape", None)
+        return shp and list(shp)
     @shape.setter
     def shape(self, val):
         self.extra_attrs["shape"] = list(val)

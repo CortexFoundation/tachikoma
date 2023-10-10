@@ -23,7 +23,7 @@ def validate_runtime_inputs(
         val = data_dict.get(sym.name, data)
         assert val is not None
         val = tvm.nd.array(val)
-        assert sym.shape == list(val.shape), (
+        assert list(sym.shape) == list(val.shape), (
                 "{}: {} vs. {}"
                 ).format(sym.name, sym.shape, val.shape)
         assert sym.dtype == val.dtype, (

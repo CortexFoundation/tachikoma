@@ -48,6 +48,8 @@ class Simulator(Transformer, QuantizedInfo):
 @dataclass(repr=False)
 class FixPoint(Transformer, QuantizedInfo):
     def map_requant(self) -> FixPoint:
+        if (self.args[0]).is_input():
+            return self
         self.validate_precision()
         X: FixPoint = self.args[0]
         parsed: RequantAttrs = self.parsed
