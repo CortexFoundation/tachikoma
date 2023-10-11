@@ -5,6 +5,7 @@ import json
 from functools import wraps
 from dataclasses import dataclass, fields, is_dataclass
 
+from . import config
 from .utils import *
 from .types import *
 
@@ -32,12 +33,12 @@ class _BaseSymbol:
             the transformer, such as discretization method,
             precision, etc.
     """
-    extra_attrs: typing.Dict[str, typing.Any]
-    """ extra attributes will be inherited automatically. """
     name: str
     op_name: str
     args: typing.List[Symbol]
     attrs: typing.Dict[str, typing.Any]
+    extra_attrs: typing.Dict[str, typing.Any]
+    """ extra attributes will be inherited automatically. """
 
     @classmethod
     def update_extra_attrs(cls, data_dict, **kwargs):
@@ -145,11 +146,6 @@ class Symbol(_BaseSymbol):
         for the user's config about quantization layers.
     """
 
-    name: str
-    op_name: str
-    args: typing.List[Symbol]
-    attrs: typing.Dict[str, typing.Any]
-
     # Overridable Methods, inheritted from _BaseSymbol
     #   to support multi-inherit design.
     @classmethod
@@ -181,13 +177,6 @@ class Symbol(_BaseSymbol):
         return super().__repr__(**attrs)
     def info(self, **attrs) -> str:
         return super().__repr__(**attrs)
-#        inputs_info = [
-#            "{}@{}".format(i.name, i.attrs.get("shape", None)) \
-#            for i in self.args]
-#        return "{} = {}({}) /* attrs */ \t{}".format(
-#            self.name, self.op_name,
-#            ", ".join(inputs_info),
-#            self.attrs)
 
     # Naive Methods
     def is_op(self, *op_names) -> bool:
@@ -197,7 +186,8 @@ class Symbol(_BaseSymbol):
 
     @property
     def shape(self) -> ShapeT:
-        return list(self.extra_attrs.get("shape", None))
+        shp = self.extra_attrs.get("shape", None)
+        return shp and list(shp)
     @shape.setter
     def shape(self, val):
         self.extra_attrs["shape"] = list(val)
@@ -220,7 +210,10 @@ class Symbol(_BaseSymbol):
     def hash(self) -> int:
         return hash(str(self))
 
+
 def _topo_sort(symbol: Symbol, sym_list: typing.List[Symbol]):
+    assert isinstance(symbol, Symbol), type(symbol)
+
     if sym_list.count(symbol) > 0:
         return
     for c in symbol.args:
@@ -269,8 +262,11 @@ _TransformerT = typing.Callable[[Symbol], typing.Optional[Symbol]]
 
 def visit(symbol: Symbol, callback: _VisitorT):
     """ Visitor mode, possible modify symbol itself. """
+    C = config.Pass.G()
     for sym in sym2list(symbol):
+        C.log_before and print("[{} <<] {}".format(C.name, sym))
         callback(sym)
+        C.log_after and print("[{} >>] {}".format(C.name, sym))
 
 def transform(symbol: Symbol, callback: _TransformerT) -> Symbol:
     """ Transform symbol from old to new, with inputs updated.
@@ -279,17 +275,23 @@ def transform(symbol: Symbol, callback: _TransformerT) -> Symbol:
         attributes in parameter passed in args does nothing.
     """
     sym_map: typing.Dict = {}
+    C = config.Pass.G()
     for sym in sym2list(symbol):
+        C.log_before and print("[{} <<] {}".format(C.name, sym))
         args = [sym_map[c.name] for c in sym.args]
         # pre-clone symbol, to avoid misleading usage in callback
         sym = sym.copy(args=args)
-        out = callback(sym) or sym
+
+        new_conf = C if C.inherit else C.restore()
+        with new_conf:
+            out = callback(sym) or sym
         assert isinstance(out, Symbol)
         # default const_ prefix symbol means parameters
         assert sym.name not in sym_map, sym.name
         # assert sym.name.startswith("const_") or \
         #         sym.name not in sym_map, sym.name
         sym_map[sym.name] = out
+        C.log_after and print("[{} >>] {}".format(C.name, out))
     return sym_map[symbol.name]
 
 def raw_print(symbol: Symbol):

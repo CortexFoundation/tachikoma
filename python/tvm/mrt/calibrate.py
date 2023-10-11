@@ -38,9 +38,7 @@ class Calibrator(Transformer):
             data: tvm.nd.NDArray | None = None,
             data_dict: ParametersT = {},
             random_config: typing.Dict[str, typing.Any] = {},
-            device: tvm.runtime.Device = tvm.runtime.cpu(),
-            target: tvm.target.Target = tvm.target.arm_cpu(),
-    ):
+            **kwargs):
         if self.is_input():
             out = data_dict.get(self.name, data)
             if out is None:
@@ -51,7 +49,7 @@ class Calibrator(Transformer):
             sym = op.retrieve_operator(self)
             out = inference.run(
                     sym, [ a.nd_data for a in self.args ],
-                    device=device, target=target)
+                    **kwargs)
 
         self.nd_data = out
         assert isinstance(out, (tvm.nd.NDArray, list)), type(out)

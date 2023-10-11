@@ -47,19 +47,24 @@ class N:
     @staticmethod
     def _set_name_scope(ins):
         N.__GLOBAL_INSTANCE__ = ins
+        return ins
 
     @staticmethod
     def n(prefix=None, suffix=None) -> str:
         ins = N.__GLOBAL_INSTANCE__
         if ins is None:
-            raise RuntimeError("Namescope not specified")
+            ins = N.register_global_scope()
         prefix = "%" if prefix is None else prefix
         suffix = "" if suffix is None else suffix
         return ins._alloc_name(prefix, suffix)
 
     @staticmethod
     def register_global_scope(name=""):
-        N._set_name_scope(N(name))
+        return N._set_name_scope(N(name))
+
+N.register_global_scope()
+
+N.register_global_scope()
 
 def extend_fname(prefix, with_ext=False):
     """ Get the precision of the data.

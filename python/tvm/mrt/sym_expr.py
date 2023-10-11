@@ -10,8 +10,9 @@ from tvm import relay, ir, tir
 from tvm.ir.expr import *
 from tvm.relay.expr import *
 
-from .symbol import *
 from .opns import *
+from .symbol import *
+from .types import *
 from . import op
 
 __ALL__ = [ "expr2symbol", "symbol2expr", ]
@@ -28,40 +29,78 @@ def _convert_to_py(value):
         return {k: _convert_to_py(v) for k, v in value.items()}
     elif isinstance(value, tir.expr.IntImm):
         return int(value)
+    # elif isinstance(value, relay.expr.Constant):
+    #     return value.data.numpy().tolist()
+    # # arange attrs may contains other operators' output
+    # elif isinstance(value, relay.expr.Call):
+    #     return None
     return value
 
 def _format_containers(attrs):
     for k, v in attrs.items():
         attrs[k] = _convert_to_py(v)
 
-def expr2symbol(expr: RelayExpr) -> Symbol:
+def expr2symbol(
+        expr: RelayExpr,
+        params: ParametersT = {},
+        ) -> (Symbol, ParametersT):
+    params = {k: v for k, v in params.items()}
+
     mod = relay.transform.InferType()(ir.IRModule.from_expr(expr))
     expr = mod["main"].body
 
     symbol_map = {}
     def _cast_expr(node: RelayExpr):
         if isinstance(node, ir.op.Op):
+            """ processed in Call expr. """
             return
 
-        name, op_name, args = None, None, []
-        dtype = _expr_type(node.checked_type, "dtype")
-        shape = _expr_type(node.checked_type, "concrete_shape")
-        extra_attrs = { "shape": shape, "dtype": dtype, }
+        if isinstance(node, relay.expr.Constant):
+            name = N.n("const_")
+            params[name] = node.data
+            symbol_map[node] = op.variable(name,
+                    node.data.shape, node.data.dtype)
+            return
 
-        attrs = { "extra_attrs": extra_attrs, }
-        if isinstance(node, relay.Var):
+        try:
+            dtype = _expr_type(node.checked_type, "dtype")
+        except Exception as e:
+            # print(type(node))
+            dtype = None
+
+        try:
+            shape = _expr_type(node.checked_type, "concrete_shape")
+        except Exception as e:
+            shape = None
+            # print(type(node), e)
+            # if isinstance(node, relay.expr.Call):
+            #     print(node.op.name)
+
+        attrs = { "extra_attrs": { "shape": shape, "dtype": dtype }, }
+        _format_containers(attrs)
+
+        if isinstance(node, relay.expr.Var):
             name = node.name_hint or N.n(prefix="input_")
             symbol_map[node] = op.variable(name, shape, dtype)
-        elif isinstance(node, relay.Call):
-            if node.op.name == CONCAT:
-                args = [ symbol_map[f] for f in node.args[0].fields ]
+        elif isinstance(node, relay.expr.If):
+            args = [ node.cond, node.true_branch, node.false_branch ]
+            args = [symbol_map[i] for i in args]
+            symbol_map[node] = op._new_op(IF, *args, **attrs)
+        elif isinstance(node, relay.expr.Call):
+            op_name = node.op.name
+            if op_name == CONCAT:
+                args = [symbol_map[f] for f in node.args[0].fields]
             else:
                 args = [symbol_map[i] for i in node.args]
+
             nattrs = node.attrs or {}
             attrs.update({k: nattrs[k] for k in nattrs.keys()})
             _format_containers(attrs)
-            symbol_map[node] = op._new_op(
-                    node.op.name, *args, **attrs)
+            # op:arange has duplicate attrs for (start, stop, step)
+            if op_name in [ ARANGE, ]:
+                for k in ["start", "stop", "step"]:
+                    attrs.pop(k)
+            symbol_map[node] = op._new_op(op_name, *args, **attrs)
         elif isinstance(node, relay.TupleGetItem):
             args = [ symbol_map[node.tuple_value], ]
             attrs['index'] = node.index
@@ -69,8 +108,7 @@ def expr2symbol(expr: RelayExpr) -> Symbol:
                     TUPLE_GET_ITEM, *args, **attrs)
         elif isinstance(node, relay.Tuple):
             args = [ symbol_map[f] for f in node.fields ]
-            symbol_map[node] = op._new_op(
-                    TUPLE, *args, **attrs)
+            symbol_map[node] = op._new_op(TUPLE, *args, **attrs)
         else:
             raise RuntimeError(
                 "MRT not support expr type:{}".format(type(node)))
@@ -78,7 +116,7 @@ def expr2symbol(expr: RelayExpr) -> Symbol:
 
     with N():
         relay.analysis.post_order_visit(expr, _cast_expr)
-    return symbol_map[expr]
+    return symbol_map[expr], params
 
 def symbol2expr(symbol: Symbol, expr_map={}) -> RelayExpr:
     expr_map.clear()
