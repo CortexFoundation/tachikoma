@@ -23,10 +23,12 @@
 conda create --name tachikoma python=3.11 -c conda-forge
 conda activate tachikoma
 python -m pip install attrs pytest psutil scipy decorator typing_extensions
-python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu116
-python -m pip install torchvision
-python -m pip install torchaudio
+pip install torch==1.13.1+cu116 torchvision==0.14.1+cu116 torchaudio==0.13.1 --extra-index-url https://download.pytorch.org/whl/cu116 # cp38 / cp39
+#python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu116
+#python -m pip install torchvision
+#python -m pip install torchaudio
 python -m pip install onnx==1.14.0 # for exporting onnx
+pip install gluoncv mxnet -i https://pypi.tuna.tsinghua.edu.cn/simple # for mxnet detection models
 ```
 
 ## set up cmake config, using cuda&llvm-10
