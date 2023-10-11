@@ -45,6 +45,7 @@ def map_add(sym: Symbol):
 
 def map_component(sym: Symbol) -> CircomGenerator:
     inputs = sym.args
+    #keep_dims = None if "keepdims" not in sym.attrs else sym.attrs["keepdims"]
     comp_map = {
         # "null": "Input",
         "var": "Input",
@@ -65,10 +66,16 @@ def map_component(sym: Symbol) -> CircomGenerator:
         "subtract_scalar": "SubScalar",
         "clip": "Clip{}D".format(len(sym.shape)),
 
+        "transpose": "TransposeC1C2HW", #"Pass{}D".format(len(sym.shape)),
+        "split": "Pass3D",
+        "TupleGetItem": "TupleGetItem3D",
+
+        "concatenate": "Concatenate3D", #"Concatenate{}IN".format(len(sym.inputs)),
+
         "multiply": "MulScalar",
         "right_shift": "RightShift",
         "squeeze": "Squeeze_CHW",
-        "sum": "Sum_CHW",
+        "sum": "Sum_CHW" if 'keepdims' not in sym.attrs or sym.attrs["keepdims"]==True else "Sum_CHW_0",
         "pass": "Pass{}D".format(len(sym.shape)),
 
         "image.resize2d": "Resize2D",
@@ -124,7 +131,37 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
 
         # mrt ops fit with circom ops
         # insert pad2d before conv2d
-        if (sym.op_name == "nn.conv2d" or sym.op_name=="nn.max_pool2d") and "padding" in attrs:
+        if sym.op_name == "concatenate":
+            if len(sym.args)==2:
+                gen = map_component(sym)(name, inputs, attrs)
+                circom_ops.add(gen.comp.op_name)
+                generator_map[name] = gen
+            elif len(sym.args)==1:
+                sym.op_name = "pass"
+                sym2circom(sym)
+            # sym args > 2
+            else:
+                sym_0 = sym.copy(args=sym.args[:2])
+                sym_0.name = sym.name+"_1"
+                head_shape = sym_0.args[0].shape
+                head_shape[0] += sym_0.args[1].shape[0]
+                sym_0.attrs["shape"] = head_shape
+                sym_0.shape = head_shape
+                sym2circom(sym_0)
+                sym_1 = sym.copy(args=[sym_0, *sym.args[2:]])
+                sym2circom(sym_1)
+
+        elif sym.op_name == "split":
+            # 'split' has multiple outputs, which not supported in circimGenerator,\
+            # so pass and fix in TupleGetItem
+            sym.attrs["shape"] = sym.args[0].shape
+            sym.shape = sym.args[0].shape
+            attrs = get_merged_attrs(sym)
+            gen = map_component(sym)(name, inputs, attrs)
+            circom_ops.add(gen.comp.op_name)
+            generator_map[name] = gen
+
+        elif (sym.op_name == "nn.conv2d" or sym.op_name=="nn.max_pool2d") and "padding" in attrs:
             padding = sym.attrs["padding"]
             sym_pad = sym.copy(args=sym.args)
             sym_pad.name = name+"_pad"
@@ -132,8 +169,12 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
             attrs_pad = get_merged_attrs(sym)
             attrs_pad["pad_value"] = 0
             shape_pad = inputs[0].shape
-            shape_pad[1] = shape_pad[1] + padding[0] + padding[1]
-            shape_pad[2] = shape_pad[2] + padding[2] + padding[3]
+            if len(padding)>2:
+                shape_pad[1] = shape_pad[1] + padding[0] + padding[1]
+                shape_pad[2] = shape_pad[2] + padding[2] + padding[3]
+            else:
+                shape_pad[1] = shape_pad[1] + padding[0] + padding[0]
+                shape_pad[2] = shape_pad[2] + padding[1] + padding[1]
             attrs_pad["shape"] = shape_pad
             sym_pad.attrs = attrs_pad
             sym_pad.shape = shape_pad
@@ -171,8 +212,8 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
                 sym_fl = sym.copy(args=sym.args)
                 sym_fl.name = name+"_flatten"
                 sym_fl.op_name = "flatten"
-                sym_fl.attrs["shape"] = [attrs["shape"][0]]
-                sym_fl.shape = [attrs["shape"][0]]
+                sym_fl.attrs["shape"] = [np.product(attrs["shape"])]
+                sym_fl.shape = sym_fl.attrs["shape"]
                 # start generate map
                 attrs_fl = get_merged_attrs(sym_fl)
                 inputs_fl = [generator_map[i.name] for i in sym_fl.args]
@@ -293,7 +334,10 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
                 sym_rs.name = name+"_right_shift"
                 # start generate map
                 attrs_rs = get_merged_attrs(sym_rs)
-                attrs_rs["scalar"] = int(params[sym.args[1].name].numpy())
+                print(params[sym.args[1].name].numpy().flatten(), "TODO: fix303", sym.args[1].name, sym.name)
+                scalars = params[sym.args[1].name].numpy().flatten()
+                # TODO: fix multiply scalar
+                attrs_rs["scalar"] = (scalars).astype(int)
                 inputs = [generator_map[i.name] for i in sym_rs.args]
                 gen = map_component(sym_rs)(sym_rs.name, inputs, attrs_rs)
                 circom_ops.add(gen.comp.op_name)

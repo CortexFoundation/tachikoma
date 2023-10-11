@@ -59,3 +59,51 @@ template Pass5D (i1, i2, i3, i4, i5) {
         }
     }
 }
+
+template TransposeC1C2HW (i1, i2, i3, i4) {
+    signal input in[i1][i2][i3][i4];
+    signal output out[i2][i1][i3][i4];
+
+    for (var x1 = 0; x1 < i1; x1++) {
+        for (var x2 = 0; x2 < i2; x2++) {
+            for (var x3 = 0; x3 < i3; x3++) {
+                for (var x4 = 0; x4 < i4; x4++) {
+                    out[x2][x1][x3][x4] <== in[x1][x2][x3][x4];
+                }
+            }
+        }
+    }
+
+}
+
+template Split3D (i1, i2, i3) {
+    # should pass
+    signal input in[i1][i2][i3];
+    signal output out1[i1\2][i2][i3];
+    signal output out2[i1\2][i2][i3];
+}
+
+template TupleGetItem3D (i1, i2, i3, index) {
+    signal input input[i1][i2][i3];
+    signal output out[i1\2][i2][i3];
+
+    if (index == 0) {
+        for (var i = 0; i < i1\2; i++) {
+    	    for (var j = 0; j < i2; j++) {
+    	        for (var k = 0; k < i3; k++) {
+	            out[i][j][k] <== in[i][j][k];
+                }
+            }
+        }
+    } else {
+        for (var i = i1\2; i < i1; i++) {
+    	    for (var j = 0; j < i2; j++) {
+    	        for (var k = 0; k < i3; k++) {
+                    out[i-i1\2][j][k] <== in[i][j][k];
+                }
+            }
+        }
+
+    }
+}
+

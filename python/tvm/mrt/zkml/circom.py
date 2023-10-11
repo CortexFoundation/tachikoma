@@ -110,7 +110,8 @@ class CircomGenerator:
 
     def input_json_clear(self, params_whole:typing.Dict[str, np.ndarray]):
         if not self._visit_flag:
-            del params_whole[self.name]
+            if self.name in params_whole:
+                del params_whole[self.name]
 
     def fill_circom(self, code: str) -> str:
         """ Inject circom code """

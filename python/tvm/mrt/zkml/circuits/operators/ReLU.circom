@@ -163,4 +163,3 @@ template Clip3D(iShape, H, W, min, max) {
         }
     }
 }
-

@@ -94,9 +94,8 @@ class OperatorGenerator(CircomGenerator):
             str(s) for s in self.arguments()])
 
         #  self.circom_output = self.output_name()
-        assert len(self.comp.output_names) == 1
-        self.circom_output = "{}.{}".format(
-                self.name, self.comp.output_names[0])
+        assert len(self.comp.output_names) == 1, "names:{}, dims:{}".format(self.comp.output_names, self.comp.output_dims)
+        self.circom_output = "{}.{}".format(self.name, self.comp.output_names[0])
 
         # check output shape dimensions match
         assert self.comp.output_dims[0] == len(self.shape), self.info()
@@ -294,7 +293,7 @@ class Pass2DGenerator(OperatorGenerator):
         return [ *self.inputs[0].shape ]
 class Pass3DGenerator(OperatorGenerator):
     def arguments(self):
-        return [ *self.inputs[0].shape ]
+        return [ *self.shape ]
 class Pass4DGenerator(OperatorGenerator):
     def arguments(self):
         return [ *self.inputs[0].shape ]
@@ -306,6 +305,12 @@ class Sum_CHWGenerator(OperatorGenerator):
     def arguments(self):
         keepdims = self.attrs["keepdims"]
         assert(keepdims == None or keepdims == True)
+        return [ *self.inputs[0].shape ]
+
+class Sum_CHW_0Generator(OperatorGenerator):
+    def arguments(self):
+        keepdims = self.attrs["keepdims"]
+        assert(keepdims == False)
         return [ *self.inputs[0].shape ]
 
 class Squeeze_CHWGenerator(OperatorGenerator):
@@ -329,4 +334,24 @@ class Clip3DGenerator(OperatorGenerator):
         return [ self.shape[0], self.shape[1], self.shape[2],
     # TODO: add shape adapter!!!
     # TODO: all convert to int after mrt!!!
-                int(self.attrs["a_min"]), int(self.attrs["a_max"]) ]
+                self.attrs["a_min"], self.attrs["a_max"] ]
+                #int(self.attrs["a_min"]), int(self.attrs["a_max"]) ]
+
+class TransposeC1C2HWGenerator(OperatorGenerator):
+    def arguments(self):
+        assert(len(self.shape)==4)
+        assert(self.attrs["axes"][1:]==[2,1,3,4]), self.attrs["axes"]
+        # only transpose C1 and C2
+        return [ *self.inputs[0].shape ]
+
+class TupleGetItem3DGenerator(OperatorGenerator):
+    def arguments(self):
+        assert(len(self.inputs[0].shape)==3)
+        return [ *self.inputs[0].shape, self.attrs["index"] ]
+
+class Concatenate3DGenerator(OperatorGenerator):
+    def arguments(self):
+        assert(len(self.shape)==3)
+        assert(len(self.inputs)==2)
+        assert all([self.inputs[0].shape[1] == self.inputs[1].shape[1], self.inputs[0].shape[2] == self.inputs[1].shape[2]])
+        return [ self.inputs[0].shape[0], *self.inputs[1].shape ]

@@ -646,6 +646,14 @@ def resize_batch(symbol, params, batch_size=1):
         if is_param(sym, params):
             return
 
+        if sym.op_name in ["split"]:
+            new_shapes = []
+            for shp in sym.shape:
+                assert isinstance(shp, tuple)
+                new_shapes.append(shp[1:])
+            sym.shape = new_shapes
+            return sym
+
         if sym.op_name in ["subtract"]:
             inputs = []
             for inp in sym.args:
