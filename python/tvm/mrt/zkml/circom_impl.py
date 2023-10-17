@@ -89,7 +89,7 @@ class OperatorGenerator(CircomGenerator):
 
         args = self.arguments()
         # all arguments of circom circuit must be integers.
-        assert all([isinstance(a, int) for a in args]), self.info()
+        assert all([isinstance(a, int) for a in args]), print("bad arg display", [a for a in args], self.info()) #self.info()
         self.circom_args = ", ".join([
             str(s) for s in self.arguments()])
 
@@ -263,6 +263,16 @@ class ScalarGenerator(OperatorGenerator):
         return [ishape[0], self.attrs["scalar"]]
 class MulScalarGenerator(ScalarGenerator):
     pass
+class MulScalarCHWGenerator(ScalarGenerator):
+    def arguments(self):
+        i_shape = self.inputs[0].shape
+        s_shape = self.inputs[1].shape
+        # s_shape[0] is batch, should be 1, then just ignored
+        assert len(i_shape) == 3
+        assert len(s_shape) == 4
+        assert s_shape[0] == 1 and s_shape[2] == 1 and s_shape[3] == 1
+        assert i_shape[0] == s_shape[1]
+        return [ *i_shape ]
 class AddScalarGenerator(ScalarGenerator):
     pass
 class SubScalarGenerator(ScalarGenerator):

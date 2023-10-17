@@ -45,10 +45,10 @@ def map_add(sym: Symbol):
 
 def map_component(sym: Symbol) -> CircomGenerator:
     inputs = sym.args
-    #keep_dims = None if "keepdims" not in sym.attrs else sym.attrs["keepdims"]
     comp_map = {
         # "null": "Input",
         "var": "Input",
+        "mrt.requant": "Input",
 
         "nn.relu": "ReLU{}D".format(len(sym.shape)),
         "nn.pad_scalar": "Pad2D",
@@ -72,7 +72,8 @@ def map_component(sym: Symbol) -> CircomGenerator:
 
         "concatenate": "Concatenate3D", #"Concatenate{}IN".format(len(sym.inputs)),
 
-        "multiply": "MulScalar",
+        "mul_scalar_CHW": "MulScalarCHW",
+        #"multiply": "MulScalar",
         "right_shift": "RightShift",
         "squeeze": "Squeeze_CHW",
         "sum": "Sum_CHW" if 'keepdims' not in sym.attrs or sym.attrs["keepdims"]==True else "Sum_CHW_0",
@@ -245,6 +246,15 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
             sym_pclip.name = name
             sym2circom(sym_pclip)
 
+        elif sym.op_name == "clip":
+            sym.attrs["a_max"] = int(sym.attrs["a_max"])
+            sym.attrs["a_min"] = int(sym.attrs["a_min"])
+            # start generate map
+            attrs = get_merged_attrs(sym)
+            gen = map_component(sym)(sym.name, inputs, attrs)
+            circom_ops.add(gen.comp.op_name)
+            generator_map[sym.name] = gen
+
         elif sym.op_name == "mrt.pclip":
             if len(sym.args[0].shape) == 1:
                 # clip op
@@ -306,7 +316,17 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
                 circom_ops.add(gen.comp.op_name)
                 generator_map[sym_reshape.name] = gen
 
-        elif sym.op_name == "multiply" or sym.op_name == "right_shift":
+        elif sym.op_name == "multiply":
+            if len(sym.args[0].shape) == 1:
+                sym.op_name = "mul_scalar"
+                sym2circom(sym)
+            else:
+                scalars_shape = params[sym.args[1].name].shape
+                assert len(scalars_shape) == 0 or len(scalars_shape) == 4
+                sym.op_name = "mul_scalar" if len(scalars_shape) == 0 else "mul_scalar_CHW"
+                sym2circom(sym)
+        #elif sym.op_name == "mul_scalar_CHW":
+        elif sym.op_name == "mul_scalar" or sym.op_name == "right_shift":
             if len(sym.args[0].shape) == 1:
                 sym_rs = sym.copy(args=[sym.args[0]])
                 attrs["scalar"] = int(params[sym.args[1].name].numpy())
@@ -334,10 +354,10 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
                 sym_rs.name = name+"_right_shift"
                 # start generate map
                 attrs_rs = get_merged_attrs(sym_rs)
-                print(params[sym.args[1].name].numpy().flatten(), "TODO: fix303", sym.args[1].name, sym.name)
-                scalars = params[sym.args[1].name].numpy().flatten()
-                # TODO: fix multiply scalar
-                attrs_rs["scalar"] = (scalars).astype(int)
+                scalars = (params[sym.args[1].name].numpy().flatten()).astype(int)
+                assert len(scalars) == 1, scalars
+                attrs_rs["scalar"] = int(scalars[0])
+
                 inputs = [generator_map[i.name] for i in sym_rs.args]
                 gen = map_component(sym_rs)(sym_rs.name, inputs, attrs_rs)
                 circom_ops.add(gen.comp.op_name)

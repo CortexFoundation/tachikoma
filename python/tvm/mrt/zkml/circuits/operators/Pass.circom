@@ -77,14 +77,14 @@ template TransposeC1C2HW (i1, i2, i3, i4) {
 }
 
 template Split3D (i1, i2, i3) {
-    # should pass
+    // should pass
     signal input in[i1][i2][i3];
     signal output out1[i1\2][i2][i3];
     signal output out2[i1\2][i2][i3];
 }
 
 template TupleGetItem3D (i1, i2, i3, index) {
-    signal input input[i1][i2][i3];
+    signal input in[i1][i2][i3];
     signal output out[i1\2][i2][i3];
 
     if (index == 0) {
