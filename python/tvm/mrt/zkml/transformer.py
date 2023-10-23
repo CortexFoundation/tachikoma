@@ -48,7 +48,7 @@ def map_component(sym: Symbol) -> CircomGenerator:
     comp_map = {
         # "null": "Input",
         "var": "Input",
-        "mrt.requant": "Input",
+        "mrt.requant": "Pass3D",
 
         "nn.relu": "ReLU{}D".format(len(sym.shape)),
         "nn.pad_scalar": "Pad2D",
@@ -100,6 +100,9 @@ def change_name(symbol, params):
             name = sym.name.replace("%", "P_")
             name = name.replace(".", "_")
             new_params[name] = params[sym.name]
+        # 'input' is circom reserve word
+        elif sym.name=="input":
+            name = "Input"
         else:
             name = sym.name.replace("%", "I_")
             name = name.replace(".", "_")
@@ -247,8 +250,6 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
             sym2circom(sym_pclip)
 
         elif sym.op_name == "clip":
-            sym.attrs["a_max"] = int(sym.attrs["a_max"])
-            sym.attrs["a_min"] = int(sym.attrs["a_min"])
             # start generate map
             attrs = get_merged_attrs(sym)
             gen = map_component(sym)(sym.name, inputs, attrs)
@@ -329,7 +330,9 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
         elif sym.op_name == "mul_scalar" or sym.op_name == "right_shift":
             if len(sym.args[0].shape) == 1:
                 sym_rs = sym.copy(args=[sym.args[0]])
-                attrs["scalar"] = int(params[sym.args[1].name].numpy())
+                scalar = params[sym.args[1].name].numpy()
+                assert int(scalar) == scalar
+                attrs["scalar"] = int(scalar)
                 inputs = [generator_map[i.name] for i in sym_rs.args]
                 gen = map_component(sym_rs)(name, inputs, attrs)
                 circom_ops.add(gen.comp.op_name)
@@ -356,6 +359,7 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
                 attrs_rs = get_merged_attrs(sym_rs)
                 scalars = (params[sym.args[1].name].numpy().flatten()).astype(int)
                 assert len(scalars) == 1, scalars
+                assert int(scalars[0]) == scalars[0]
                 attrs_rs["scalar"] = int(scalars[0])
 
                 inputs = [generator_map[i.name] for i in sym_rs.args]

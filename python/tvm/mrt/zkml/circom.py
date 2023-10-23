@@ -109,6 +109,7 @@ class CircomGenerator:
         raise NotImplementedError(self.comp.op_name)
 
     def input_json_clear(self, params_whole:typing.Dict[str, np.ndarray]):
+        # 'visited by circom code' means it's not params nor input.
         if not self._visit_flag:
             if self.name in params_whole:
                 del params_whole[self.name]

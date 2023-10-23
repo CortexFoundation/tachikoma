@@ -331,21 +331,24 @@ class Squeeze_CHWGenerator(OperatorGenerator):
 
 class Clip1DGenerator(OperatorGenerator):
     def arguments(self):
+        assert int(self.attrs["a_min"]) == self.attrs["a_min"]
+        assert int(self.attrs["a_max"]) == self.attrs["a_max"]
         return [ self.shape[0],
-                self.attrs["a_min"], self.attrs["a_max"] ]
+                int(self.attrs["a_min"]), int(self.attrs["a_max"]) ]
 
 class Clip2DGenerator(OperatorGenerator):
     def arguments(self):
+        assert int(self.attrs["a_min"]) == self.attrs["a_min"]
+        assert int(self.attrs["a_max"]) == self.attrs["a_max"]
         return [ self.shape[0], self.shape[1],
-                self.attrs["a_min"], self.attrs["a_max"] ]
+                int(self.attrs["a_min"]), int(self.attrs["a_max"]) ]
 
 class Clip3DGenerator(OperatorGenerator):
     def arguments(self):
+        assert int(self.attrs["a_min"]) == self.attrs["a_min"]
+        assert int(self.attrs["a_max"]) == self.attrs["a_max"]
         return [ self.shape[0], self.shape[1], self.shape[2],
-    # TODO: add shape adapter!!!
-    # TODO: all convert to int after mrt!!!
-                self.attrs["a_min"], self.attrs["a_max"] ]
-                #int(self.attrs["a_min"]), int(self.attrs["a_max"]) ]
+                int(self.attrs["a_min"]), int(self.attrs["a_max"]) ]
 
 class TransposeC1C2HWGenerator(OperatorGenerator):
     def arguments(self):
