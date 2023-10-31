@@ -147,7 +147,7 @@ class Trace:
                 _dataset = self._dataset,
                 _stat_type = self._stat_type)
 
-    def _checkpoint_run(self,
+    def checkpoint_run(self,
             *callbacks: typing.List[TransformerT],
             tr_name: typing.Optional[str] = None,
             force: bool = False,
@@ -173,7 +173,7 @@ class Trace:
 
     def fuse(self, **kwargs) -> Trace:
         kwargs.setdefault("tr_name", "fuse")
-        return self._checkpoint_run(
+        return self.checkpoint_run(
                 fuse.FuseConstant.get_transformer(),
                 fuse.FuseTupleGetItem.get_transformer(),
                 fuse.FuseBatchNorm.get_transformer(),
@@ -185,41 +185,26 @@ class Trace:
                 **kwargs,
                 )
 
-    def calibrate(self, batch_size: int = 16, **kwargs) -> Trace:
+    def calibrate(self, repeats: int = 1, **kwargs) -> Trace:
         assert self._dataset is not None
         tr_name = kwargs.pop("tr_name", "calibrate")
-        force = kwargs.pop("force", False)
-
-        new_dataset = self._dataset.resize(batch_size)
-        data, _ = new_dataset.next()
-        assert data is not None
-        out: Trace = self._checkpoint_run(
-                helper.set_input_shape,
-                shape = data.shape,
-                tr_name = "%s_batch_resize" % tr_name,
-                force=force)
-        out.bind_dataset(new_dataset)
-
-        out = out._checkpoint_run(
-                calib.Calibrator.get_transformer(),
-                data = tvm.nd.array(data),
-                tr_name = tr_name,
-                # tr_name = "%s_run_%d" % (tr_name, str(i)),
-                **kwargs)
-
-        out = out._checkpoint_run(
+        out = self
+        for i in range(repeats):
+            data, _ = self._dataset.next()
+            out = out.checkpoint_run(
+                    calib.Calibrator.get_transformer(),
+                    data = tvm.nd.array(data),
+                    #  tr_name = tr_name,
+                    tr_name = "%s_run_%d"%(tr_name, i),
+                    **kwargs)
+        out = out.checkpoint_run(
                 calib.SymmetricMinMaxSampling.get_transformer(),
                 tr_name = "%s_sampling" % tr_name)
-        out = out._checkpoint_run(
-                helper.set_input_shape,
-                shape_dict = self.input_shape_dict,
-                tr_name = "%s_batch_restore" % tr_name)
-        out.bind_dataset(self._dataset)
         return out
 
     def quantize(self, **kwargs):
         kwargs.setdefault("tr_name", "quantize")
-        return self._checkpoint_run(
+        return self.checkpoint_run(
                 dis.Discretor.get_transformer(),
                 fuse.FuseConstant.get_transformer(),
                 **kwargs)
@@ -239,12 +224,12 @@ class Trace:
             else:
                 tr_name = "sim-float"
             kwargs.setdefault("tr_name", tr_name)
-            return self._checkpoint_run(
+            return self.checkpoint_run(
                     fp.Simulator.get_transformer(),
                     with_clip = with_clip,
                     with_round = with_round,
                     **kwargs)
-        return self._checkpoint_run(
+        return self.checkpoint_run(
                 fp.FixPoint.get_transformer(), **kwargs)
 
     def print(self, **kwargs):
@@ -307,7 +292,7 @@ class Trace:
             expr: RelayExpr, params: ParametersT,
             tr_name = "from_expr",
             model_name="unknown-model") -> Trace:
-        print("Init  Trace {:20} from model {}'s' expr".format(
+        print("Init  Trace {:20} from model {}'s expr".format(
             tr_name, model_name))
         symbol, params = expr2symbol(expr, params)
         return Trace(model_name, tr_name, symbol, params)

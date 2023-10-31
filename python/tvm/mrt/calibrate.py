@@ -14,11 +14,15 @@ from . import runtime
 from . import op, opns, inference
 from .transform import Transformer
 
+SamplingFuncT = typing.Callable[
+        [typing.Union[OpNumpyT, float]], typing.Any]
+
 @dataclass(repr=False)
 class Calibrator(Transformer):
-    """ not to dump, and restore from np_data. """
+    """ skip dump, and restore from np_data. """
     nd_data: OpOutputT | None = field(repr=False, default=None)
-    data: np.ndarray | list | None = field(default=None)
+    """ calibrate may be processed multi-times """
+    data: typing.List[OpNumpyT] = field(default_factory=list)
 
     def _rand_data(self,
             enabled: bool = False,
@@ -38,7 +42,10 @@ class Calibrator(Transformer):
             data: tvm.nd.NDArray | None = None,
             data_dict: ParametersT = {},
             random_config: typing.Dict[str, typing.Any] = {},
+            sampling_func: SamplingFuncT = None,
             **kwargs):
+        kwargs.pop("origin", None)
+
         if self.is_input():
             out = data_dict.get(self.name, data)
             if out is None:
@@ -48,28 +55,32 @@ class Calibrator(Transformer):
         else:
             sym = op.retrieve_operator(self)
             out = inference.run(
-                    sym, [ a.nd_data for a in self.args ],
+                    sym, [a.nd_data for a in self.args],
                     **kwargs)
 
-        self.nd_data = out
         assert isinstance(out, (tvm.nd.NDArray, list)), type(out)
         if isinstance(out, tvm.nd.NDArray):
             self._assert(out.dtype, self.dtype)
             self._assert(out.shape, self.shape)
-            self.data = out.numpy()
         else:
             self._assert([o.dtype for o in out], self.dtype)
             self._assert([o.shape for o in out], self.shape)
-            self.data = [ o.numpy() for o in out ]
+
+        self.nd_data = out
+        data = to_numpy(out)
+        if sampling_func is not None:
+            data = sampling_func(data)
+        self.data.append(data)
 
     def sampling(self, data):
         if isinstance(data, list):
-            return max([self.sampling(d) for d in data])
-        return 0 if data is None else np.abs(data).max()
+            return max([self.sampling(d) for d in data]) \
+                if data else 0
+        return float(np.abs(data).max())
 
     def __repr__(self, **attrs):
         return super().__repr__(
-                data=self.sampling(self.data), **attrs)
+            data=self.sampling(self.data), **attrs)
 
     def _assert(self, val, expect):
         if isinstance(val, (list, tuple)):
@@ -90,39 +101,24 @@ class Sampling(Transformer):
     def data(self, val):
         self.set_extra_attrs(data=val)
 
-    def __repr__(self, **attrs):
-        return super().__repr__(data=self.data, **attrs)
-
-    @classmethod
-    def update_dict(cls, data_dict: dict, **kwargs) -> dict:
-        data_dict.update(kwargs)
-        #  print("data:", data_dict["extra_attrs"]["data"])
-        origin = data_dict.get("origin", None)
-        if isinstance(origin, Calibrator):
-            data = cls.sampling(origin.data)
-            assert data > 0
-            cls.update_extra_attrs(data_dict, data=data)
-        return super().update_dict(data_dict)
-
     @classmethod
     def sampling(cls, np_data: np.ndarray) -> typing.Any:
         raise NotImplementedError()
 
-    def __call__(self, *args, **kw):
+    def __call__(self, origin: Calibrator, **kw):
         if self.is_op(CLIP):
             a_min, a_max = self.parsed.a_min, self.parsed.a_max
-            self.extra_attrs["data"] = max(abs(a_min), abs(a_max))
+            self.data = max(abs(a_min), abs(a_max))
+        else:
+            self.data = self.sampling(origin.data)
         return self
 
 @dataclass(repr=False)
 class SymmetricMinMaxSampling(Sampling):
-    @property
-    def data(self) -> float:
-        return super().data
-
     @classmethod
-    def sampling(cls, data: np.ndarray) -> float:
+    def sampling(cls, data: typing.List[OpNumpyT]) -> float:
         if isinstance(data, list):
+            assert data
             return max([cls.sampling(d) for d in data])
         data = float(np.abs(data).max())
         assert data > 0

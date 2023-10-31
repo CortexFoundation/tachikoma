@@ -100,6 +100,8 @@ def expr2symbol(
             if op_name in [ ARANGE, ]:
                 for k in ["start", "stop", "step"]:
                     attrs.pop(k)
+            elif op_name == GET_VALID_COUNT:
+                attrs.pop("score_threshold")
             symbol_map[node] = op._new_op(op_name, *args, **attrs)
         elif isinstance(node, relay.TupleGetItem):
             args = [ symbol_map[node.tuple_value], ]

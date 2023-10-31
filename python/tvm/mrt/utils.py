@@ -86,7 +86,7 @@ def extend_fname(prefix, with_ext=False):
         ret.append("%s.ext"%prefix)
     return tuple(ret)
 
-from dataclasses import dataclass, fields, Field
+from dataclasses import dataclass, fields, Field, is_dataclass
 def dataclass_to_dict(dc: dataclass, check_repr=False) -> dict:
     def _check(f: Field):
         checked = True

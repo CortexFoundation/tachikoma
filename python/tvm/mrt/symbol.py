@@ -93,10 +93,10 @@ class _BaseSymbol:
             #  print(cls, list(data.keys()))
             #  raise e
             raise RuntimeError((
-                "Error for type:{} create from dict "
-                "op:{} name:{} attrs:{}"
+                "Error for type:{} create from dict, "
+                "expected: {}, but get {}"
                 ).format(get_class_name(cls),
-                    data["op_name"], data["name"], data["attrs"]))
+                    fnames, data.keys()))
         return out
     def to_dict(self, **kwargs) -> dict:
         data = dataclass_to_dict(self)

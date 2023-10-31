@@ -59,8 +59,10 @@ mod: tvm.IRModule = mod
 func: relay.function.Function = mod["main"]
 expr: ir.RelayExpr = func.body
 
-from tvm.mrt import stats
+from tvm.mrt import stats, calibrate
 from tvm.mrt.trace import Trace
+from tvm.mrt.config import Pass
+
 tr = Trace.from_expr(expr, params, model_name=model_name)
 tr.bind_dataset(ds, stats.ClassificationOutput).log()
 
@@ -68,11 +70,24 @@ tr.bind_dataset(ds, stats.ClassificationOutput).log()
 # sys.exit()
 
 fuse_tr = tr.fuse().log()
-calib_tr = fuse_tr.calibrate(
-        # force=True,
-        batch_size=16).log()
 
-from tvm.mrt.config import Pass
+from tvm.mrt import segement
+# Pass(log_before=True, log_after=True).register_global()
+seg_tr = fuse_tr.checkpoint_run(
+        segement.Spliter.get_transformer(),
+        # force=True
+        )
+out_tr = seg_tr.checkpoint_run(
+        segement.Merger.get_transformer(),
+        spliter=seg_tr.symbol)
+sys.exit()
+
+with Pass(log_before=True, log_after=True):
+    calib_tr = fuse_tr.calibrate(
+            force=True,
+            sampling_func=calibrate.SymmetricMinMaxSampling.sampling,
+            ).log()
+
 with Pass(log_before=True, log_after=True):
     dis_tr = calib_tr.quantize().log()
 

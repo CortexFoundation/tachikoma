@@ -19,16 +19,14 @@ def run(sym: WithParameters,
     elif sym.is_op(ARANGE):
         args = [a.numpy().item() for a in args_data]
         return tvm.nd.array(np.arange(*args, **sym.attrs))
-    elif sym.is_op("meshgrid", "stack"):
-        args = args_data[0] if sym.is_op("meshgrid") else args_data
-        args = [types.to_numpy(a) for a in args]
-        data = getattr(np, sym.op_name)(*args, **sym.attrs)
-        return types.to_ndarray(data)
-
+    elif sym.is_op("stack"):
+        args = [types.to_numpy(a) for a in args_data]
+        return types.to_ndarray(np.stack(*args, **sym.attrs))
     elif sym.is_op("meshgrid"):
-        args = [a.numpy() for a in args_data[0]]
-        return [tvm.nd.array(d) \
-                for d in np.meshgrid(*args, **sym.attrs)]
+        args = [types.to_numpy(a) for a in args_data[0]]
+        return types.to_ndarray(np.meshgrid(*args, **sym.attrs))
+    elif sym.is_op(ZEROS_LIKE):
+        return tvm.nd.array(np.zeros(sym.shape, sym.dtype))
 
     expr = symbol2expr(sym)
     params = { c.name: args_data[i] for i, c in enumerate(sym.args) }

@@ -84,27 +84,35 @@ TransformerT = typing.Callable[[Symbol, ParametersT], Symbol]
 class Transformer(WithParameters):
     """ Symbol Transformer """
 
-    def to_dict(self, **kwargs):
-        """ override to dict, since transformer may want to
-                access the previous tfm. Thus, the next
-                update_dict has the `origin` key by default.
-        """
-        return super().to_dict(origin=self, **kwargs)
+    VISIT_MODE: typing.ClassVar[bool] = True
+
+    # def to_dict(self, **kwargs):
+    #     """ override to dict, since transformer may want to
+    #             access the previous tfm. Thus, the next
+    #             update_dict has the `origin` key by default.
+    #     """
+    #     data = super().to_dict(**kwargs)
+    #     data["extra_attrs"]["origin"] = self
+    #     return data
 
     @classmethod
     def get_transformer(cls, name: typing.Optional[str] = None):
         name = name or cls.__name__
         def _func(symbol: Symbol, params: ParametersT, **kwargs):
             def _run(sym: Symbol):
+                # use current cls to apply transform, this
+                #   may loss some information from origin
+                #   symbol, so record as `origin` in call.
                 out = cls.base(sym, params=params)
-                out = out(**kwargs) or out
+                out = out(origin=sym, **kwargs) or out
                 assert isinstance(out, cls), (
-                        "transform output type should be {}, "
-                        "but get {}"
+                        "transform output type should be {},"
+                        " but get {}"
                         ).format(cls, type(out))
                 return out
             with N(name):
-                return transform(symbol, _run)
+                return transform(symbol, _run) if cls.VISIT_MODE \
+                        else _run(symbol)
         _func.__name__ = name
         return _func
 
@@ -128,3 +136,6 @@ class Transformer(WithParameters):
     def __call__(self, *args, **kw) -> typing.Optional[Transformer]:
         raise NotImplementedError()
 
+@dataclass(repr=False)
+class RunOnce(Transformer):
+    VISIT_MODE: typing.ClassVar[bool] = False

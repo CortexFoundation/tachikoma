@@ -15,11 +15,11 @@ from .inference import np_executor, run
 
 class FuseDropout(Transformer):
     @filter_operators(DROP_OUT)
-    def __call__(self):
+    def __call__(self, **kwargs):
         return self.args[0]
 
 class FuseConstant(Transformer):
-    def __call__(self: Transformer):
+    def __call__(self: Transformer, **kw):
         if self.is_operator() and all([c.is_param() for c in self.args]):
             #  print("fuse constant:", self)
             data = inference.run(
@@ -36,10 +36,14 @@ class FuseConstant(Transformer):
         elif self.is_op(REQUANT):
             if self.parsed.rescale == 1:
                 return self.args[0]
+        elif self.is_op(ZEROS_LIKE):
+            data = inference.run(self, [])
+            return self.as_parameter(data)
+
 
 class FuseBatchNorm(Transformer):
     @filter_operators(BATCH_NORM)
-    def __call__(self):
+    def __call__(self, **kw):
         X, gamma, beta, mean, var = self.args
         parsed: BatchNormAttrs = self.parsed
 
@@ -93,7 +97,7 @@ class FuseBatchNorm(Transformer):
 
 class FuseTupleGetItem(Transformer):
     @filter_operators(TUPLE_GET_ITEM)
-    def __call__(self):
+    def __call__(self, **kw):
         X: Symbol = self.args[0]
         if X.is_op(BATCH_NORM, DROP_OUT):
             return X
@@ -102,7 +106,7 @@ class FuseTupleGetItem(Transformer):
         #  return X
 
 class FuseAvgPool2D(Transformer):
-    def __call__(self):
+    def __call__(self, **kw):
         out = self._fuse_adaptive_avg_pool2d()
         out = out or self._fuse_avg_pool2d()
         return out
@@ -173,7 +177,7 @@ class FuseAvgPool2D(Transformer):
         return out.like(self)
 
 class FuseNaiveSoftmax(Transformer):
-    def __call__(self):
+    def __call__(self, **kw):
         if self.is_op(SOFTMAX, LOG_SOFTMAX):
             return self.args[0]
         assert self.is_variable() or not self.args[0].is_op(SOFTMAX, LOG_SOFTMAX)
@@ -181,7 +185,7 @@ class FuseNaiveSoftmax(Transformer):
 
 class FuseMean(Transformer):
     @filter_operators(MEAN)
-    def __call__(self):
+    def __call__(self, **kw):
         X: Transformer = self.args[0]
         #  max_axis = len(X.shape)
         #  axis = X.attrs.get("axis", None)
