@@ -58,6 +58,10 @@ os.sys.path.insert(0, path.join(ROOT, "python"))
 `python test.py`
 `python scripts/image_scale_to_circom_input.py scripts/test_a.png input.json # resolve image input, and put in xxx.json`
 
+## take care of auto finetune for cuda tvm C++ codes, before running
+`pip install xgboost tornado cloudpickle`
+`export PYTHONPATH=/path_to_repo/tachikoma/python/:$PYTHONPATH`
+`python3 tests/models/classification/test.trace.autotune.py`
 
 # circom code usage
 ## compile and generate witness
@@ -92,4 +96,5 @@ snarkjs generatecall
 ## using mypy to check tvm.mrt
 ```bash
 python -m mypy -p python.tvm.mrt
+pip install -U scalene # scalene python3 test_main.py
 ```
