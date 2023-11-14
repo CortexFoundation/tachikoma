@@ -19,6 +19,11 @@ class FuseDropout(Transformer):
         return self.args[0]
 
 class FuseConstant(Transformer):
+    threshold: typing.ClassVar[float] = 1e-5
+
+    def np_is_zero(self, data) -> float:
+        return np.abs(data).max() < self.threshold
+
     def __call__(self: Transformer, **kw):
         if self.is_operator() and all([c.is_param() for c in self.args]):
             #  print("fuse constant:", self)
@@ -28,11 +33,18 @@ class FuseConstant(Transformer):
         elif self.is_op(ADD, SUB, BIAS_ADD):
             strips = []
             for arg in self.args:
-                if arg.is_param() and np.abs(arg.numpy()).max() == 0:
+                if arg.is_param() and self.np_is_zero(arg.numpy()):
+                #  if arg.is_param() and np.abs(arg.numpy()).max() == 0:
                     strips.append(arg)
             args = [a for a in self.args if a not in strips]
             if len(args) == 1:
                 return args[0]
+        elif self.is_op(SLICE_LIKE):
+            if not self.args[0].is_param():
+                return
+            arg1 = np.zeros(self.args[1].shape, self.args[1].dtype)
+            data = inference.run(self, [self.args[0].ndarray(), arg1])
+            return self.as_parameter(data)
         elif self.is_op(REQUANT):
             if self.parsed.rescale == 1:
                 return self.args[0]

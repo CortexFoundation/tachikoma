@@ -30,7 +30,7 @@ def register_type_infer(
     return _set_rule
 
 def infer(symbol: Symbol) -> Symbol:
-    def _infer(sym: Symbol):
+    def _tinfer(sym: Symbol):
         out = op.retrieve_operator(sym)
         _infer = _INFER_TYPE_REG.get(out.op_name, _tvm_type_infer)
         out: Symbol = _infer(out) or out
@@ -40,7 +40,7 @@ def infer(symbol: Symbol) -> Symbol:
         return sym.copy(extra_attrs={
             **sym.extra_attrs, **type_info })
 
-    return transform(symbol, _infer)
+    return transform(symbol, _tinfer)
 
 def infer_single(symbol: Symbol) -> Symbol:
     single = op.retrieve_operator(symbol)

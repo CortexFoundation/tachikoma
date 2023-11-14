@@ -7,11 +7,12 @@ from . import utils
 
 T = typing.TypeVar("T")
 
+@dataclass
 class _BaseConfig:
     _last_scope: typing.Optional[_BaseConfig] = None
     __GLOBAL__: typing.ClassVar[_BaseConfig | None] = None
 
-    def __init__(self):
+    def __post_init__(self):
         self._last_scope = self.__GLOBAL__
 
     @classmethod
@@ -27,7 +28,9 @@ class _BaseConfig:
         return self._set_scope(self)
 
     def __exit__(self: typing.Type[T], *args) -> T:
-        return self._set_scope(self._last_scope)
+        self._set_scope(self._last_scope)
+        # return false to indicate throw exception
+        return False
 
     def register_global(self: typing.Type[T]) -> T:
         return self._set_scope(self)
@@ -36,10 +39,6 @@ class _BaseConfig:
         attrs = utils.dataclass_to_dict(self)
         attrs.update(new_attrs)
         return type(self)(**attrs)
-
-    def restore(self: typing.Type[T], **new_attrs) -> T:
-        last_scope = self._last_scope or type(self)()
-        return last_scope.mutate(**new_attrs)
 
 @dataclass
 class Pass(_BaseConfig):

@@ -92,7 +92,7 @@ class _BaseSymbol:
         except Exception as e:
             #  print(cls, list(data.keys()))
             #  raise e
-            raise RuntimeError((
+            raise untimeError((
                 "Error for type:{} create from dict, "
                 "expected: {}, but get {}"
                 ).format(get_class_name(cls),
@@ -116,7 +116,7 @@ class _BaseSymbol:
         arg_len = 40 - 2
         if len(self.args) > 0:
             arg_len = (arg_len-2*(len(self.args)-1)) // len(self.args)
-            arg_len = max(arg_len, 4)
+            arg_len = max(arg_len, 7)
         args_info = "({})".format(", ".join(
             [_uniform(i.name, arg_len) for i in self.args]))
         oattrs = {k: v for k, v in self.extra_attrs.items()}
@@ -238,7 +238,8 @@ def dump_json(symbol: Symbol) -> _SymbolJsonT:
             "_class_type": get_class_name(sym),
             })
         nodes.append(node)
-    visit(symbol, _to_json)
+    with config.Pass():
+        visit(symbol, _to_json)
     return { "nodes": nodes, }
 
 def load_json(data: _SymbolJsonT, **extra_attrs) -> Symbol:
@@ -277,15 +278,15 @@ def transform(symbol: Symbol, callback: _TransformerT) -> Symbol:
     sym_map: typing.Dict = {}
     C = config.Pass.G()
     for sym in sym2list(symbol):
-        C.log_before and print("[{} <<] {}".format(C.name, sym))
         args = [sym_map[c.name] for c in sym.args]
         # pre-clone symbol, to avoid misleading usage in callback
         sym = sym.copy(args=args)
+        C.log_before and print("[{} <<] {}".format(C.name, sym))
 
-        new_conf = C if C.inherit else C.restore()
+        new_conf = C if C.inherit else config.Pass()
         with new_conf:
             out = callback(sym) or sym
-        assert isinstance(out, Symbol)
+        assert isinstance(out, Symbol), out
         # default const_ prefix symbol means parameters
         assert sym.name not in sym_map, sym.name
         # assert sym.name.startswith("const_") or \
@@ -299,7 +300,8 @@ def raw_print(symbol: Symbol):
     print(msg)
     def _print(sym: Symbol):
         print(sym)
-    visit(symbol, _print)
+    with config.Pass():
+        visit(symbol, _print)
     print("=" * len(msg))
 
 def filter_operators(*op_names: typing.List[str]):

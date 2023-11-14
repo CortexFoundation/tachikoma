@@ -88,7 +88,7 @@ def expr2symbol(
             symbol_map[node] = op._new_op(IF, *args, **attrs)
         elif isinstance(node, relay.expr.Call):
             op_name = node.op.name
-            if op_name == CONCAT:
+            if op_name in [CONCAT, ADV_INDEX]:
                 args = [symbol_map[f] for f in node.args[0].fields]
             else:
                 args = [symbol_map[i] for i in node.args]
@@ -120,7 +120,8 @@ def expr2symbol(
         relay.analysis.post_order_visit(expr, _cast_expr)
     return symbol_map[expr], params
 
-def symbol2expr(symbol: Symbol, expr_map={}) -> RelayExpr:
+def symbol2expr(symbol: Symbol,
+        params: ParametersT={}, expr_map={}) -> RelayExpr:
     expr_map.clear()
     def _make_expr(sym: Symbol, args, attrs) -> relay.expr.Expr:
         try:
@@ -157,11 +158,14 @@ def symbol2expr(symbol: Symbol, expr_map={}) -> RelayExpr:
             if sym.args[0].is_op(DROP_OUT):
                 expr_map[sym.name] = args[0]
                 return
-
         if sym.is_op(TUPLE):
             out = relay.Tuple(args)
         elif sym.is_op(CONCAT):
             out = relay.concatenate(args, **attrs)
+        elif sym.is_op(ADV_INDEX):
+            out = relay.adv_index(args)
+        elif op.is_param(sym, params) and len(sym.shape) == 0:
+            out = relay.Constant(params[sym.name])
         else:
             out = _make_expr(sym, args, attrs)
 

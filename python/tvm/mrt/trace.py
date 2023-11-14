@@ -15,11 +15,11 @@ from tvm.contrib import graph_executor as graph
 from . import runtime, config
 from . import op, optype, fuse, helper
 from . import calibrate as calib
-from . import discrete as dis
 from . import fixed_point as fp
 from .stats import *
 from .transform import Transformer, TransformerT
 from .discrete import Discretor
+from .precision import PrecisionRevisor
 from .types import *
 from .symbol import *
 from .sym_expr import *
@@ -131,8 +131,8 @@ class Trace:
             **kwargs,) -> np.ndarray:
         if self._executor is None:
             self._executor = runtime.create_executor(
-                    symbol2expr(self.symbol), self.params,
-                    **kwargs)
+                    symbol2expr(self.symbol, self.params),
+                    self.params, **kwargs)
 
         data = runtime.validate_runtime_inputs(self._sym_inputs, data)
         res = runtime.run_executor(self._executor, data)
@@ -163,6 +163,7 @@ class Trace:
 
         out: Trace = self
         for cb in callbacks:
+            # deep copy params to avoid conflict status
             params = {k: v for k, v in out.params.items()}
             print("Apply Trace: {:25} Transformer: {}".format(
                 tr_name, cb.__name__))
@@ -205,8 +206,9 @@ class Trace:
     def quantize(self, **kwargs):
         kwargs.setdefault("tr_name", "quantize")
         return self.checkpoint_run(
-                dis.Discretor.get_transformer(),
+                Discretor.get_transformer(),
                 fuse.FuseConstant.get_transformer(),
+                # PrecisionRevisor.get_transformer(),
                 **kwargs)
 
     def export(self,

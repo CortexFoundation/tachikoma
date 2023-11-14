@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import typing
+import math
 from dataclasses import dataclass, field
 
 from .opns import *
-from . import op
+from . import op, inference
 from .symbol import *
 from .utils import *
 from .calibrate import Sampling
-from .precision import WithPrecision, QuantizedInfo, infer_precision
+from .precision import WithPrecision
 from .scaler import *
 from .transform import Transformer
 
@@ -41,6 +42,9 @@ class QuantInfo(WithScale, WithPrecision, Sampling):
         real_max = scale * self.data
         return number_to_bits(real_max)
     def precision_to_scale(self, precision):
+        assert self.data is not None, self
+        if self.data == 0.:
+            return 1
         return bits_to_number(precision) / self.data
 
     def rescale(self, info: DiscreteInfo):
@@ -81,7 +85,6 @@ RequantRulesT = typing.Callable[[QuantInfo], typing.List[DiscreteInfo]]
 _DISCRETE_REQUANT_RULES: typing.Dict[str, RequantRulesT] = {}
 OpRulesT = typing.Callable[[QuantInfo], Symbol]
 _DISCRETE_OP_RULES: typing.Dict[str, OpRulesT] = {}
-_DISCRETE_CLIP_RULES: typing.Dict[str, bool] = {}
 
 _requant_identity = lambda s: [DiscreteInfo() for _ in s.args]
 _op_identity = lambda s: s
@@ -90,7 +93,7 @@ def register_rules(*op_names,
         requant_rule: RequantRulesT | None = None,
         op_rule: OpRulesT | None = None,
         scale_rule: ScaleRulesT | None = None,
-        with_clip: bool | None = None):
+        ):
     for op in op_names:
         if requant_rule is not None:
             _DISCRETE_REQUANT_RULES[op] = requant_rule
@@ -98,20 +101,18 @@ def register_rules(*op_names,
             _DISCRETE_OP_RULES[op] = op_rule
         if scale_rule is not None:
             register_scale_rules(op, rule=scale_rule)
-        if with_clip is not None:
-            _DISCRETE_CLIP_RULES[op] = with_clip
 
 def register_rules_with_default(*op_names,
         requant_rule: RequantRulesT | None = None,
         op_rule: OpRulesT | None = None,
         scale_rule: ScaleRulesT | None = None,
-        with_clip: bool = True):
+        ):
     return register_rules(
             *op_names,
             requant_rule    = requant_rule or _requant_identity,
             op_rule         = op_rule or _op_identity,
             scale_rule      = scale_rule or scale_identity,
-            with_clip       = with_clip)
+            )
 
 def args_max_prec(prec: int):
     def _rule(s: QuantInfo):
@@ -160,16 +161,39 @@ def uniform_arg_scales(s: QuantInfo):
 #      scale = min(scaleA, scaleB)
 #      return [DiscreteInfo(scale=scale) for c in s.args]
 
+def scale_bin_op(s: WithScale):
+    fscale = s.args[0].scale
+    assert all([a.scale == fscale for a in s.args])
+    return fscale
 register_rules_with_default(
-        ADD, SUB, BIAS_ADD, requant_rule=uniform_arg_scales)
+        ADD, SUB, BIAS_ADD,
+        requant_rule=uniform_arg_scales,
+        scale_rule=scale_bin_op)
+
+def scale_concat(s: WithScale):
+    fscale = s.args[0].scale
+    if all([a.scale == fscale for a in s.args]):
+        return fscale
+    return [a.scale for a in s.args]
 register_rules_with_default(
-        CONCAT, requant_rule=uniform_arg_scales)
+        CONCAT,
+        requant_rule=uniform_arg_scales,
+        scale_rule=scale_concat)
 
 register_rules_with_default(
-        MAX_POOL2D, RELU, RESHAPE, SQUEEZE, SPLIT)
+        MAX_POOL2D, RELU, RESHAPE, SQUEEZE, SPLIT,
+        TRANSPOSE, FLATTEN, BATCH_FLATTEN, STRIDED_SLICE)
 
+register_rules_with_default(SLICE_LIKE)
+
+def scale_tuple_get_item(s: WithScale):
+    ascale = s.args[0].scale
+    if isinstance(ascale, (list, tuple)):
+        return ascale[s.parsed.index]
+    return ascale
 register_rules_with_default(
-        TUPLE_GET_ITEM, TRANSPOSE)
+        TUPLE_GET_ITEM,
+        scale_rule=scale_tuple_get_item)
 
 def op_clip_rules(s: QuantInfo):
     scale = s.args[0].scale
@@ -179,6 +203,41 @@ def op_clip_rules(s: QuantInfo):
     return s.copy()
 
 register_rules_with_default(CLIP, op_rule=op_clip_rules)
+
+LUT_INP_PREC, LUT_OUT_PREC = 16, 16
+def lut_max_prec(s: QuantInfo):
+    return [DiscreteInfo(precision=LUT_INP_PREC) for a in s.args]
+
+def lut_scale_rules(s: QuantInfo):
+    return s.precision_to_scale(LUT_OUT_PREC)
+
+
+def op_lut_rules(s: QuantInfo):
+    alpha = bits_to_number(LUT_INP_PREC)
+
+    X = s.args[0]
+    offset = s.from_np_data(np.array(alpha, "int"))
+    out = op.add(X, offset).like(X)
+
+    # arg_min, arg_max = -s.data, s.data
+    # if s.is_op(EXP):
+    #     arg_max = min(math.log(s.data), arg_max)
+
+    op_inp = np.arange(-alpha, alpha+1) / s.args[0].scale
+    table = inference.run(s, [ tvm.nd.array(op_inp), ])
+    table = np.clip(table.numpy(), a_min=-s.data, a_max=s.data)
+    # table = np.reshape(table, (-1, 1))
+    oscale = s.precision_to_scale(LUT_OUT_PREC)
+    weight = s.from_np_data(table * oscale)
+    out = op.adv_index(weight, out).like(s)
+    out.scale = s.precision_to_scale(LUT_INP_PREC)
+    return out
+
+register_rules_with_default(EXP,
+        requant_rule=lut_max_prec,
+        op_rule=op_lut_rules,
+        scale_rule=lut_scale_rules)
+
 
 @dataclass(repr=False)
 class Discretor(QuantInfo):
@@ -207,8 +266,10 @@ class Discretor(QuantInfo):
         output precision <- precision(target)
         output scale <- scale
     """
-    def __call__(self):
+    def __call__(self, **kw):
         if self.is_variable():
+            return
+        elif self.is_op(TUPLE):
             return
 
         orig_names = [a.name for a in self.args]
@@ -219,24 +280,36 @@ class Discretor(QuantInfo):
         assert self.op_name in _DISCRETE_OP_RULES, (
                 "op rewrite rules not support for op:{}"
                 ).format(self.op_name)
+        assert self.op_name in INFER_SCALE_RULES, (
+                "op rewrite rules not support for op:{}"
+                ).format(self.op_name)
 
         arg_dts = _DISCRETE_REQUANT_RULES[self.op_name](self)
         for i, arg in enumerate(self.args):
             self.args[i] = arg.rescale(arg_dts[i])
 
-        out = _DISCRETE_OP_RULES[self.op_name](self).like(self)
+        out = _DISCRETE_OP_RULES[self.op_name](self).like(
+                self, extra_attrs=self.extra_attrs)
 
+        out.scale = INFER_SCALE_RULES[self.op_name](out)
         new = op.subgraph(out, inames=[a.name for a in self.args])
-        #  raw_print(new)
-        out.scale = infer_scale(new)
+        #  self.is_op(EXP) and raw_print(new)
+        #  out.scale = infer_scale(new)
+
+        # out.precision = infer_precision(new, self.params)
+        # target_precision = self.scale_to_precision(out.scale)
+        # if out.precision > target_precision:
+        #     out = op.pclip(out, precision=target_precision).like(
+        #             out, extra_attrs=out.extra_attrs)
+        #     out.precision = target_precision
         out.precision = self.scale_to_precision(out.scale)
 
         # TODO: add skip for some operators
-        same_scale = all([a.scale == out.scale for a in self.args])
-        same_data = all([a.data == out.data for a in self.args])
-        if not (same_scale and same_data):
-            out = op.pclip(out, precision=out.precision).like(
-                    out, extra_attrs=out.extra_attrs)
+        # same_scale = all([a.scale == out.scale for a in self.args])
+        # same_data = all([a.data == out.data for a in self.args])
+        # if not (same_scale and same_data):
+        #     out = op.pclip(out, precision=out.precision).like(
+        #             out, extra_attrs=out.extra_attrs)
         #  raw_print(op.subgraph(out, inames=orig_names))
         return out
 

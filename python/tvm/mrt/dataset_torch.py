@@ -666,13 +666,13 @@ class TorchStl10(dataset.Stl10):
             val_data, batch_size=batch_size)
         self._max = len(self.data_loader)
         self.reset()
-    
+
     def __len__(self):
         return self._max
 
     def reset(self):
         self._iter = iter(self.data_loader)
-    
+
     def next(self):
         try:
             data, label = next(self._iter)
@@ -693,13 +693,13 @@ class TorchUsps(dataset.Usps):
             val_data, batch_size=batch_size)
         self._max = len(self.data_loader)
         self.reset()
-    
+
     def __len__(self):
         return self._max
 
     def reset(self):
         self._iter = iter(self.data_loader)
-    
+
     def next(self):
         try:
             data, label = next(self._iter)

@@ -53,9 +53,8 @@ class Calibrator(Transformer):
         elif self.is_param():
             out = self.params[self.name]
         else:
-            sym = op.retrieve_operator(self)
             out = inference.run(
-                    sym, [a.nd_data for a in self.args],
+                    self, [a.nd_data for a in self.args],
                     **kwargs)
 
         assert isinstance(out, (tvm.nd.NDArray, list)), type(out)
@@ -107,6 +106,7 @@ class Sampling(Transformer):
 
     def __call__(self, origin: Calibrator, **kw):
         if self.is_op(CLIP):
+            # TODO: remove clip if threshold is less than a_max
             a_min, a_max = self.parsed.a_min, self.parsed.a_max
             self.data = max(abs(a_min), abs(a_max))
         else:
@@ -115,13 +115,16 @@ class Sampling(Transformer):
 
 @dataclass(repr=False)
 class SymmetricMinMaxSampling(Sampling):
+    threshold: typing.ClassVar[float] = 1e-5
+
     @classmethod
     def sampling(cls, data: typing.List[OpNumpyT]) -> float:
         if isinstance(data, list):
             assert data
             return max([cls.sampling(d) for d in data])
         data = float(np.abs(data).max())
-        assert data > 0
+        data = 0 if data < cls.threshold else data
+        #  assert data > 0
         return data
 
 

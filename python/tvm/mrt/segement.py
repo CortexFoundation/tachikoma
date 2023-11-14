@@ -3,6 +3,7 @@ import typing
 from dataclasses import dataclass, field
 
 from .symbol import *
+from .scaler import WithScale
 from .transform import RunOnce
 from . import op, opns
 
@@ -62,7 +63,7 @@ class Spliter(RunOnce):
         return op.Tuple(*outs).like(self)
 
 @dataclass(repr=False)
-class Merger(RunOnce):
+class Merger(WithScale, RunOnce):
     def __call__(self, spliter: Spliter, **kw):
         assert self.op_name == opns.TUPLE
         tail_outs = dict(zip(spliter.seg_names, self.args))

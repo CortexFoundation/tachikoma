@@ -106,3 +106,4 @@ class ClassificationOutput(Statistics):
         return "Top1/5: {:4.2%},{:4.2%}".format(
                 (1. * self.top1_hit / self.dl_total),
                 (1. * self.top5_hit / self.dl_total))
+

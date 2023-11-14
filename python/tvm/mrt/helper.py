@@ -4,7 +4,7 @@ from .symbol import *
 from .types import ParametersT
 from .transform import Transformer
 
-from . import op, optype
+from . import op, optype, config
 
 def set_input_shape(
         symbol: Symbol, params: ParametersT,
@@ -51,7 +51,8 @@ def format_print(
             info["params"] += np.product(sym.shape or (0))
         info["ops"] += op.is_operator(sym)
 
-    visit(symbol, _calc)
+    with config.Pass():
+        visit(symbol, _calc)
 
     if short:
         prefix = prefix or 5
@@ -76,7 +77,8 @@ def format_print(
         selected = sym.name in selects or sym.op_name in selects
         passed = passed and selected
         passed and print(sym)
-    visit(symbol, _print)
+    with config.Pass():
+        visit(symbol, _print)
 
     print("_" * len(msg))
     print("Layers: {} | Operators: {} | Parameters: {}".format(

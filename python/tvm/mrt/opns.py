@@ -14,6 +14,7 @@ MAX_POOL2D = "nn.max_pool2d"
 
 SOFTMAX = "nn.softmax"
 LOG_SOFTMAX = "nn.log_softmax"
+EXP = "exp"
 
 SUM = "sum"
 MEAN = "mean"
@@ -34,6 +35,7 @@ TRANSPOSE = "transpose"
 WHERE = "where"
 GREATER = "greater"
 STRIDED_SLICE = "strided_slice"
+SLICE_LIKE = "slice_like"
 GET_VALID_COUNT = "vision.get_valid_counts"
 NON_MAX_SUPRESSION = "vision.non_max_suppression"
 
@@ -43,10 +45,12 @@ RIGHT_SHIFT = "right_shift"
 # AS_TYPE = "astype"
 CAST = "cast"
 
+ADV_INDEX = "adv_index"
+
 # ======= binary ops =============
 
 ADD = "add"
-SUB = "sub"
+SUB = "subtract"
 MUL = "multiply"
 
 # ======= auto generate op =========
@@ -63,4 +67,6 @@ PCLIP = "mrt.pclip"
 """ precision clip """
 RS_PCLIP = "mrt.rs_pclip"
 """ right shift precision clip """
+LUT = "mrt.lut"
+""" look up table, equals adv_index in tvm """
 

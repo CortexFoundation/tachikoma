@@ -24,6 +24,8 @@ class WithParameters(Symbol):
     params: ParametersT = field(repr=False)
     """ Parameters should not be changed in transformer,
             use copy mode instead to avoid possible errors.
+
+        deep copy params in trace `checkpoint_run` api.
     """
 
     @classmethod

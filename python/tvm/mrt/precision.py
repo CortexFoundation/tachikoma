@@ -6,10 +6,12 @@ from dataclasses import dataclass
 import math
 import numpy as np
 
+from . import op
 from .opns import *
 from .utils import number_to_bits, count_to_bits, bits_to_number
+from .types import ParametersT
 from .symbol import Symbol, visit, transform
-from .transform import Transformer
+from .transform import Transformer, RunOnce
 
 __ALL__ = [ "WithPrecision",
         "InferPrecision", "QuantizedInfo",
@@ -37,7 +39,7 @@ class WithPrecision(Symbol):
         self.set_extra_attrs(precision=val)
 
     @property
-    def defined(self) -> bool:
+    def precision_defined(self) -> bool:
         """ Whether current precision is well-defined. """
         return self.precision > 0 and self.precision < self.MAX_BIT
 
@@ -46,20 +48,20 @@ class WithPrecision(Symbol):
     def int_max(self):
         return bits_to_number(self.precision)
 
-@dataclass(repr=False)
-class QuantizedInfo(WithPrecision):
-    @property
-    def dt_type(self) -> str:
-        """ discretization method type. """
-        return self.extra_attrs["dt_type"]
-    @property
-    def dt_info(self) -> typing.Any:
-        """ discretization information. """
-        return self.extra_attrs["dt_info"]
-    @dt_info.setter
-    def dt_info(self, val):
-        assert val is not None
-        self.set_extra_attrs(dt_info=val)
+# @dataclass(repr=False)
+# class QuantizedInfo(WithPrecision):
+#     @property
+#     def dt_type(self) -> str:
+#         """ discretization method type. """
+#         return self.extra_attrs["dt_type"]
+#     @property
+#     def dt_info(self) -> typing.Any:
+#         """ discretization information. """
+#         return self.extra_attrs["dt_info"]
+#     @dt_info.setter
+#     def dt_info(self, val):
+#         assert val is not None
+#         self.set_extra_attrs(dt_info=val)
 
 #  CustomRulesFuncT = typing.Callable[[WithPrecision], None]
 #  """ Rules Definition Function Type
@@ -86,12 +88,17 @@ class QuantizedInfo(WithPrecision):
 #  custom_prec_rules(CONV2D, DENSE)(lambda s: args_prec(s, 8))
 #  custom_prec_rules(MUL, SUM)(lambda s: args_prec(s, 16))
 
+
+""" CVM-COMPATIABLE PRECISION INFER RULES. """
+
 RulesFuncT = typing.Callable[[WithPrecision], None]
 _INFER_RULES: typing.Dict[str, RulesFuncT] = {}
 
 def prec_rules(*op_names):
     def _add_rules(f: RulesFuncT):
         for op in op_names:
+            if op in _INFER_RULES:
+                print("precision infer rules for op: %s is overrided" % op)
             _INFER_RULES[op] = f
         return f
     return _add_rules
@@ -103,7 +110,6 @@ def _infer_index(s: WithPrecision, index: int):
     return s.args[index].precision
 
 prec_rules(TUPLE)(_infer_max)
-prec_rules(TUPLE_GET_ITEM)(lambda s: _infer_index(s, s.parsed.index))
 @prec_rules(CONV2D, DENSE)
 def _infer_nn(s: WithPrecision):
     W = s.args[1]
@@ -118,7 +124,10 @@ def _infer_add(s: WithPrecision):
             as the max to infer.
     """
     return _infer_max(s) + 1
-@prec_rules(CLIP)
+prec_rules(CONCAT)(_infer_max)
+@prec_rules(ADV_INDEX, STRIDED_SLICE)
+@prec_rules(TRANSPOSE, FLATTEN, BATCH_FLATTEN)
+@prec_rules(SPLIT, TUPLE_GET_ITEM)
 @prec_rules(SQUEEZE, RESHAPE)
 @prec_rules(RELU, MAX_POOL2D)
 def _first_like(s: WithPrecision):
@@ -147,36 +156,63 @@ def _infer_right_shift(s: WithPrecision):
 
 @prec_rules(REQUANT, PCLIP, RS_PCLIP)
 def _infer_attr_prec(s: WithPrecision):
+    assert s.parsed.precision == s.precision
     return s.parsed.precision
 
-def infer_precision(symbol: WithPrecision) -> int:
-    def _infer(sym: Symbol):
-        assert sym.op_name in _INFER_RULES, (
-                "precision annotator cannot infer op:%s"
-                "'s precision."
-                ) % sym.op_name
-        out = WithPrecision.base(sym)
-        out.precision = _INFER_RULES[sym.op_name](sym)
-        return out
-    out = transform(symbol, _infer)
-    return out.precision
-
 @dataclass(repr=False)
-class PrecisionAnnotator(WithPrecision, Transformer):
-    args: typing.List[PrecisionAnnotator]
+class PrecisionRevisor(WithPrecision, Transformer):
+    def __call__(self, **kw):
+        out = self
+        if out.is_input():
+            return
+        elif out.is_op(REQUANT, PCLIP):
+            assert out.precision == out.parsed.precision
+        elif out.is_param():
+            absmax = np.abs(self.numpy()).max()
+            oprec = number_to_bits(absmax)
+            if out.precision_defined:
+                assert oprec <= out.precision, out
+            out.precision = oprec
+        else:
+            assert out.op_name in _INFER_RULES, (
+                    "precision annotator cannot infer op:%s"
+                    "'s precision."
+                    ) % out.op_name
+            oprec = _INFER_RULES[out.op_name](out)
+            if out.precision_defined and oprec > out.precision:
+                out.precision, oprec = oprec, out.precision
+                out = op.pclip(out, precision=oprec).like(
+                        out, extra_attrs=out.extra_attrs)
+            out.precision = oprec
 
-    def __call__(self: PrecisionAnnotator):
-        if self.op_name in _CUSTOM_PREC_RULES:
-            _CUSTOM_PREC_RULES[self.op_name](self)
+        out.validate_precision()
+        return out
 
-        if self.is_variable():
-            return self
-        if self.defined:
-            return self
+# def cvm_infer_single_precision(
+#         symbol: WithPrecision, params: ParametersT) -> int:
+#     oprec = -1
+#     if op.is_input(symbol, params):
+#         oprec = symbol.precision
+#     elif symbol.is_op(REQUANT):
+#         oprec = symbol.precision
+#     elif op.is_param(symbol, params):
+#         absmax = np.abs(params[symbol.name].numpy()).max()
+#         oprec = number_to_bits(absmax)
+#         assert oprec <= symbol.precision, symbol
+#     else:
+#         assert symbol.op_name in _INFER_RULES, (
+#                 "precision annotator cannot infer op:%s"
+#                 "'s precision."
+#                 ) % symbol.op_name
+#         oprec = _INFER_RULES[symbol.op_name](symbol)
 
-        assert self.op_name in _INFER_RULES, (
-                "precision annotator cannot deduct op:%s"
-                "'s precision."
-                ) % self.op_name
-        self.precision = _INFER_RULES[self.op_name](self)
-        return self
+#     assert WithPrecision._validate(oprec, str(symbol))
+#     return oprec
+
+# def cvm_infer_precision(symbol: WithPrecision, params: ParametersT) -> int:
+#     def _infer(sym: WithPrecision):
+#         sym.precision = infer_single_precision(sym, params)
+#         sym.validate_precision()
+#         return sym
+#     out = transform(symbol, _infer)
+#     return out.precision

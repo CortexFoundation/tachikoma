@@ -29,9 +29,12 @@ def variable(name, shape, dtype) -> Symbol:
             name=name, op_name = VAR, args = [],
             extra_attrs = { "shape": shape, "dtype": dtype })
 
-def as_variable(symbol: Symbol) -> Symbol:
+def as_variable(symbol: Symbol, shape=None, dtype=None) -> Symbol:
     """ inherit extra attrs """
-    return symbol.copy(op_name=VAR, args=[], attrs={})
+    out = symbol.copy(op_name=VAR, args=[], attrs={})
+    out.shape = shape or out.shape
+    out.dtype = dtype or out.dtype
+    return out
 
 def retrieve_operator(symbol: Symbol) -> Symbol:
     return symbol.copy(args=[as_variable(c) for c in symbol.args])
@@ -96,7 +99,8 @@ def _register_op(op_name):
     from . import optype
     def _op(*args, **attrs) -> Symbol:
         op = _new_op(op_name, *args, **attrs)
-        return optype.infer_single(op)
+        out = optype.infer_single(op)
+        return out
     return _op
 
 Tuple = _register_op(TUPLE)
@@ -115,6 +119,7 @@ right_shift = _register_op(RIGHT_SHIFT)
 # astype = _register_op(AS_TYPE)
 cast = _register_op(CAST)
 #  flatten = _register_op(FLATTEN)
+adv_index = _register_op(ADV_INDEX)
 
 repeat = _register_op(REPEAT)
 reshape = _register_op(RESHAPE)
@@ -122,10 +127,12 @@ reshape = _register_op(RESHAPE)
 add = _register_op(ADD)
 sub = _register_op(SUB)
 mul = _register_op(MUL)
+exp = _register_op(EXP)
 
 requant = _register_op(REQUANT)
 pclip = _register_op(PCLIP)
 rs_pclip = _register_op(RS_PCLIP)
+lut = _register_op(LUT)
 
 def is_operator(symbol: Symbol, params: ParametersT = {}):
     return symbol.op_name != VAR

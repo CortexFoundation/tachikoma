@@ -6,13 +6,14 @@ from dataclasses import dataclass
 from . import op
 from .opns import *
 from .precision import *
+from .discrete import QuantInfo
 from .utils import number_to_bits
 from .attrs import PClipAttrs, RequantAttrs
 from .symbol import filter_operators
 from .transform import Transformer
 
 @dataclass(repr=False)
-class Simulator(Transformer, QuantizedInfo):
+class Simulator(QuantInfo):
     def round(self, out: Transformer):
         #  data_0_5 = self.from_const_data(0.5)
         #  out = op.add(out, data_0_5)
@@ -22,7 +23,7 @@ class Simulator(Transformer, QuantizedInfo):
         out = op.cast(out, dtype=orig_dtype)
         return out
 
-    def __call__(self, with_clip=False, with_round=False):
+    def __call__(self, with_clip=False, with_round=False, **kw):
         out: Transformer = self
         if self.is_input():
             """ input is the original float data, skip. """
@@ -46,7 +47,7 @@ class Simulator(Transformer, QuantizedInfo):
 
 
 @dataclass(repr=False)
-class FixPoint(Transformer, QuantizedInfo):
+class FixPoint(QuantInfo):
     def map_requant(self) -> FixPoint:
         if (self.args[0]).is_input():
             return self
@@ -83,7 +84,7 @@ class FixPoint(Transformer, QuantizedInfo):
         #  out = op.clip(X, a_min=-pos, a_max=pos).like(self)
         return out
 
-    def __call__(self):
+    def __call__(self, **kw):
         self.dtype = "int8" if self.precision <= 8 else "int32"
 
         out = self

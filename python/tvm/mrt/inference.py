@@ -5,12 +5,13 @@ from .symbol import *
 from .opns import *
 from .sym_expr import *
 from .transform import WithParameters
-from . import runtime, types
+from . import op, runtime, types
 
 def run(sym: WithParameters,
         args_data: typing.List[OpOutputT],
+        op_single: bool = True,
         **kwargs) -> OpOutputT:
-    assert sym.is_operator(), sym
+    assert op.is_operator(sym), sym
 
     if sym.is_op(TUPLE_GET_ITEM):
         return args_data[0][sym.parsed.index]
@@ -28,6 +29,10 @@ def run(sym: WithParameters,
     elif sym.is_op(ZEROS_LIKE):
         return tvm.nd.array(np.zeros(sym.shape, sym.dtype))
 
+    if op_single:
+        sym = sym.copy(args=[
+            op.as_variable(a, d.numpy().shape, d.numpy().dtype.name) \
+                    for a, d in zip(sym.args, args_data)])
     expr = symbol2expr(sym)
     params = { c.name: args_data[i] for i, c in enumerate(sym.args) }
     return runtime.infer(expr, params, **kwargs)
