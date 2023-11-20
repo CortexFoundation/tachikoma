@@ -37,13 +37,13 @@ data_transform = tv.transforms.Compose([
 #          shuffle=False,
 #          batchify_fn=batchify_fn,
 #          )
-dataset = tv.datasets.VOCDetection(
-        "~/.mxnet/datasets/voc/",
-        transform=data_transform,
-        )
-#  dataset = tv.datasets.ImageFolder(
-#          '~/.mxnet/datasets/imagenet/val',
-#          transform=data_transform)
+# dataset = tv.datasets.VOCDetection(
+#         "~/.mxnet/datasets/voc/",
+#         transform=data_transform,
+#         )
+dataset = tv.datasets.ImageFolder(
+        '~/.mxnet/datasets/imagenet/val',
+        transform=data_transform)
 test_loader = torch.utils.data.DataLoader(
         dataset,
         batch_size=batch_size, # set dataset batch load
@@ -121,6 +121,7 @@ class TorchStatistics(stats.Statistics):
 #  sys.exit()
 
 #  c = Pass(log_before=True, log_after=True).register_global()
+Pass(log_before=True, log_after=True).register_global()
 fuse_tr = tr.fuse().log()
 
 # import numpy as np
@@ -140,8 +141,7 @@ calib_tr = seg_tr.calibrate(
         sampling_func=calibrate.SymmetricMinMaxSampling.sampling,
         # force=True,
         ).log()
-Pass(log_before=True, log_after=True).register_global()
-dis_tr = calib_tr.quantize().log()
+dis_tr = calib_tr.quantize(force=True).log()
 
 from tvm.mrt.precision import PrecisionRevisor
 dis_tr = dis_tr.checkpoint_run(PrecisionRevisor.get_transformer())

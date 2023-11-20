@@ -43,7 +43,8 @@ class FuseConstant(Transformer):
             if not self.args[0].is_param():
                 return
             arg1 = np.zeros(self.args[1].shape, self.args[1].dtype)
-            data = inference.run(self, [self.args[0].ndarray(), arg1])
+            data = inference.run(self, [
+                self.args[0].ndarray(), tvm.nd.array(arg1)])
             return self.as_parameter(data)
         elif self.is_op(REQUANT):
             if self.parsed.rescale == 1:

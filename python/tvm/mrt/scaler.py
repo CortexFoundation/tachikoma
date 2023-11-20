@@ -10,10 +10,10 @@ from . import op, utils
 @dataclass(repr=False)
 class WithScale(Symbol):
     @classmethod
-    def _validate(cls, scale, msg=None):
+    def _validate_scale(cls, scale, msg=None):
         if isinstance(scale, (list, tuple)):
-            return [cls._validate(s, msg) for s in scale]
-        assert isinstance(scale, float)
+            return [cls._validate_scale(s, msg) for s in scale]
+        assert isinstance(scale, float), scale
         assert scale >= 0, ("scale: {} invalid for \n{}").format(
                 scale, msg or str(cls))
 
@@ -26,7 +26,7 @@ class WithScale(Symbol):
 
     @scale.setter
     def scale(self, val):
-        self._validate(val)
+        self._validate_scale(val)
         self.set_extra_attrs(scale=val)
 
     @classmethod

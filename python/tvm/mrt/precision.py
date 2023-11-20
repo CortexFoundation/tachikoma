@@ -22,7 +22,7 @@ class WithPrecision(Symbol):
     MAX_BIT: typing.ClassVar[int] = 32
 
     @classmethod
-    def _validate(cls, prec, msg=None):
+    def _validate_precision(cls, prec, msg=None):
         assert isinstance(prec, int), self.precision
         assert prec <= cls.MAX_BIT, (
             "precision:{} out of max bit:{} for \n{}"
@@ -35,7 +35,7 @@ class WithPrecision(Symbol):
         return self.extra_attrs.get("precision", -1)
     @precision.setter
     def precision(self, val):
-        self._validate(val, str(self))
+        self._validate_precision(val, str(self))
         self.set_extra_attrs(precision=val)
 
     @property
@@ -44,7 +44,7 @@ class WithPrecision(Symbol):
         return self.precision > 0 and self.precision < self.MAX_BIT
 
     def validate_precision(self):
-        self._validate(self.precision, msg=str(self))
+        self._validate_precision(self.precision, msg=str(self))
     def int_max(self):
         return bits_to_number(self.precision)
 
