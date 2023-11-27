@@ -657,7 +657,7 @@ def resize_batch(symbol, params, batch_size=1):
         if sym.op_name in ["subtract"]:
             inputs = []
             for inp in sym.args:
-                shape = inp.attrs["shape"]
+                shape = inp.attrs["shape"] if "shape" in inp.attrs.keys() else inp.extra_attrs["shape"]
                 if is_param(inp, params) and len(shape) == 4:
                     assert shape[0] == 1
                     param = params[inp.name]
@@ -665,7 +665,7 @@ def resize_batch(symbol, params, batch_size=1):
                     inp.attrs["shape"] = shape[1:]
                     params[inp.name] = param.reshape(shape[1:])
                 inputs.append(inp)
-            sym = sym.copy(args=args)
+            sym = sym.copy(args=inputs)
 
         assert "shape" in sym.info()
         shape = sym.shape

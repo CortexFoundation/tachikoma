@@ -75,13 +75,15 @@ class OperatorGenerator(CircomGenerator):
 
         assert len(self.comp.input_names) == len(self.inputs)
         # op dim contains 1-dim batch, not support in circom circuits
+        input_index = 0
         for shape in zip(self.comp.input_dims, input_shapes):
             # model input shape dimensions should match cirom circuit operator shape
             assert shape[0] == len(shape[1]), (
-                "{}({}) shape dim not matched, "
-                "{} vs. {}, maybe apply shape-adaptor pass."
-            ).format(self.name, self.comp.op_name,
-                    shape[0], len(shape[1]))
+                "{}({}) input[{}] shape dim not matched, "
+                "{} vs. {}, maybe apply shape-adaptor pass. shape is:{}"
+            ).format(self.name, self.comp.op_name, input_index,
+                    shape[0], len(shape[1]), shape)
+            input_index += 1
 
         self.circom_inputs = [
                 Signal(self, *info) for info in zip(
@@ -350,7 +352,14 @@ class Clip3DGenerator(OperatorGenerator):
         return [ self.shape[0], self.shape[1], self.shape[2],
                 int(self.attrs["a_min"]), int(self.attrs["a_max"]) ]
 
-class TransposeC1C2HWGenerator(OperatorGenerator):
+class TransposeHWCGenerator(OperatorGenerator):
+    def arguments(self):
+        assert(len(self.shape)==3)
+        assert(self.attrs["axes"][1:]==[2,3,1]), self.attrs["axes"]
+        # only transpose C to the end
+        return [ *self.inputs[0].shape ]
+
+class TransposeC2C1HWGenerator(OperatorGenerator):
     def arguments(self):
         assert(len(self.shape)==4)
         assert(self.attrs["axes"][1:]==[2,1,3,4]), self.attrs["axes"]
@@ -362,6 +371,17 @@ class TupleGetItem3DGenerator(OperatorGenerator):
         assert(len(self.inputs[0].shape)==3)
         return [ *self.inputs[0].shape, self.attrs["index"] ]
 
+class Concatenate1DGenerator(OperatorGenerator):
+    def arguments(self):
+        assert(len(self.shape)==1)
+        assert(len(self.inputs)==2)
+        return [ self.inputs[0].shape[0], *self.inputs[1].shape ]
+class Concatenate2DGenerator(OperatorGenerator):
+    def arguments(self):
+        assert(len(self.shape)==2)
+        assert(len(self.inputs)==2)
+        assert all([self.inputs[0].shape[1] == self.inputs[1].shape[1]])
+        return [ self.inputs[0].shape[0], *self.inputs[1].shape ]
 class Concatenate3DGenerator(OperatorGenerator):
     def arguments(self):
         assert(len(self.shape)==3)
