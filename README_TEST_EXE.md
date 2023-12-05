@@ -79,6 +79,7 @@ snarkjs r1cs info circom_model_test.r1cs # check the info of constraints
 
 ## generate proof
 ```bash
+export NODE_OPTIONS="--max-old-space-size=102400" # 100GB
 npm install -g snarkjs
 snarkjs powersoftau new bn128 18 pot12_0000.ptau -v  ##2**18 according to circom circuits scale
 snarkjs powersoftau contribute pot12_0000.ptau pot12_0001.ptau --name="First contribution" -v  ## enter text

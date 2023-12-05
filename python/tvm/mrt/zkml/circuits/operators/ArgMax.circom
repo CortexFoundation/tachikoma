@@ -39,38 +39,39 @@ template ArgMax (n) {
 
     out <== amaxs[n];
 }
-/*
-template ArgMax (n) {
-    signal input in[n];
-    signal output out;
-    component gts[n];        // store comparators
-    component switchers[n+1];  // switcher for comparing maxs
-    component aswitchers[n+1]; // switcher for arg max
 
-    signal maxs[n+1];
-    signal amaxs[n+1];
+template Greater2D (i1, i2) {
+    signal input in1[i1][i2];
+    signal input in2;
+    signal output out[i1][i2];
 
-    maxs[0] <== in[0];
-    amaxs[0] <== 0;
-    for(var i = 0; i < n; i++) {
-        gts[i] = GreaterThan(252); // changed to 252 (maximum) for better compatibility
-        switchers[i+1] = Switcher();
-        aswitchers[i+1] = Switcher();
-
-        gts[i].in[1] <== maxs[i];
-        gts[i].in[0] <== in[i];
-
-        switchers[i+1].sel <== gts[i].out;
-        switchers[i+1].L <== maxs[i];
-        switchers[i+1].R <== in[i];
-
-        aswitchers[i+1].sel <== gts[i].out;
-        aswitchers[i+1].L <== amaxs[i];
-        aswitchers[i+1].R <== i;
-        amaxs[i+1] <== aswitchers[i+1].outL;
-        maxs[i+1] <== switchers[i+1].outL;
+    components gts[i1][i2];
+    for (var i = 0; i < i1; i++) {
+        for (var j = 0; j < i2; j++) {
+            gts[i][j] = GreaterThan_Full();
+            gts[i][j].a <== in1[i][j];
+            gts[i][j].b <== in2;
+	    out[i][j] <== gts[i][j].out;
+        }
     }
-
-    out <== amaxs[n];
 }
-*/
+
+template Where2D(i1, i2) {
+    signal input sel[i1][i2];
+    signal input in1[i1][i2];
+    signal input in2[i1][i2];
+    signal output out[i1][i2];
+
+    component switchers[i1][i2];
+
+    for (var i = 0; i < i1; i++) {
+        for (var j = 0; j < i2; j++) {
+            switchers[i][j] = Switcher();
+            switchers[i][j].sel <== sel[i][j];
+            switchers[i][j].L <== in1[i][j];
+            switchers[i][j].R <== in2[i][j];
+	    out[i][j] <== switchers[i][j].outL;
+        }
+    }
+}
+

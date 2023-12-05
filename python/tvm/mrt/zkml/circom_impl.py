@@ -73,7 +73,7 @@ class OperatorGenerator(CircomGenerator):
         # check input shape dimensions match operators in cirom circuit operator
         # print(self.comp.input_dims, input_shapes, self.info(), self.comp.input_names)
 
-        assert len(self.comp.input_names) == len(self.inputs)
+        assert len(self.comp.input_names) == len(self.inputs), "{};{}".format(len(self.comp.input_names), len(self.inputs))
         # op dim contains 1-dim batch, not support in circom circuits
         input_index = 0
         for shape in zip(self.comp.input_dims, input_shapes):
@@ -91,7 +91,7 @@ class OperatorGenerator(CircomGenerator):
 
         args = self.arguments()
         # all arguments of circom circuit must be integers.
-        assert all([isinstance(a, int) for a in args]), print("bad arg display", [a for a in args], self.info()) #self.info()
+        assert all([isinstance(a, int) for a in args]), print("bad arg display!!", ["{};".format(a) for a in args], self.info()) #self.info()
         self.circom_args = ", ".join([
             str(s) for s in self.arguments()])
 
@@ -108,15 +108,31 @@ class OperatorGenerator(CircomGenerator):
 class ShapeGenerator(OperatorGenerator):
     def arguments(self):
         return [ *self.shape ]
+class Broadcast2DAxis0SubGenerator(ShapeGenerator):
+    pass
+class Broadcast2DAxis0AddGenerator(ShapeGenerator):
+    pass
+class Broadcast2DAxis1SubGenerator(ShapeGenerator):
+    pass
+class Broadcast2DAxis1AddGenerator(ShapeGenerator):
+    pass
 class Broadcast3DAxis0SubGenerator(ShapeGenerator):
     pass
 class Broadcast3DAxis0AddGenerator(ShapeGenerator):
     pass
+class Broadcast3DAxis1SubGenerator(ShapeGenerator):
+    pass
+class Broadcast3DAxis1AddGenerator(ShapeGenerator):
+    pass
 class Element1DAddGenerator(ShapeGenerator):
+    pass
+class Element2DAddGenerator(ShapeGenerator):
     pass
 class Element3DAddGenerator(ShapeGenerator):
     pass
 class Element1DSubGenerator(ShapeGenerator):
+    pass
+class Element2DSubGenerator(ShapeGenerator):
     pass
 class Element1DMulGenerator(ShapeGenerator):
     pass
@@ -265,6 +281,16 @@ class ScalarGenerator(OperatorGenerator):
         return [ishape[0], self.attrs["scalar"]]
 class MulScalarGenerator(ScalarGenerator):
     pass
+class MulScalarCHGenerator(ScalarGenerator):
+    def arguments(self):
+        i_shape = self.inputs[0].shape
+        s_shape = self.inputs[1].shape
+        # s_shape[0] is batch, should be 1, then just ignored
+        assert len(i_shape) == 2
+        assert len(s_shape) == 3
+        assert s_shape[0] == 1 and s_shape[2] == 1
+        assert i_shape[0] == s_shape[1]
+        return [ *i_shape ]
 class MulScalarCHWGenerator(ScalarGenerator):
     def arguments(self):
         i_shape = self.inputs[0].shape
@@ -278,6 +304,10 @@ class MulScalarCHWGenerator(ScalarGenerator):
 class AddScalarGenerator(ScalarGenerator):
     pass
 class SubScalarGenerator(ScalarGenerator):
+    pass
+class AddScalarCHGenerator(ScalarGenerator):
+    pass
+class SubScalarCHGenerator(ScalarGenerator):
     pass
 
 #class MulScalarGenerator(OperatorGenerator):
@@ -366,25 +396,108 @@ class TransposeC2C1HWGenerator(OperatorGenerator):
         # only transpose C1 and C2
         return [ *self.inputs[0].shape ]
 
+class TupleGetItem2D0AGenerator(OperatorGenerator):
+    def arguments(self):
+        assert(len(self.inputs[0].shape)==2)
+        return [ *self.inputs[0].shape, self.attrs["parts"], self.attrs["index"] ]
+class TupleGetItem2D1AGenerator(OperatorGenerator):
+    def arguments(self):
+        assert(len(self.inputs[0].shape)==2)
+        return [ *self.inputs[0].shape, self.attrs["parts"], self.attrs["index"] ]
 class TupleGetItem3DGenerator(OperatorGenerator):
     def arguments(self):
         assert(len(self.inputs[0].shape)==3)
-        return [ *self.inputs[0].shape, self.attrs["index"] ]
+        return [ *self.inputs[0].shape, self.attrs["parts"], self.attrs["index"] ]
+class TupleGetItem3D0AGenerator(TupleGetItem3DGenerator):
+    pass
+class TupleGetItem3D1AGenerator(TupleGetItem3DGenerator):
+    pass
+class TupleGetItem3D2AGenerator(TupleGetItem3DGenerator):
+    pass
 
-class Concatenate1DGenerator(OperatorGenerator):
+class TupleGetItem_VisCount_0Generator(OperatorGenerator):
+    def arguments(self):
+        assert(len(self.inputs)==2)
+        assert(self.attrs["id_index"]==0)
+        assert(self.attrs["score_index"]==1)
+        return [ *self.inputs[0].shape ]
+class TupleGetItem_VisCount_1Generator(OperatorGenerator):
+    def arguments(self):
+        assert(len(self.inputs)==2)
+        assert(self.attrs["id_index"]==0)
+        assert(self.attrs["score_index"]==1)
+        return [ *self.inputs[0].shape ]
+class TupleGetItem_VisCount_2Generator(OperatorGenerator):
+    def arguments(self):
+        assert(len(self.inputs)==2)
+        assert(self.attrs["id_index"]==0)
+        assert(self.attrs["score_index"]==1)
+        return [ *self.inputs[0].shape ]
+
+class StrideSlice2DGenerator(OperatorGenerator):
+    def arguments(self):
+        assert(len(self.inputs[0].shape)==2)
+        return [ *self.inputs[0].shape, *self.attrs["begin"][1:], *self.attrs["end"][1:], *self.attrs["strides"] ]
+
+class Greater2DGenerator(OperatorGenerator):
+    def arguments(self):
+        assert(len(self.shape)==2)
+        assert(len(self.inputs)==2)
+        return [ *self.shape ]
+
+class Where2DGenerator(OperatorGenerator):
+    def arguments(self):
+        assert(len(self.shape)==2)
+        assert(len(self.inputs)==3)
+        assert(all([self.shape[0]==self.inputs[0].shape[0], self.inputs[0].shape[0]==self.inputs[1].shape[0], self.shape[1]==self.inputs[0].shape[1], self.inputs[0].shape[1]==self.inputs[1].shape[1]]))
+        return [ *self.shape ]
+
+class AdvIndexGenerator(OperatorGenerator):
+    def arguments(self):
+        assert(len(self.inputs)==2)
+        # this circuit only support input[0] 1-dim, input[1] 2-dim
+        assert(len(self.inputs[0].shape)==1)
+        assert(len(self.inputs[1].shape)==2)
+        return [ *self.inputs[0].shape, *self.inputs[1].shape ]
+
+class Vision_GetValidCountsGenerator(OperatorGenerator):
+    def arguments(self):
+        assert(len(self.inputs)==2)
+        return [ *self.inputs[0].shape ]
+
+class Vision_NonMaxSuppressionGenerator(OperatorGenerator):
+    def arguments(self):
+        assert(len(self.inputs)==5)
+        assert(self.attrs["invalid_to_bottom"]==1)
+        assert(self.attrs["top_k"]>0)
+        return [ *self.inputs[0].shape, self.attrs["top_k"] ]
+
+class Concatenate1D0AGenerator(OperatorGenerator):
     def arguments(self):
         assert(len(self.shape)==1)
         assert(len(self.inputs)==2)
         return [ self.inputs[0].shape[0], *self.inputs[1].shape ]
-class Concatenate2DGenerator(OperatorGenerator):
+class Concatenate2D0AGenerator(OperatorGenerator):
     def arguments(self):
         assert(len(self.shape)==2)
         assert(len(self.inputs)==2)
         assert all([self.inputs[0].shape[1] == self.inputs[1].shape[1]])
         return [ self.inputs[0].shape[0], *self.inputs[1].shape ]
-class Concatenate3DGenerator(OperatorGenerator):
+class Concatenate2D1AGenerator(OperatorGenerator):
+    def arguments(self):
+        assert(len(self.shape)==2)
+        assert(len(self.inputs)==2)
+        assert all([self.inputs[0].shape[0] == self.inputs[1].shape[0]])
+        return [ *self.inputs[0].shape, self.inputs[1].shape[1] ]
+class Concatenate3D0AGenerator(OperatorGenerator):
     def arguments(self):
         assert(len(self.shape)==3)
         assert(len(self.inputs)==2)
         assert all([self.inputs[0].shape[1] == self.inputs[1].shape[1], self.inputs[0].shape[2] == self.inputs[1].shape[2]])
         return [ self.inputs[0].shape[0], *self.inputs[1].shape ]
+class Concatenate3D2AGenerator(OperatorGenerator):
+    def arguments(self):
+        assert(len(self.shape)==3)
+        assert(len(self.inputs)==2)
+        assert all([self.inputs[0].shape[0] == self.inputs[1].shape[0], self.inputs[0].shape[1] == self.inputs[1].shape[1]])
+        return [ *self.inputs[0].shape, self.inputs[1].shape[2] ]

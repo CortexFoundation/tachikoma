@@ -646,10 +646,11 @@ def resize_batch(symbol, params, batch_size=1):
         if is_param(sym, params):
             return
 
-        if sym.op_name in ["split"]:
+        # TODO: resize batch in attrs
+        if sym.op_name in ["split", "vison.get_valid_counts", "Tuple"]:
             new_shapes = []
             for shp in sym.shape:
-                assert isinstance(shp, tuple)
+                assert isinstance(shp, tuple), "{}:{}".format(sym.op_name, shp)
                 new_shapes.append(shp[1:])
             sym.shape = new_shapes
             return sym

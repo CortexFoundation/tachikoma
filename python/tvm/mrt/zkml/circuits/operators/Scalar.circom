@@ -10,6 +10,19 @@ template MulScalar(iShape, sc) {
 }
 
 // scalar depends on each Channel
+template MulScalarCH(C, H) {
+    signal input in[C][H];
+    signal input scalars[1][C][1];
+    signal output out[C][H];
+
+    for (var i=0; i < C; i++) {
+        for (var j=0; j < H; j++) {
+            out[i][j] <== in[i][j] * scalars[0][i][0];
+        }
+    }
+}
+
+// scalar depends on each Channel
 template MulScalarCHW(C, H, W) {
     signal input in[C][H][W];
     signal input scalars[1][C][1][1];
@@ -27,11 +40,19 @@ template MulScalarCHW(C, H, W) {
 template AddScalar(iShape, sc) {
     signal input in[iShape];
     signal output out[iShape];
-
     for (var i=0; i < iShape; i++) {
         out[i] <== in[i] + sc;
     }
+}
 
+template AddScalarCH(i1, i2, sc) {
+    signal input in[i1][i2];
+    signal output out[i1][i2];
+    for (var i=0; i < i1; i++) {
+        for (var j=0; j < i2; j++) {
+            out[i][j] <== in[i][j] + sc;
+        }
+    }
 }
 
 template SubScalar(iShape, sc) {
@@ -42,3 +63,14 @@ template SubScalar(iShape, sc) {
         out[i] <== in[i] - sc;
     }
 }
+
+template SubScalarCH(i1, i2, sc) {
+    signal input in[i1][i2];
+    signal output out[i1][i2];
+    for (var i=0; i < i1; i++) {
+        for (var j=0; j < i2; j++) {
+            out[i][j] <== in[i][j] - sc;
+        }
+    }
+}
+
