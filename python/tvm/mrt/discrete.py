@@ -181,10 +181,14 @@ register_rules_with_default(
         scale_rule=scale_concat)
 
 register_rules_with_default(
-        MAX_POOL2D, RELU, RESHAPE, SQUEEZE, SPLIT,
-        TRANSPOSE, FLATTEN, BATCH_FLATTEN, STRIDED_SLICE)
+        MAX_POOL2D, RELU,
+        REPEAT, SQUEEZE, FLATTEN, BATCH_FLATTEN,
+        RESHAPE, SPLIT, TRANSPOSE,
+        EXPAND_DIMS, TILE,
+        )
 
-register_rules_with_default(SLICE_LIKE)
+register_rules_with_default(SLICE_LIKE, STRIDED_SLICE)
+register_rules_with_default(NEGATIVE)
 
 def scale_tuple_get_item(s: WithScale):
     ascale = s.args[0].scale
@@ -217,7 +221,7 @@ def op_lut_rules(s: QuantInfo):
 
     X = s.args[0]
     offset = s.from_np_data(np.array(alpha, "int"))
-    out = op.add(X, offset).like(X)
+    indices = op.add(X, offset).like(X)
 
     # arg_min, arg_max = -s.data, s.data
     # if s.is_op(EXP):
@@ -229,15 +233,15 @@ def op_lut_rules(s: QuantInfo):
     # table = np.reshape(table, (-1, 1))
     oscale = s.precision_to_scale(LUT_OUT_PREC)
     weight = s.from_np_data(table * oscale)
-    out = op.adv_index(weight, out).like(s)
-    out.scale = s.precision_to_scale(LUT_INP_PREC)
+    out = op.adv_index(weight, indices).like(s)
+    # out.scale = s.precision_to_scale(LUT_INP_PREC)
     return out
 
-register_rules_with_default(EXP,
+register_rules_with_default(
+        EXP, SIGMOID,
         requant_rule=lut_max_prec,
         op_rule=op_lut_rules,
         scale_rule=lut_scale_rules)
-
 
 @dataclass(repr=False)
 class Discretor(QuantInfo):

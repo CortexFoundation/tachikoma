@@ -178,6 +178,8 @@ class Trace:
                 fuse.FuseConstant.get_transformer(),
                 fuse.FuseTupleGetItem.get_transformer(),
                 fuse.FuseBatchNorm.get_transformer(),
+                fuse.FuseLeakyReLU.get_transformer(),
+                fuse.FuseDivide.get_transformer(),
                 fuse.FuseAvgPool2D.get_transformer(),
                 fuse.FuseDropout.get_transformer(),
                 fuse.FuseMean.get_transformer(),
@@ -208,7 +210,7 @@ class Trace:
         return self.checkpoint_run(
                 Discretor.get_transformer(),
                 fuse.FuseConstant.get_transformer(),
-                # PrecisionRevisor.get_transformer(),
+                PrecisionRevisor.get_transformer(),
                 **kwargs)
 
     def export(self,
@@ -240,7 +242,7 @@ class Trace:
 
     def log(self, **kwargs):
         fname = self._get_checkpoint_path(self.name) + ".log"
-        print("Log  Trace {:20} into {}".format(
+        print("Log   Trace {:20} into {}".format(
             self.name, fname))
         with open(fname, "w") as f:
             with redirect_stdout(f):
@@ -260,7 +262,7 @@ class Trace:
 
     def dump(self, tr_path: str = None):
         tr_path = tr_path or self._get_checkpoint_path()
-        print("Dump Trace {:20} into {}".format(self.name, tr_path))
+        print("Dump  Trace {:20} into {}".format(self.name, tr_path))
         data = dump_json(self.symbol)
         data.update({
             "_model_name": self.model,

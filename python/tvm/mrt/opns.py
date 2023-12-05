@@ -8,13 +8,16 @@ DENSE = "nn.dense"
 BATCH_NORM = "nn.batch_norm"
 BIAS_ADD = "nn.bias_add"
 RELU = "nn.relu"
+LEAKY_RELU = "nn.leaky_relu"
 ADAPTIVE_AVG_POOL2D = "nn.adaptive_avg_pool2d"
 AVG_POOL2D = "nn.avg_pool2d"
 MAX_POOL2D = "nn.max_pool2d"
 
 SOFTMAX = "nn.softmax"
 LOG_SOFTMAX = "nn.log_softmax"
+
 EXP = "exp"
+SIGMOID = "sigmoid"
 
 SUM = "sum"
 MEAN = "mean"
@@ -31,6 +34,9 @@ RESHAPE = "reshape"
 CONCAT = "concatenate"
 SPLIT = "split"
 TRANSPOSE = "transpose"
+
+EXPAND_DIMS = "expand_dims"
+TILE = "tile"
 
 WHERE = "where"
 GREATER = "greater"
@@ -52,6 +58,11 @@ ADV_INDEX = "adv_index"
 ADD = "add"
 SUB = "subtract"
 MUL = "multiply"
+DIV = "divide"
+
+# ======= unary ops ==============
+
+NEGATIVE = "negative"
 
 # ======= auto generate op =========
 ARANGE = "arange"

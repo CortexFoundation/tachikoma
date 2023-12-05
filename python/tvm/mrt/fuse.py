@@ -215,6 +215,33 @@ class FuseMean(Transformer):
         out = op.mul(out, scale)
         return out.like(self)
 
+class FuseLeakyReLU(Transformer):
+    @filter_operators(LEAKY_RELU)
+    def __call__(self, **kw):
+        """ Customized rewrite pass Introduction.
+
+            LeakyReLU can be equivalently transformed.
+
+            .. math::
+                LeakyReLU(X) = relu(X) - slope*relu(-X)
+        """
+        alpha = self.from_const_data(self.parsed.alpha)
+        X: Transformer = self.args[0]
+        out = op.nn_relu(op.negative(X))
+        out = op.mul(alpha, out)
+        out = op.sub(op.nn_relu(X), out)
+        return out.like(self)
+
+
+class FuseDivide(Transformer):
+    @filter_operators(DIV)
+    def __call__(self, **kw):
+        """ Transform div to mul if possible. """
+        A: Transformer = self.args[0]
+        B: Transformer = self.args[1]
+        assert B.is_param(), B
+        B = B.from_np_data(1. / B.numpy())
+        return op.mul(A, B).like(self)
 
 # move to fuse constant
 #  class FuseNaiveMathmatic(Transformer):

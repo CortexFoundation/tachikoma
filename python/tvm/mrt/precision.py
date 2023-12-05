@@ -125,7 +125,11 @@ def _infer_add(s: WithPrecision):
     """
     return _infer_max(s) + 1
 prec_rules(CONCAT)(_infer_max)
-@prec_rules(ADV_INDEX, STRIDED_SLICE)
+
+@prec_rules(NEGATIVE)
+@prec_rules(EXPAND_DIMS, TILE, REPEAT)
+@prec_rules(ADV_INDEX)
+@prec_rules(SLICE_LIKE, STRIDED_SLICE)
 @prec_rules(TRANSPOSE, FLATTEN, BATCH_FLATTEN)
 @prec_rules(SPLIT, TUPLE_GET_ITEM)
 @prec_rules(SQUEEZE, RESHAPE)

@@ -59,7 +59,7 @@ class WithParameters(Symbol):
         self.params[self.name] = _f(data, self.dtype)
         return op.as_variable(self)
 
-    def from_const_data(self, data: typing.Union[int, float]) -> Symbol:
+    def from_const_data(self, data: typing.Union[int, float]) -> WithParameters:
         return self.from_np_data(np.array(data))
 
     def from_np_data(self, data: np.ndarray, prefix=None) -> Symbol:

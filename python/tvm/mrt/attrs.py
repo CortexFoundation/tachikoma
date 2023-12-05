@@ -147,6 +147,11 @@ class BatchNormAttrs(_BaseAttrs):
     scale: bool = True
 
 @dataclass
+@register_attrs(LEAKY_RELU)
+class LeakyReLUAttrs(_BaseAttrs):
+    alpha: float
+
+@dataclass
 @register_attrs(MEAN)
 class MeanAttrs(_BaseAttrs):
     axis: typing.Optional[int]

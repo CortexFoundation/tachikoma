@@ -111,6 +111,8 @@ nn_dense = _register_op(DENSE)
 nn_batch_norm = _register_op(BATCH_NORM)
 bias_add = _register_op(BIAS_ADD)
 
+nn_relu = _register_op(RELU)
+
 sum = _register_op(SUM)
 #  mean = _register_op(MEAN)
 clip = _register_op(CLIP)
@@ -128,6 +130,7 @@ add = _register_op(ADD)
 sub = _register_op(SUB)
 mul = _register_op(MUL)
 exp = _register_op(EXP)
+negative = _register_op(NEGATIVE)
 
 requant = _register_op(REQUANT)
 pclip = _register_op(PCLIP)

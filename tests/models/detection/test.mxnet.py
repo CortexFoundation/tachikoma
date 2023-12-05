@@ -67,7 +67,7 @@ config = {
 model_name = "mxnet_ssd_512_resnet50_v1_voc"
 model_name = "faster_rcnn_resnet50_v1b_voc"
 model_name = "yolo3_darknet53_voc"
-model_name = "ssd_512_resnet50_v1_voc"
+# model_name = "ssd_512_resnet50_v1_voc"
 
 # with default params
 from gluoncv import model_zoo
@@ -121,8 +121,16 @@ class TorchStatistics(stats.Statistics):
 #  sys.exit()
 
 #  c = Pass(log_before=True, log_after=True).register_global()
-Pass(log_before=True, log_after=True).register_global()
-fuse_tr = tr.fuse().log()
+# Pass(log_before=True, log_after=True).register_global()
+fuse_tr = tr.fuse(force=True).log()
+
+# from tvm.mrt import fuse
+# fuse_tr = fuse_tr.checkpoint_run(
+#         fuse.FuseLeakyReLU.get_transformer(),
+#         fuse.FuseDivide.get_transformer(),
+#         # force=True,
+#         )
+# fuse_tr.log()
 
 # import numpy as np
 # from tvm.mrt import inference, op
@@ -134,23 +142,28 @@ fuse_tr = tr.fuse().log()
 from tvm.mrt import segement
 seg_tr = fuse_tr.checkpoint_run(
         segement.Spliter.get_transformer(),
-        # force=True
+        force=True
         ).log()
 
 calib_tr = seg_tr.calibrate(
         sampling_func=calibrate.SymmetricMinMaxSampling.sampling,
         # force=True,
         ).log()
-dis_tr = calib_tr.quantize(force=True).log()
+dis_tr = calib_tr.quantize(
+        # force=True
+        ).log()
 
-from tvm.mrt.precision import PrecisionRevisor
-dis_tr = dis_tr.checkpoint_run(PrecisionRevisor.get_transformer())
-# dis_tr = dis_tr.checkpoint_run(infer_precision)
+# from tvm.mrt.precision import PrecisionRevisor
+# dis_tr = dis_tr.checkpoint_run(
+#         PrecisionRevisor.get_transformer(),
+#         # force=True
+#         ).log()
+# # dis_tr = dis_tr.checkpoint_run(infer_precision)
 
 dis_tr = dis_tr.checkpoint_run(
         segement.Merger.get_transformer(),
         spliter=seg_tr.symbol,
-        # force=True,
+        force=True,
         ).log()
 
 sim_tr = dis_tr.export().log()
