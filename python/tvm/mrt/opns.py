@@ -67,6 +67,7 @@ NEGATIVE = "negative"
 # ======= auto generate op =========
 ARANGE = "arange"
 ZEROS_LIKE = "zeros_like"
+ONES_LIKE = "ones_like"
 
 # ======= control flow op ===========
 IF = "if"

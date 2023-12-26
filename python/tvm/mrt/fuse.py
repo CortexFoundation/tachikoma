@@ -49,7 +49,7 @@ class FuseConstant(Transformer):
         elif self.is_op(REQUANT):
             if self.parsed.rescale == 1:
                 return self.args[0]
-        elif self.is_op(ZEROS_LIKE):
+        elif self.is_op(ZEROS_LIKE, ONES_LIKE):
             data = inference.run(self, [])
             return self.as_parameter(data)
 

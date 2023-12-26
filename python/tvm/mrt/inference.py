@@ -28,6 +28,8 @@ def run(sym: WithParameters,
         return types.to_ndarray(np.meshgrid(*args, **sym.attrs))
     elif sym.is_op(ZEROS_LIKE):
         return tvm.nd.array(np.zeros(sym.shape, sym.dtype))
+    elif sym.is_op(ONES_LIKE):
+        return tvm.nd.array(np.ones(sym.shape, sym.dtype))
 
     if op_single:
         sym = sym.copy(args=[

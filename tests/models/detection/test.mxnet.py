@@ -10,7 +10,8 @@ from tvm import relay, ir
 
 import numpy as np
 
-batch_size = 16
+batch_size = 1
+# batch_size = 16
 image_shape = (3, 512, 512)
 data_shape = (batch_size,) + image_shape
 
@@ -66,13 +67,28 @@ config = {
 
 model_name = "mxnet_ssd_512_resnet50_v1_voc"
 model_name = "faster_rcnn_resnet50_v1b_voc"
-model_name = "yolo3_darknet53_voc"
+# model_name = "yolo3_darknet53_voc"
 # model_name = "ssd_512_resnet50_v1_voc"
 
 # with default params
+import gluoncv
 from gluoncv import model_zoo
-import mxnet
-model = model_zoo.get_model(model_name, pretrained=True)
+import mxnet as mx
+import json
+# im_fname = gluoncv.utils.download('https://github.com/dmlc/web-data/blob/master/' +
+#                           'gluoncv/detection/biking.jpg?raw=true',
+#                           path='biking.jpg')
+# img, orig_img = gluoncv.data.transforms.presets.rcnn.load_test(im_fname)
+# # data_shape = img.shape
+# print(img.shape)
+
+model: mx.gluon.HybridBlock = model_zoo.get_model(model_name, pretrained=True)
+model.hybridize()
+img, label = ds.next()
+img = mx.nd.array(img)
+print(img.shape)
+model(img)
+# model.export("/tmp/model.json")
 #input_data = np.random.randn(*data_shape)
 #input_data = torch.randn(data_shape)
 

@@ -100,6 +100,8 @@ def expr2symbol(
             if op_name in [ ARANGE, ]:
                 for k in ["start", "stop", "step"]:
                     attrs.pop(k)
+            elif op_name == "broadcast_to":
+                attrs.pop("dtype")
             elif op_name == GET_VALID_COUNT:
                 attrs.pop("score_threshold")
             symbol_map[node] = op._new_op(op_name, *args, **attrs)
