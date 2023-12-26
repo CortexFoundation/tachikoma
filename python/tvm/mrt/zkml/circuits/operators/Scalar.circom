@@ -37,6 +37,36 @@ template MulScalarCHW(C, H, W) {
     }
 }
 
+// scalar depends on each Channel
+template MulScalarCHW_ByHW(C, H, W) {
+    signal input in[C][H][W];
+    signal input scalars[1][1][H][W];
+    signal output out[C][H][W];
+
+    for (var i=0; i < C; i++) {
+        for (var j=0; j < H; j++) {
+            for (var k=0; k < W; k++) {
+                out[i][j][k] <== in[i][j][k] * scalars[0][0][j][k];
+            }
+        }
+    }
+}
+
+// scalar depends on each Channel
+template MulScalar3D3D_Input(C, H, W) {
+    signal input in[C][H][W];
+    signal input scalars[C][H][1];
+    signal output out[C][H][W];
+
+    for (var i=0; i < C; i++) {
+        for (var j=0; j < H; j++) {
+            for (var k=0; k < W; k++) {
+                out[i][j][k] <== in[i][j][k] * scalars[i][j][0];
+            }
+        }
+    }
+}
+
 template AddScalar(iShape, sc) {
     signal input in[iShape];
     signal output out[iShape];

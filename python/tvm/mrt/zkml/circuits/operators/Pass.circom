@@ -1,5 +1,8 @@
 pragma circom 2.1.0;
 
+include "../circomlib/comparators.circom";
+include "../circomlib/switcher.circom";
+
 template Pass1D (i1) {
     signal input in[i1];
     signal output out[i1];
@@ -60,40 +63,6 @@ template Pass5D (i1, i2, i3, i4, i5) {
     }
 }
 
-template TransposeHWC (i1, i2, i3) {
-    signal input in[i1][i2][i3];
-    // 2,3,1
-    signal output out[i2][i3][i1];
-
-    for (var x1 = 0; x1 < i1; x1++) {
-        for (var x2 = 0; x2 < i2; x2++) {
-            for (var x3 = 0; x3 < i3; x3++) {
-                // 2,3,1
-                out[x2][x3][x1] <== in[x1][x2][x3];
-            }
-        }
-    }
-
-}
-
-template TransposeC2C1HW (i1, i2, i3, i4) {
-    signal input in[i1][i2][i3][i4];
-    // 2,1,3,4
-    signal output out[i2][i1][i3][i4];
-
-    for (var x1 = 0; x1 < i1; x1++) {
-        for (var x2 = 0; x2 < i2; x2++) {
-            for (var x3 = 0; x3 < i3; x3++) {
-                for (var x4 = 0; x4 < i4; x4++) {
-                    // 2,1,3,4
-                    out[x2][x1][x3][x4] <== in[x1][x2][x3][x4];
-                }
-            }
-        }
-    }
-
-}
-
 template Split3D (i1, i2, i3) {
     // deprecated, should pass
     signal input in[i1][i2][i3];
@@ -101,7 +70,6 @@ template Split3D (i1, i2, i3) {
     signal output out2[i1\2][i2][i3];
 }
 
-// TODO: not only cut first dimension
 // dimension=2, split 0-axis
 template TupleGetItem2D0A (i1, i2, parts, index) {
     signal input in[i1][i2];
@@ -163,13 +131,81 @@ template TupleGetItem3D2A (i1, i2, i3, parts, index) {
     }
 }
 
-template AdvIndex (i1, j1, j2) {
+template Tuple3Item(count) {
+    signal input in_class[count][1];
+    signal input in_score[count][1];
+    signal input in_anchor[count][4];
+    signal output out[count][6];
+    for (var i = 0; i < count; i++) {
+      out[i][0] <== in_class[i][0];
+      out[i][1] <== in_score[i][0];
+      out[i][2] <== in_anchor[i][0];
+      out[i][3] <== in_anchor[i][1];
+      out[i][4] <== in_anchor[i][2];
+      out[i][5] <== in_anchor[i][3];
+    }
+}
+
+template AdvIndex_select_funcutil (i1) {
+    signal input in[i1];
+    signal input index;
+    signal output out;
+
+    component isequal[i1];
+    component switcher[i1];
+    var tempout[i1+1];
+    tempout[0] === 0;
+
+    for (var i = 0; i < i1; i++) {
+        isequal[i] = IsEqual();
+        isequal[i].in[0] <== i;
+        isequal[i].in[1] <== index;
+
+        switcher[i] = Switcher();
+        switcher[i].sel <== isequal[i].out;
+        switcher[i].L <== in[i];
+        switcher[i].R <== tempout[i];
+        tempout[i+1] === switcher[i].outL;
+    }
+    out <== tempout[i1];
+}
+
+template AdvIndex2D (i1, j1, j2) {
     signal input inp[i1];
     signal input index[j1][j2];
     signal output out[j1][j2];
+
+    component advIndex_select_funcutil_0[j1][j2];
+
     for (var i = 0; i < j1; i++) {
         for (var j = 0; j < j2; j++) {
-	    out[i][j] <== inp[index[i][j]];
+            advIndex_select_funcutil_0[i][j] = AdvIndex_select_funcutil(i1);
+            for (var x = 0; x < i1; x++) {
+                advIndex_select_funcutil_0[i][j].in[x] <== inp[x];
+                advIndex_select_funcutil_0[i][j].index <== index[i][j];
+            }
+	    out[i][j] <== advIndex_select_funcutil_0[i][j].out;
+        }
+    }
+}
+
+template AdvIndex3D (i1, j1, j2, j3) {
+    signal input inp[i1];
+    signal input index[j1][j2][j3];
+    signal output out[j1][j2][j3];
+
+    component advIndex_select_funcutil_0[j1][j2][j3];
+
+    for (var i = 0; i < j1; i++) {
+        for (var j = 0; j < j2; j++) {
+            for (var k = 0; k < j3; k++) {
+              advIndex_select_funcutil_0[i][j][k] = AdvIndex_select_funcutil(i1);
+              for (var x = 0; x < i1; x++) {
+                advIndex_select_funcutil_0[i][j][k].in[x] <== inp[x];
+                advIndex_select_funcutil_0[i][j][k].index <== index[i][j][k];
+              }
+	      out[i][j][k] <== advIndex_select_funcutil_0[i][j][k].out;
+            }
         }
     }
 }

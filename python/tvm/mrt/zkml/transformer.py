@@ -20,20 +20,36 @@ def map_binary_op(sym: Symbol, name) -> str:
     if A_shape == B_shape:
         return "Element{}D{}".format(len(A_shape), name)
 
-    assert (len(A_shape) == len(B_shape)) or (len(B_shape)==len(A_shape)+1 and B_shape[0]==1), "A_shape: {}; B_shape: {}".format(A_shape, B_shape)
+    assert (len(A_shape) == len(B_shape)) or (len(B_shape)==len(A_shape)+1 and B_shape[0]==1) or (len(B_shape)==len(A_shape)+1 and B_shape[0]==A_shape[0]), "A_shape: {}; B_shape: {}".format(A_shape, B_shape)
     max_dim = min(len(A_shape), len(B_shape))
     #  A_shape = [1]*max_dim + A_shape
     #  B_shape = [1]*max_dim + B_shape
     equal_dims = []
-    for i, (sa, sb) in enumerate(zip(A_shape[-max_dim:], B_shape[-max_dim:])):
-        if sa == sb and sa != 1:
-            equal_dims.append(i)
-        else:
-            assert any([sa == 1, sb == 1])
-    assert len(equal_dims) == 1, "{}: {} vs. {}".format(
+    if (len(A_shape) == len(B_shape)) or B_shape[0]==1:
+        for i, (sa, sb) in enumerate(zip(A_shape[-max_dim:], B_shape[-max_dim:])):
+            if sa == sb and sa != 1:
+                equal_dims.append(i)
+            else:
+                assert any([sa == 1, sb == 1])
+    else:
+        for i, (sa, sb) in enumerate(zip(A_shape[:max_dim], B_shape[:max_dim])):
+            if sa == sb and sa != 1:
+                equal_dims.append(i)
+            else:
+                assert any([sa == 1, sb == 1])
+
+    # only support 1 axis equal,
+    # 2 axis equal added now, only support [0,2]
+    if len(equal_dims) > 1:
+        assert len(equal_dims) == 2 and len(B_shape)-len(A_shape)==1 and equal_dims[0]==0 and equal_dims[1]==2, "2, {}: {} vs. {}".format(
             equal_dims, A_shape, B_shape)
-    return "Broadcast{}DAxis{}{}".format(
-            max_dim, equal_dims[0]+len(B_shape)-len(A_shape), name)
+        return "Broadcast{}DAxis1{}_0_2".format(
+            max_dim, name)
+    else:
+        assert len(equal_dims) == 1, "{}: {} vs. {}".format(
+            equal_dims, A_shape, B_shape)
+    return "Broadcast{}DAxis{}{}{}".format(
+            max_dim, equal_dims[0]+len(B_shape)-len(A_shape), name, "_First" if B_shape[0]!=1 else "")
 
 @register_op_map("subtract")
 def map_subtract(sym: Symbol):
@@ -45,9 +61,10 @@ def map_add(sym: Symbol):
 
 def map_component(sym: Symbol) -> CircomGenerator:
     inputs = sym.args
-    axis = 0
-    if "axis" in sym.attrs.keys():
-        axis = sym.attrs["axis"]
+    axis = sym.attrs["axis"] if "axis" in sym.attrs.keys() else 0
+    axes = sym.attrs["axes"] if "axes" in sym.attrs.keys() else []
+    axes = [] if axes == None else axes
+
     comp_map = {
         # "null": "Input",
         "var": "Input",
@@ -69,21 +86,30 @@ def map_component(sym: Symbol) -> CircomGenerator:
         "subtract_scalar": "SubScalar",
         "clip": "Clip{}D".format(len(sym.shape)),
 
-        "transpose": "TransposeC2C1HW"if len(sym.shape)==4 else "TransposeHWC",
+        "transpose": "Transpose{}D{}".format(len(sym.shape), "" if len(sym.shape)==2 else "_"+"".join(str(j) for j in axes) ),
         "split": "Pass{}D".format(len(sym.shape)),
         "TupleGetItem": "TupleGetItem{}D{}A".format(len(sym.shape), axis),
         "TupleGetItem_VisCount": "TupleGetItem_VisCount_{}".format(0 if "index" not in sym.attrs.keys() else sym.attrs["index"]),
+        "Tuple": "Tuple3Item",
         "vision.get_valid_counts": "Vision_GetValidCounts",
-        "vision.non_max_suppression": "Vision_NonMaxSuppression", # TODO
+        "vision.non_max_suppression": "Vision_NonMaxSuppression",
+
+        "negative": "Negative{}D".format(len(sym.shape)),
+        "expand_dims": "ExpandDims{}D_{}A".format(len(inputs[0].shape) if sym.op_name=="expand_dims" else 0, axis),
+        "slice_like": "SliceLike{}D_2_3".format(len(sym.shape)),
+        "repeat": "Repeat{}D_{}A".format(len(sym.shape), axis),
+        "tile": "Tile{}D".format(len(sym.shape)-1),
 
         "concatenate": "Concatenate{}D{}A".format(len(sym.shape), axis),
         "strided_slice": "StrideSlice{}D".format(len(sym.shape)),
         "greater": "Greater{}D".format(len(sym.shape)),
         "where": "Where{}D".format(len(sym.shape)),
-        "adv_index": "AdvIndex",
+        "adv_index": "AdvIndex{}D".format(len(sym.shape)),
 
         "mul_scalar_CH": "MulScalarCH",
         "mul_scalar_CHW": "MulScalarCHW",
+        "mul_scalar_CHW_byHW": "MulScalarCHW_ByHW",
+        "mul_scalar_3D_3D_input": "MulScalar3D3D_Input",
         #"multiply": "MulScalar",
         "right_shift": "RightShift",
         "squeeze": "Squeeze_CHW",
@@ -131,9 +157,10 @@ def change_axis(symbol):
         if "axis" in sym.attrs.keys():
             # convert -1, and cut batch-dim
             if sym.op_name == "split": # shape are list of tuples
-                sym.attrs["axis"] = sym.attrs["axis"]-1 if sym.attrs["axis"]!=-1 else len(sym.shape[0])-1
+                #sym.attrs["axis"] = sym.attrs["axis"]-1 if sym.attrs["axis"]!=-1 else len(sym.shape[0])-1
+                sym.attrs["axis"] = sym.attrs["axis"]-1 if sym.attrs["axis"]>0 else 0 if sym.attrs["axis"]==0 else len(sym.shape[0])+sym.attrs["axis"]
             else:
-                sym.attrs["axis"] = sym.attrs["axis"]-1 if sym.attrs["axis"]!=-1 else len(sym.shape)-1
+                sym.attrs["axis"] = sym.attrs["axis"]-1 if sym.attrs["axis"]>0 else 0 if sym.attrs["axis"]==0 else len(sym.shape)+sym.attrs["axis"]
         sym = sym.copy(args=sym.args)
         return sym
     symbol = zkvisit(symbol, _change_axis)
@@ -158,7 +185,7 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
 
 
         attrs = get_merged_attrs(sym)
-        #print("model2circom_transfering:: sym_name:{}, op_name:{}, attrs:{}".format(name, sym.op_name, attrs))
+        #print("@@@ model2circom_transfering:: sym_name:{}, op_name:{}, attrs:{}, detail:{}".format(name, sym.op_name, attrs, sym))
 
         # mrt ops fit with circom ops
         # insert pad2d before conv2d
@@ -209,6 +236,18 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
             circom_ops.add(gen.comp.op_name)
             generator_map[name] = gen
 
+        elif sym.op_name == "transpose":
+            axes = sym.attrs["axes"].copy()
+            for i in range(len(axes)):
+                if axes[i] == 0:
+                    del axes[i]
+                    break
+            sym.attrs["axes"] = axes
+            attrs = get_merged_attrs(sym)
+            gen = map_component(sym)(name, inputs, attrs)
+            circom_ops.add(gen.comp.op_name)
+            generator_map[name] = gen
+
         elif sym.op_name == "TupleGetItem":
             # 'split' has multiple outputs, which not supported in circimGenerator,\
             # so pass and fix in TupleGetItem, must split into equal size
@@ -225,8 +264,13 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
                 generator_map[name] = gen
 
         elif sym.op_name == "Tuple":
-            # TODO: to fix
-            pass
+            sym.attrs["shape"] = [attrs["shape"][0][0], 6]
+            sym.shape = sym.attrs["shape"]
+            attrs = get_merged_attrs(sym)
+            gen = map_component(sym)(name, inputs, attrs)
+            circom_ops.add(gen.comp.op_name)
+            generator_map[name] = gen
+
         elif sym.op_name == "TupleGetItem_VisCount":
             sym_0 = sym.copy(args=sym.args[0].args)
             sym_0.attrs["id_index"] = sym.args[0].attrs["id_index"]
@@ -396,16 +440,31 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
                 generator_map[sym_reshape.name] = gen
 
         elif sym.op_name == "multiply":
+            assert len(sym.args) == 2, len(sym.args)
             if len(sym.args[1].shape) == 0:
                 sym.op_name = "mul_scalar"
+                sym2circom(sym)
+            elif len(sym.args[0].shape) == 0: # assume params is front, rerun once
+                sym_reverse = sym.copy(args=[sym.args[1],sym.args[0]])
+                sym2circom(sym_reverse)
+            elif len(sym.args[1].shape) > 0 and len(sym.args[0].shape) == len(sym.args[1].shape):
+                # support limit now:
+                # only take behind as scalars
+                # and only support two inputs!! not params!!
+                data_shape = sym.args[0].shape
+                scalars_shape = sym.args[1].shape
+                assert len(data_shape) == 3, data_shape
+                assert len(scalars_shape) == 3, scalars_shape
+                sym.op_name = "mul_scalar_3D_3D_input"
                 sym2circom(sym)
             elif len(sym.args[0].shape) == 1:
                 sym.op_name = "mul_scalar"
                 sym2circom(sym)
             elif len(sym.args[0].shape) == 3:
+                # support limit now: input: 3dim, param: 4dim;
                 scalars_shape = params[sym.args[1].name].shape
                 assert len(scalars_shape) == 4, scalars_shape
-                sym.op_name = "mul_scalar_CHW"
+                sym.op_name = "mul_scalar_CHW_byHW" if scalars_shape[1]==1 and scalars_shape[2]!=1 and scalars_shape[3]!=1 else "mul_scalar_CHW"
                 sym2circom(sym)
             elif len(sym.args[0].shape) == 2:
                 scalars_shape = params[sym.args[1].name].shape
@@ -413,7 +472,7 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
                 sym.op_name = "mul_scalar_CH"
                 sym2circom(sym)
             else:
-                assert 0, "bad_branch_for_multiply!"
+                assert 0, "bad_branch_for_multiply! s_{}".format(len(sym.args[0].shape))
 
         #elif sym.op_name == "mul_scalar_CHW":
         elif sym.op_name == "add_scalar" or sym.op_name == "mul_scalar" or sym.op_name == "right_shift":
@@ -473,6 +532,16 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
             if len(sym.args[1].shape) == 0:
                 sym.op_name = "add_scalar"
                 sym2circom(sym)
+            # delete batch size, assert others be 1
+            # elif len(sym.args[1].shape) == 1+len(sym.args[0].shape):
+            #     shape = sym.args[1].shape.copy()
+            #     if shape[0] == 1:
+            #         del shape[0]
+            #     else:
+            #         assert all([a==1 for a in shape[1:]])
+            #         del shape[1]
+            #     sym.args[1].shape = shape
+            #     sym2circom(sym)
             else:
                 gen = map_component(sym)(name, inputs, attrs)
                 circom_ops.add(gen.comp.op_name)

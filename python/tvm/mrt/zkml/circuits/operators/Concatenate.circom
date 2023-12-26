@@ -73,6 +73,26 @@ template Concatenate3D2A (i1, i2, i3_0, i3_1) {
         for (var k = 0; k < i3_1; k++) {
             out[i][j][k+i3_0] <== in1[i][j][k];
         }
+      }
+    }
+}
+
+template Concatenate4D3A (i1, i2, i3, i4_0, i4_1) {
+    signal input in0[i1][i2][i3][i4_0];
+    signal input in1[i1][i2][i3][i4_1];
+    signal output out[i1][i2][i3][i4_0 + i4_1];
+
+    for (var i = 0; i < i1; i++) {
+      for (var j = 0; j < i2; j++) {
+        for (var k = 0; k < i3; k++) {
+          for (var g = 0; g < i4_0; g++) {
+              out[i][j][k][g] <== in0[i][j][k][g];
+          }
+          for (var g = 0; g < i4_1; g++) {
+              out[i][j][k][g+i4_0] <== in1[i][j][k][g];
+          }
+        }
+      }
     }
 }
 

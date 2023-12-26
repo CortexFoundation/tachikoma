@@ -114,6 +114,18 @@ template GreaterThan_Full() {
     lt.out ==> out;
 }
 
+template GreaterEqThan_Full() {
+    signal input a;
+    signal input b;
+    signal output out;
+
+    component lt = LessEqThan_Full();
+
+    lt.a <== b;
+    lt.b <== a;
+    lt.out ==> out;
+}
+
 template Abs(iShape) {
     signal input in[iShape];
     signal output out[iShape];

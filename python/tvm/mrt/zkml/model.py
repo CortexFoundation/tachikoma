@@ -15,6 +15,12 @@ from . import utils
 from .. import symbol as MrtSymbol
 
 Symbol = MrtSymbol.Symbol
+
+# for resize_batch
+transpose_list = []
+transpose_axis = 0
+begin = False # transpose start or not, if transpose back, should set False
+
 #@dataclass
 #class Symbol:
 #    op: str
@@ -638,15 +644,58 @@ def shape_adapter(symbol: Symbol):
     symbol = visit(symbol, _clean_attrs)
     return symbol
 
-
 def resize_batch(symbol, params, batch_size=1):
     # temporary set batch size, hook!!!
+
     def _change_batch_size(sym: MrtSymbol.Symbol):
+        global transpose_list
+        global transpose_axis
+        global begin
         # incase: e.g. weight of conv2d (is param)
         if is_param(sym, params):
             return
 
         # TODO: resize batch in attrs
+
+        if sym.op_name == "tile": # tile will leave batch as the second shape
+            shape = sym.shape.copy()
+            del shape[1]
+            sym.shape = shape
+            return sym
+
+        # transpose, batch axis moved to back, only support transpose 1 time and transpose back then
+        if sym.op_name == "transpose" and sym.attrs["axes"][0]!=0:
+            if begin:
+                assert sym.attrs["axes"][0] == transpose_axis, sym.attrs["axes"][0]
+                begin = False
+                transpose_axis = 0
+                shape = sym.shape.copy()
+                del shape[0]
+                sym.shape = shape
+                sym.op_name = "pass" # just pass this transpose
+                return sym
+            begin = True
+            transpose_list.append(sym.name)
+            for x in sym.attrs["axes"]:
+                if x == 0:
+                    break
+                transpose_axis += 1
+            shape = sym.shape.copy()
+            del shape[transpose_axis]
+            sym.shape = shape
+            return sym
+
+        elif begin:
+            # TODO: assert not ops reshape or flatten which changes shape structure
+            for arg in sym.args:
+                if arg.name in transpose_list:
+                    transpose_list.append(sym.name)
+                    shape = sym.shape.copy()
+                    del shape[transpose_axis]
+                    sym.shape = shape
+                    return sym
+
+        # these shape are 'tuple'
         if sym.op_name in ["split", "vison.get_valid_counts", "Tuple"]:
             new_shapes = []
             for shp in sym.shape:
@@ -677,7 +726,6 @@ def resize_batch(symbol, params, batch_size=1):
         return sym
     symbol = visit(symbol, _change_batch_size)
     return symbol, params
-
 
 def fuse_tanh(symbol, params):
     def _tanh(sym: Symbol):

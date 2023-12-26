@@ -45,7 +45,7 @@ template Greater2D (i1, i2) {
     signal input in2;
     signal output out[i1][i2];
 
-    components gts[i1][i2];
+    component gts[i1][i2];
     for (var i = 0; i < i1; i++) {
         for (var j = 0; j < i2; j++) {
             gts[i][j] = GreaterThan_Full();
