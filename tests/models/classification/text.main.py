@@ -10,7 +10,7 @@ from tvm import relay, ir
 
 import numpy as np
 
-batch_size = 1
+batch_size = 16
 image_shape = (3, 224, 224) # TODO: change the model's input shape
 data_shape = (batch_size,) + image_shape
 
@@ -81,7 +81,9 @@ tr.bind_dataset(ds, stats.ClassificationOutput).log()
 # tr.validate_accuracy(max_iter_num=20, **config)
 # sys.exit()
 
-dis_tr = tr.discrete(force=True)
+dis_tr = tr.discrete(
+        force=True,
+        calibrate_repeats=16 // batch_size).log()
 sim_tr = dis_tr.export("sim").log()
 sim_clip_tr = dis_tr.export("sim-clip").log()
 sim_round_tr = dis_tr.export("sim-round").log()

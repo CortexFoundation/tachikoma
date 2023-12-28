@@ -173,11 +173,17 @@ class Trace:
         out.dump(tr_path)
         return out
 
-    def discrete(self, calibrate_repeats: int = 1, force: bool = False) -> Trace:
+    def discrete(
+            self,
+            calibrate_repeats: int = 1,
+            calibrate_sampling: calib.SamplingFuncT = None,
+            force: bool = False) -> Trace:
         fuse_tr = self.fuse(force=force)
         seg_tr = fuse_tr.checkpoint_run(seg.Spliter.get_transformer())
 
-        calib_tr = seg_tr.calibrate(repeats=calibrate_repeats,)
+        calib_tr = seg_tr.calibrate(
+                repeats=calibrate_repeats,
+                sampling_func=calibrate_sampling)
         quant_tr = calib_tr.quantize()
         quant_tr = quant_tr.checkpoint_run(
                 seg.Merger.get_transformer(),

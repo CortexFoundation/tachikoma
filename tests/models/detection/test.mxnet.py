@@ -138,64 +138,6 @@ sim_clip_tr = dis_tr.export("sim-clip").log()
 sim_round_tr = dis_tr.export("sim-round").log()
 sim_quant_tr = dis_tr.export("sim-clip-round").log()
 circom_tr = dis_tr.export("circom").log()
-sys.exit(-1)
-
-#  tr.validate_accuracy(max_iter_num=20, **config)
-#  sys.exit()
-
-#  c = Pass(log_before=True, log_after=True).register_global()
-# Pass(log_before=True, log_after=True).register_global()
-fuse_tr = tr.fuse(force=True).log()
-
-# from tvm.mrt import fuse
-# fuse_tr = fuse_tr.checkpoint_run(
-#         fuse.FuseLeakyReLU.get_transformer(),
-#         fuse.FuseDivide.get_transformer(),
-#         # force=True,
-#         )
-# fuse_tr.log()
-
-# import numpy as np
-# from tvm.mrt import inference, op
-# p = op.variable("input", (1, ), "float32")
-# o = inference.run(op.exp(p), [ np.full((1, ), 2.226) ])
-# print(o)
-# sys.exit()
-
-from tvm.mrt import segement
-seg_tr = fuse_tr.checkpoint_run(
-        segement.Spliter.get_transformer(),
-        force=True
-        ).log()
-
-calib_tr = seg_tr.calibrate(
-        sampling_func=calibrate.SymmetricMinMaxSampling.sampling,
-        # force=True,
-        ).log()
-dis_tr = calib_tr.quantize(
-        # force=True
-        ).log()
-
-# from tvm.mrt.precision import PrecisionRevisor
-# dis_tr = dis_tr.checkpoint_run(
-#         PrecisionRevisor.get_transformer(),
-#         # force=True
-#         ).log()
-# # dis_tr = dis_tr.checkpoint_run(infer_precision)
-
-dis_tr = dis_tr.checkpoint_run(
-        segement.Merger.get_transformer(),
-        spliter=seg_tr.symbol,
-        force=True,
-        ).log()
-
-sim_tr = dis_tr.export().log()
-sim_clip_tr = dis_tr.export(with_clip=True).log()
-sim_round_tr = dis_tr.export(with_round=True).log()
-sim_quant_tr = dis_tr.export(
-        with_clip=True, with_round=True).log()
-
-circom_tr = dis_tr.export(use_simulator=False).log()
 
 """tr.validate_accuracy(
         sim_tr,
