@@ -114,6 +114,18 @@ template GreaterThan_Full() {
     lt.out ==> out;
 }
 
+template GreaterEqThan_Full() {
+    signal input a;
+    signal input b;
+    signal output out;
+
+    component lt = LessEqThan_Full();
+
+    lt.a <== b;
+    lt.b <== a;
+    lt.out ==> out;
+}
+
 template Abs(iShape) {
     signal input in[iShape];
     signal output out[iShape];
@@ -163,4 +175,36 @@ template Sum(nInputs) {
     }
 
     out <== partialSum[nInputs-1];
+}
+
+template Minimun() {
+    signal input in0;
+    signal input in1;
+    signal output out;
+
+    component lt = LessEqThan_Full();
+    component sw = Switcher();
+    lt.a <== in0;
+    lt.b <== in1;
+    sw.sel <== lt.out;
+    sw.L <== in0;
+    sw.R <== in1;
+
+    out <== sw.outL;
+}
+
+template Maximun() {
+    signal input in0;
+    signal input in1;
+    signal output out;
+
+    component gt = GreaterEqThan_Full();
+    component sw = Switcher();
+    gt.a <== in0;
+    gt.b <== in1;
+    sw.sel <== gt.out;
+    sw.L <== in0;
+    sw.R <== in1;
+
+    out <== sw.outL;
 }

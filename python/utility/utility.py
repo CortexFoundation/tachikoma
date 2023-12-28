@@ -9,17 +9,24 @@ def dot_bench_time(benchFileOut, stime, label):
 # benchFileOut.flush()
 # benchFileOut.close()
 
-def print_model_flops_params(model, input_data):
+# e.g.: profile_model_flops_params(model, inputs=[input_data])
+def profile_model_flops_params(model, inputs=[], onnx_path=None):
     import thop
-    flops, params = thop.profile(model, inputs=input_data)
-    print('FLOPs = ' + str(flops/1000**3) + 'G')
-    print('Params = ' + str(params/1000**2) + 'M')
+    flops, params = thop.profile(model, inputs=inputs)
+    print('1. thop: FLOPs = ' + str(flops/1000**2) + 'M / ' +'Params = ' + str(params/1000**2) + 'M')
+    if onnx_path != None:
+        print('2. onnx_profile: ')
+        import onnx_tool
+        onnx_tool.model_profile(onnx_path)
+    import torchstat
+    print('3. torchstat: ')
+    torchstat.stat(model, inputs[0].shape[1:]) # shape without batch
 
-def export_model_to_onnx():
+def export_model_to_onnx(model, input_data, name="model.onnx"):
     import torch
     torch.onnx.export(model,             # model being run
               input_data,                # model input (or a tuple for multiple inputs)
-              "mnist_cnn.onnx",          # where to save the model (can be a file or file-like object)
+              name,                      # where to save the model (can be a file or file-like object)
               export_params=True,        # store the trained parameter weights inside the model file
               opset_version=10,
               verbose=True,

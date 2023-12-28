@@ -197,12 +197,42 @@ sim_quant_tr = dis_tr.export(
 
 circom_tr = dis_tr.export(use_simulator=False).log()
 
-tr.validate_accuracy(
+"""tr.validate_accuracy(
         sim_tr,
         sim_clip_tr,
         sim_round_tr,
         sim_quant_tr,
         max_iter_num=20,
         **config)
-sys.exit()
+sys.exit()"""
 
+circom_tr.print()
+
+from tvm.mrt.zkml import circom, transformer, model as ZkmlModel
+symbol, params = circom_tr.symbol, circom_tr.params
+print(">>> Start circom gen...")
+symbol, params = ZkmlModel.resize_batch(symbol, params)
+symbol, params = transformer.change_name(symbol, params)
+symbol = transformer.change_axis(symbol)
+ZkmlModel.simple_raw_print(symbol, params)
+# set input as params
+symbol_first = ZkmlModel.visit_first(symbol)
+input_data = torch.randint(255, image_shape)
+params[symbol_first.name] = input_data
+
+circom_out, circom_gen_map = transformer.model2circom(symbol, params)
+print(">>> Generating circom code ...")
+circom_code = circom.generate(circom_out)
+print(">>> Generating circom input ...")
+input_json = circom.input_json(circom_gen_map, params)
+
+output_name = "circom_model_test"
+print(">>> Generated, dump to {} ...".format(output_name))
+with open(output_name + ".circom", "w") as f:
+    f.write(circom_code)
+with open(output_name + ".json", "w") as f:
+    import json
+    f.write(json.dumps(input_json, indent=2))
+
+print(">>> success exit sys +1 <<<")
+sys.exit(+1)

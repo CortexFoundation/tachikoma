@@ -58,6 +58,10 @@ os.sys.path.insert(0, path.join(ROOT, "python"))
 `python test.py`
 `python scripts/image_scale_to_circom_input.py scripts/test_a.png input.json # resolve image input, and put in xxx.json`
 
+## take care of auto finetune for cuda tvm C++ codes, before running
+`pip install xgboost tornado cloudpickle`
+`export PYTHONPATH=/path_to_repo/tachikoma/python/:$PYTHONPATH`
+`python3 tests/models/classification/test.trace.autotune.py`
 
 # circom code usage
 ## compile and generate witness
@@ -75,6 +79,7 @@ snarkjs r1cs info circom_model_test.r1cs # check the info of constraints
 
 ## generate proof
 ```bash
+export NODE_OPTIONS="--max-old-space-size=102400" # 100GB
 npm install -g snarkjs
 snarkjs powersoftau new bn128 18 pot12_0000.ptau -v  ##2**18 according to circom circuits scale
 snarkjs powersoftau contribute pot12_0000.ptau pot12_0001.ptau --name="First contribution" -v  ## enter text
@@ -92,4 +97,5 @@ snarkjs generatecall
 ## using mypy to check tvm.mrt
 ```bash
 python -m mypy -p python.tvm.mrt
+pip install -U scalene # scalene python3 test_main.py
 ```
