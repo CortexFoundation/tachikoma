@@ -21,6 +21,8 @@ SIGMOID = "sigmoid"
 
 SUM = "sum"
 MEAN = "mean"
+MAXIMUM = "maximum"
+MINIMUM = "minimum"
 
 # =========== NON-CALC ops ===============
 TUPLE = "Tuple"

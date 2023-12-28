@@ -66,8 +66,8 @@ config = {
         "target": tvm.target.Target("cuda -arch=sm_86")}
 
 model_name = "mxnet_ssd_512_resnet50_v1_voc"
-model_name = "faster_rcnn_resnet50_v1b_voc"
-# model_name = "yolo3_darknet53_voc"
+# model_name = "faster_rcnn_resnet50_v1b_voc"
+model_name = "yolo3_darknet53_voc"
 # model_name = "ssd_512_resnet50_v1_voc"
 
 # with default params
@@ -132,6 +132,13 @@ class TorchStatistics(stats.Statistics):
             ) ]
         self.map.update()
 
+dis_tr = tr.discrete(force=True)
+sim_tr = dis_tr.export("sim").log()
+sim_clip_tr = dis_tr.export("sim-clip").log()
+sim_round_tr = dis_tr.export("sim-round").log()
+sim_quant_tr = dis_tr.export("sim-clip-round").log()
+circom_tr = dis_tr.export("circom").log()
+sys.exit(-1)
 
 #  tr.validate_accuracy(max_iter_num=20, **config)
 #  sys.exit()

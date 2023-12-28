@@ -9,7 +9,7 @@ from . import op, opns, helper
 
 _SCALE_CONSTANT_OPS = [
     opns.VAR,
-    opns.WHERE, opns.GREATER,
+    opns.WHERE, # opns.GREATER,
     opns.REPEAT, opns.SQUEEZE,
     opns.FLATTEN, opns.BATCH_FLATTEN,
     opns.RESHAPE, opns.CONCAT,

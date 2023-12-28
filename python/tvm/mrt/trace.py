@@ -16,6 +16,7 @@ from . import runtime, config
 from . import op, optype, fuse, helper
 from . import calibrate as calib
 from . import fixed_point as fp
+from . import segement as seg
 from .stats import *
 from .transform import Transformer, TransformerT
 from .discrete import Discretor
@@ -172,6 +173,17 @@ class Trace:
         out.dump(tr_path)
         return out
 
+    def discrete(self, calibrate_repeats: int = 1, force: bool = False) -> Trace:
+        fuse_tr = self.fuse(force=force)
+        seg_tr = fuse_tr.checkpoint_run(seg.Spliter.get_transformer())
+
+        calib_tr = seg_tr.calibrate(repeats=calibrate_repeats,)
+        quant_tr = calib_tr.quantize()
+        quant_tr = quant_tr.checkpoint_run(
+                seg.Merger.get_transformer(),
+                spliter=seg_tr.symbol)
+        return quant_tr
+
     def fuse(self, **kwargs) -> Trace:
         kwargs.setdefault("tr_name", "fuse")
         return self.checkpoint_run(
@@ -214,27 +226,45 @@ class Trace:
                 **kwargs)
 
     def export(self,
+            target: str = "circom",
             use_simulator: bool = True,
             with_clip: bool = False,
             with_round = False,
             **kwargs):
-        if use_simulator:
-            if with_clip and with_round:
-                tr_name = "sim-quantized"
-            elif with_clip:
-                tr_name = "sim-clip"
-            elif with_round:
-                tr_name = "sim-round"
-            else:
-                tr_name = "sim-float"
-            kwargs.setdefault("tr_name", tr_name)
+        assert target in ["sim-clip-round", "sim-clip", "sim-round", "sim", "circom", ]
+        kwargs.setdefault("tr_name", target)
+
+        if "sim" in target:
             return self.checkpoint_run(
                     fp.Simulator.get_transformer(),
-                    with_clip = with_clip,
-                    with_round = with_round,
+                    with_clip = "clip" in target,
+                    with_round = "round" in target,
                     **kwargs)
-        return self.checkpoint_run(
-                fp.FixPoint.get_transformer(), **kwargs)
+        elif "circom" in target:
+            return self.checkpoint_run(
+                    fp.FixPoint.get_transformer(), **kwargs)
+        elif "cvm" in target:
+            pass
+
+        raise RuntimeError("Not Implemented Trace Target: " + target)
+
+        # if use_simulator:
+        #     if with_clip and with_round:
+        #         tr_name = "sim-quantized"
+        #     elif with_clip:
+        #         tr_name = "sim-clip"
+        #     elif with_round:
+        #         tr_name = "sim-round"
+        #     else:
+        #         tr_name = "sim-float"
+        #     kwargs.setdefault("tr_name", tr_name)
+        #     return self.checkpoint_run(
+        #             fp.Simulator.get_transformer(),
+        #             with_clip = with_clip,
+        #             with_round = with_round,
+        #             **kwargs)
+        # return self.checkpoint_run(
+        #         fp.FixPoint.get_transformer(), **kwargs)
 
     def print(self, **kwargs):
         helper.format_print(

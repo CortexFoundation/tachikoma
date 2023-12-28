@@ -125,23 +125,24 @@ register_rules_with_default(
         scale_rule=scale_nn)
 register_rules_with_default(SUM, requant_rule=args_max_prec(10))
 
-def uniform_arg_scales(s: QuantInfo):
-    std_prec = 15
+def uniform_args_scale(args: typing.List[QuantInfo],
+                       std_prec: int =15):
     # standard max precision for add/sub children.
 
-    assert len(s.args) > 0
+    assert len(args) > 0
     #  raw_print(s)
-    assert any([c.is_operator() for c in s.args]), "Need fuse constant: %s" % s
+    assert any([c.is_operator() for c in args]), \
+            "Need fuse constant for uniform_args_scale"
     scales = []
-    for arg in s.args:
+    for arg in args:
         if arg.scale_defined and arg.precision < std_prec:
             scale = arg.scale
         else:
             scale = arg.precision_to_scale(std_prec)
         scales.append(scale)
 
-    target_scale = min(scales)
-    return [DiscreteInfo(scale=target_scale) for c in s.args]
+    target_scale = min([s for s in scales if s != 1])
+    return [DiscreteInfo(scale=target_scale) for c in args]
 
 #  def uniform_add_sub_scales(s: QuantInfo):
 #      assert len(s.args) == 2
@@ -160,15 +161,13 @@ def uniform_arg_scales(s: QuantInfo):
 
 #      scale = min(scaleA, scaleB)
 #      return [DiscreteInfo(scale=scale) for c in s.args]
+def scale_like_index(s: WithScale, index: int = 0):
+    return s.args[index].scale
 
-def scale_bin_op(s: WithScale):
-    fscale = s.args[0].scale
-    assert all([a.scale == fscale for a in s.args])
-    return fscale
 register_rules_with_default(
-        ADD, SUB, BIAS_ADD,
-        requant_rule=uniform_arg_scales,
-        scale_rule=scale_bin_op)
+        ADD, SUB, BIAS_ADD, MAXIMUM, MINIMUM,
+        requant_rule=lambda s: uniform_args_scale(s.args),
+        scale_rule=scale_like_index)
 
 def scale_concat(s: WithScale):
     fscale = s.args[0].scale
@@ -176,9 +175,23 @@ def scale_concat(s: WithScale):
         return fscale
     return [a.scale for a in s.args]
 register_rules_with_default(
-        CONCAT,
-        requant_rule=uniform_arg_scales,
+        CONCAT, TUPLE,
+        requant_rule=lambda s: uniform_args_scale(s.args),
         scale_rule=scale_concat)
+
+def uniform_first_scale(s: QuantInfo):
+    target_scale = s.args[0].scale
+    return [DiscreteInfo(scale=target_scale) for c in s.args]
+
+register_rules_with_default(
+        GREATER,
+        requant_rule=uniform_first_scale)
+
+# register_rules_with_default(
+#         WHERE,
+#         requant_rule=lambda s: uniform_args_scale(s.args[1:]),
+#         scale_rule=scale_like_index(s, -1),
+#         )
 
 register_rules_with_default(
         MAX_POOL2D, RELU,
