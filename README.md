@@ -59,3 +59,61 @@ Current MRT has supported most CNN classification models and limited detection m
 
 - "mxnet_ssd_512_resnet50_v1_voc"     # passed
 - "yolo3_darknet53_voc"               # passed
+
+### Suppported Operators
+
+#### NN Operators
+
+| Operator Name | Staus     | Operator Name          | Status    |
+| ------------- | --------- | ---------------------- | --------- |
+| Var           | Supported | nn.leaky_relu          | Supported |
+| nn.conv2d     | Supported | nn.adaptive_avg_pool2d | Supported |
+| nn.dropout    | Supported | nn.avg_pool2d          | Supported |
+| nn.dense      | Supported | nn.max_pool2d          | Supported |
+| nn.batch_norm | Supported | nn.log_softmax         | Supported |
+| nn.bias_add   | Supported | nn.softmax             | Supported |
+| nn.relu       | Supported | nn.batch_flatten       | Supported |
+|               |           |                        |           |
+|               |           |                        |           |
+
+#### Math Operators
+
+| Operator Name | Staus     | Operator Name | Status    |
+| ------------- | --------- | ------------- | --------- |
+| exp           | Supported | mean          | Supported |
+| sigmoid       | Supported | maximum       | Supported |
+| sum           | Supported | minimum       | Supported |
+| add           | Supported | subtract      | Supported |
+| multiply      | Supported | divide        | Supported |
+| negative      | Supported |               |           |
+
+#### Transform Operators
+
+| Operator Name | Staus     | Operator Name | Status    |
+| ------------- | --------- | ------------- | --------- |
+| Tuple         | Supported | TupleGetItem  | Supported |
+| repeat        | Supported | squeeze       | Supported |
+| flatten       | Supported | reshape       | Supported |
+| concatenate   | Supported | split         | Supported |
+| transpose     | Supported | expand_dims   | Supported |
+| tile          | Supported | clip          | Supported |
+| ceil          | Supported | right_shift   | Supported |
+| cast          | Supported | adv_index     | Supported |
+|               |           |               |           |
+
+#### Vision Operators
+
+| Operator Name           | Staus     | Operator Name              | Status    |
+| ----------------------- | --------- | -------------------------- | --------- |
+| where                   | Supported | greater                    | Supported |
+| strided_slice           | Supported | slice_like                 | Supported |
+| vision.get_valid_counts | Supported | vision.non_max_suppression | Supported |
+
+#### MISC Operators
+
+| Operator Name | Staus | Operator Name | Status |
+| ------------- | ----- | ------------- | ------ |
+| arange        |       | zeros_like    |        |
+| ones_like     |       |               |        |
+| argwhere      |       | if            |        |
+
