@@ -154,7 +154,7 @@ def change_name(symbol, params):
 # must run after resize batch
 def change_axis(symbol):
     def _change_axis(sym: Symbol):
-        if "axis" in sym.attrs.keys():
+        if "axis" in sym.attrs.keys() and isinstance(sym.attrs["axis"],int):
             # convert -1, and cut batch-dim
             if sym.op_name == "split": # shape are list of tuples
                 #sym.attrs["axis"] = sym.attrs["axis"]-1 if sym.attrs["axis"]!=-1 else len(sym.shape[0])-1
