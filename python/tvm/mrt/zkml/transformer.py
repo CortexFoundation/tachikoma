@@ -256,7 +256,9 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
                 sym2circom(sym)
             else:
                 assert sym.args[0].op_name == "split"
-                sym.attrs["parts"] = sym.args[0].attrs["indices_or_sections"]
+                parts = sym.args[0].attrs["indices_or_sections"]
+                assert isinstance(parts, int) or (isinstance(parts, list) and len(parts)==1)
+                sym.attrs["parts"] = parts if isinstance(parts, int) else parts[0]
                 sym.attrs["axis"] = sym.args[0].attrs["axis"]
                 attrs = get_merged_attrs(sym)
                 gen = map_component(sym)(name, inputs, attrs)
@@ -455,6 +457,10 @@ def model2circom(symbol, params) -> (CircomGenerator, typing.Dict[str, CircomGen
                 scalars_shape = sym.args[1].shape
                 assert len(data_shape) == 3, data_shape
                 assert len(scalars_shape) == 3, scalars_shape
+                # move first as input, second as scalar
+                if np.sum(data_shape) < np.sum(scalars_shape):
+                    sym_reverse = sym.copy(args=[sym.args[1],sym.args[0]])
+                    sym2circom(sym_reverse)
                 sym.op_name = "mul_scalar_3D_3D_input"
                 sym2circom(sym)
             elif len(sym.args[0].shape) == 1:

@@ -328,8 +328,8 @@ class MulScalar3D3D_InputGenerator(ScalarGenerator):
         s_shape = self.inputs[1].shape
         assert len(i_shape) == 3
         assert len(s_shape) == 3
-        assert i_shape[0] == s_shape[0] and i_shape[1] == s_shape[1] and s_shape[2] == 1
-        return [ *i_shape ]
+        assert i_shape[0] == s_shape[0] and (i_shape[1]==s_shape[1] or s_shape[1]==1) and (i_shape[2]==s_shape[2] or s_shape[2]==1), "i:{}, s:{}".format(i_shape,s_shape)
+        return [ *i_shape, s_shape[1], s_shape[2] ]
 
 class AddScalarGenerator(ScalarGenerator):
     pass
