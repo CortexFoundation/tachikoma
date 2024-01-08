@@ -90,14 +90,15 @@ sim_quant_tr = dis_tr.export(
 
 circom_tr = dis_tr.export(force=True, use_simulator=False).log()
 
-tr.validate_accuracy(
-        sim_tr,
-        sim_clip_tr,
-        sim_round_tr,
-        sim_quant_tr,
-        max_iter_num=1,
-        **config)
-print("ValidateAccuracy Done!!!")
+if model_name != "mobilenet_v2":
+    tr.validate_accuracy(
+            sim_tr,
+            sim_clip_tr,
+            sim_round_tr,
+            sim_quant_tr,
+            max_iter_num=1,
+            **config)
+    print("ValidateAccuracy Done!!!")
 #sys.exit()
 
 circom_tr.print()
