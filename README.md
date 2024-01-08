@@ -26,7 +26,7 @@ Current MRT has supported most CNN classification models and limited detection m
 
 ### Classification Model
 
-*The main test code is located at tests/models/classification/test.main.py.*
+*The main test code is located at tests/models/classification/test.trace.py.*
 
 - "resnet18"                 # passed
 
@@ -60,36 +60,36 @@ Current MRT has supported most CNN classification models and limited detection m
 - "mxnet_ssd_512_resnet50_v1_voc"     # passed
 - "yolo3_darknet53_voc"               # passed
 
-### Suppported Operators
+### Supported Operators
+
+In details, ZKML supported limited operators which makes up the AI model. New model that supposed to be accepted should contains following supported operators.
 
 #### NN Operators
 
-| Operator Name | Staus     | Operator Name          | Status    |
-| ------------- | --------- | ---------------------- | --------- |
-| Var           | Supported | nn.leaky_relu          | Supported |
-| nn.conv2d     | Supported | nn.adaptive_avg_pool2d | Supported |
-| nn.dropout    | Supported | nn.avg_pool2d          | Supported |
-| nn.dense      | Supported | nn.max_pool2d          | Supported |
-| nn.batch_norm | Supported | nn.log_softmax         | Supported |
-| nn.bias_add   | Supported | nn.softmax             | Supported |
-| nn.relu       | Supported | nn.batch_flatten       | Supported |
-|               |           |                        |           |
-|               |           |                        |           |
+| Operator Name | Status          | Operator Name          | Status          |
+| ------------- | --------------- | ---------------------- | --------------- |
+| Var           | Supported       | nn.leaky_relu          | Supported       |
+| nn.conv2d     | Supported       | nn.adaptive_avg_pool2d | Limited Support |
+| nn.dropout    | Supported       | nn.avg_pool2d          | Limited Support |
+| nn.dense      | Supported       | nn.max_pool2d          | Supported       |
+| nn.batch_norm | Limited Support | nn.log_softmax         | Supported       |
+| nn.bias_add   | Supported       | nn.softmax             | Supported       |
+| nn.relu       | Supported       | nn.batch_flatten       | Supported       |
 
 #### Math Operators
 
-| Operator Name | Staus     | Operator Name | Status    |
-| ------------- | --------- | ------------- | --------- |
-| exp           | Supported | mean          | Supported |
-| sigmoid       | Supported | maximum       | Supported |
-| sum           | Supported | minimum       | Supported |
-| add           | Supported | subtract      | Supported |
-| multiply      | Supported | divide        | Supported |
-| negative      | Supported |               |           |
+| Operator Name | Status    | Operator Name | Status          |
+| ------------- | --------- | ------------- | --------------- |
+| exp           | Supported | mean          | Supported       |
+| sigmoid       | Supported | maximum       | Supported       |
+| sum           | Supported | minimum       | Supported       |
+| add           | Supported | subtract      | Supported       |
+| multiply      | Supported | divide        | Limited Support |
+| negative      | Supported |               |                 |
 
 #### Transform Operators
 
-| Operator Name | Staus     | Operator Name | Status    |
+| Operator Name | Status    | Operator Name | Status    |
 | ------------- | --------- | ------------- | --------- |
 | Tuple         | Supported | TupleGetItem  | Supported |
 | repeat        | Supported | squeeze       | Supported |
@@ -99,21 +99,20 @@ Current MRT has supported most CNN classification models and limited detection m
 | tile          | Supported | clip          | Supported |
 | ceil          | Supported | right_shift   | Supported |
 | cast          | Supported | adv_index     | Supported |
-|               |           |               |           |
 
 #### Vision Operators
 
-| Operator Name           | Staus     | Operator Name              | Status    |
-| ----------------------- | --------- | -------------------------- | --------- |
-| where                   | Supported | greater                    | Supported |
-| strided_slice           | Supported | slice_like                 | Supported |
-| vision.get_valid_counts | Supported | vision.non_max_suppression | Supported |
+| Operator Name           | Status          | Operator Name              | Status          |
+| ----------------------- | --------------- | -------------------------- | --------------- |
+| where                   | Supported       | greater                    | Supported       |
+| strided_slice           | Supported       | slice_like                 | Supported       |
+| vision.get_valid_counts | Limited Support | vision.non_max_suppression | Limited Support |
 
 #### MISC Operators
 
-| Operator Name | Staus | Operator Name | Status |
-| ------------- | ----- | ------------- | ------ |
-| arange        |       | zeros_like    |        |
-| ones_like     |       |               |        |
-| argwhere      |       | if            |        |
+| Operator Name | Status    | Operator Name | Status    |
+| ------------- | --------- | ------------- | --------- |
+| arange        | Supported | zeros_like    | Supported |
+| ones_like     | Supported |               |           |
+| argwhere      | Supported | if            | Supported |
 
