@@ -45,9 +45,9 @@ config = {
         "target": tvm.target.cuda("3090") }
 
 # TODO: load the model from torchvision
-model_name = "resnet18"                 # passed
+# model_name = "resnet18"                 # passed
 #   Iteration: 19 | from_expr: Top1/5: 77.50%,94.69% | sim: Top1/5: 77.50%,94.69% | clip: Top1/5: 77.81%,94.69% | round: Top1/5: 75.62%,94.06% | quantized: Top1/5: 75.31%,94.06% |
-# model_name = "mobilenet_v2"             # too much shared data
+model_name = "mobilenet_v2"             # too much shared data
 # model_name = "efficientnet_b2"          # too much shared data
 # model_name = "alexnet"                  # passed
 #   Iteration: 19 | from_expr: Top1/5: 66.88%,88.44% | sim: Top1/5: 66.88%,88.44% | clip: Top1/5: 67.19%,88.44% | round: Top1/5: 66.56%,89.06% | quantized: Top1/5: 66.56%,89.06% |
@@ -108,12 +108,12 @@ circom_tr = dis_tr.export("circom").log()
 
 # circom_tr = dis_tr.export(force=True, use_simulator=False).log()
 
-tr.validate_accuracy(
-        sim_tr,
-        sim_clip_tr,
-        sim_round_tr,
-        sim_quant_tr,
-        max_iter_num=20,
-        **config)
+# tr.validate_accuracy(
+#         sim_tr,
+#         sim_clip_tr,
+#         sim_round_tr,
+#         sim_quant_tr,
+#         max_iter_num=20,
+#         **config)
 sys.exit()
 
