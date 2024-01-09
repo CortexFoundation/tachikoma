@@ -82,13 +82,12 @@ from tvm.mrt.config import Pass
 with Pass(log_before=True, log_after=True):
     dis_tr = calib_tr.quantize().log()
 
-sim_tr = dis_tr.export().log()
-sim_clip_tr = dis_tr.export(with_clip=True).log()
-sim_round_tr = dis_tr.export(with_round=True).log()
-sim_quant_tr = dis_tr.export(
-        with_clip=True, with_round=True).log()
+sim_tr = dis_tr.export("sim").log()
+sim_clip_tr = dis_tr.export("sim-clip").log()
+sim_round_tr = dis_tr.export("sim-round").log()
+sim_quant_tr = dis_tr.export("sim-clip-round").log()
 
-circom_tr = dis_tr.export(force=True, use_simulator=False).log()
+circom_tr = dis_tr.export("circom").log()
 
 if model_name != "mobilenet_v2":
     tr.validate_accuracy(

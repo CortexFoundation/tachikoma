@@ -9,7 +9,6 @@ from dataclasses import dataclass, field, InitVar
 
 from .types import *
 from .symbol import *
-from .sym_expr import *
 from . import runtime
 from . import op, opns, inference
 from .transform import Transformer
@@ -105,7 +104,7 @@ class Sampling(Transformer):
         raise NotImplementedError()
 
     def __call__(self, origin: Calibrator, **kw):
-        if self.is_op(CLIP):
+        if self.is_op(opns.CLIP):
             # TODO: remove clip if threshold is less than a_max
             a_min, a_max = self.parsed.a_min, self.parsed.a_max
             self.data = max(abs(a_min), abs(a_max))
