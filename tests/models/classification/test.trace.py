@@ -73,14 +73,7 @@ tr.bind_dataset(ds, stats.ClassificationOutput).log()
 
 # tr.validate_accuracy(max_iter_num=1, **config)
 
-fuse_tr = tr.fuse().log()
-calib_tr = fuse_tr.calibrate().log()
-        # force=True,
-        #batch_size=16).log()
-
-from tvm.mrt.config import Pass
-with Pass(log_before=True, log_after=True):
-    dis_tr = calib_tr.quantize().log()
+dis_tr = tr.discrete(force=True)
 
 sim_tr = dis_tr.export("sim").log()
 sim_clip_tr = dis_tr.export("sim-clip").log()
