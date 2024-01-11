@@ -145,12 +145,12 @@ def _infer_sum(s: WithPrecision):
     sum_bit = count_to_bits(count)
     return _infer_max(s) + sum_bit
 prec_rules(MUL)(_infer_mul)
-# @prec_rules(CLIP)
-# def _infer_clip(s: WithPrecision):
-#     a_min = s.attrs["a_min"]
-#     a_max = s.attrs["a_max"]
-#     absmax = max(math.fabs(a_min), math.fabs(a_max))
-#     return number_to_bits(absmax)
+@prec_rules(CLIP)
+def _infer_clip(s: WithPrecision):
+    a_min = s.attrs["a_min"]
+    a_max = s.attrs["a_max"]
+    absmax = max(math.fabs(a_min), math.fabs(a_max))
+    return number_to_bits(absmax)
 @prec_rules(RIGHT_SHIFT)
 def _infer_right_shift(s: WithPrecision):
     A, B = s.args[0], s.args[1]

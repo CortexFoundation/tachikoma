@@ -23,7 +23,7 @@ from .discrete import Discretor
 from .precision import PrecisionRevisor
 from .types import *
 from .symbol import *
-from .sym_expr import *
+from .frontend.expr import symbol2expr, expr2symbol
 from .dataset import Dataset
 
 @dataclass
@@ -231,12 +231,7 @@ class Trace:
                 PrecisionRevisor.get_transformer(),
                 **kwargs)
 
-    def export(self,
-            target: str = "circom",
-            use_simulator: bool = True,
-            with_clip: bool = False,
-            with_round = False,
-            **kwargs):
+    def export(self, target: str, use_simulator: bool = True, **kwargs):
         assert target in ["sim-clip-round", "sim-clip", "sim-round", "sim", "circom", ]
         kwargs.setdefault("tr_name", target)
 
@@ -253,24 +248,6 @@ class Trace:
             pass
 
         raise RuntimeError("Not Implemented Trace Target: " + target)
-
-        # if use_simulator:
-        #     if with_clip and with_round:
-        #         tr_name = "sim-quantized"
-        #     elif with_clip:
-        #         tr_name = "sim-clip"
-        #     elif with_round:
-        #         tr_name = "sim-round"
-        #     else:
-        #         tr_name = "sim-float"
-        #     kwargs.setdefault("tr_name", tr_name)
-        #     return self.checkpoint_run(
-        #             fp.Simulator.get_transformer(),
-        #             with_clip = with_clip,
-        #             with_round = with_round,
-        #             **kwargs)
-        # return self.checkpoint_run(
-        #         fp.FixPoint.get_transformer(), **kwargs)
 
     def print(self, **kwargs):
         helper.format_print(

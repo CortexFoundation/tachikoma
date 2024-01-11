@@ -39,56 +39,6 @@ def as_variable(symbol: Symbol, shape=None, dtype=None) -> Symbol:
 def retrieve_operator(symbol: Symbol) -> Symbol:
     return symbol.copy(args=[as_variable(c) for c in symbol.args])
 
-# def infer_type(symbol: Symbol) -> Symbol:
-#     from tvm import relay, ir
-#     from tvm.mrt import sym_expr
-
-#     expr = sym_expr.symbol2expr(symbol)
-#     mod = relay.transform.InferType()(ir.IRModule.from_expr(expr))
-#     expr = mod["main"].body
-#     return sym_expr.expr2symbol(expr)
-
-# def graph_like(new: Symbol, old: Symbol) -> Symbol:
-#     old_sym_iter = iter(sym2list(old))
-#     def _sym_like(sym: Symbol):
-#         target = next(old_sym_iter)
-#         assert target.op_name == sym.op_name
-#         sym.attrs.update({
-#             k: v for k, v in target.attrs.items() \
-#                 if k not in sym.attrs })
-#         sym.extra_attrs.update({
-#             k: v for k, v in target.extra_attrs.items() \
-#                 if k not in sym.extra_attrs })
-#         return sym.like(target)
-#     return transform(new, _sym_like)
-
-# @dataclass(repr=False)
-# class InferType(Symbol):
-#     def __call__(self):
-#         assert is_operator(self)
-
-#         if type(self) is InferType:
-#             sym = retrieve_operator(self)
-#             sym = infer_type(sym)
-#             self.shape = sym.shape
-#             self.dtype = sym.dtype
-#         else:
-#             self.shape = self._infer_shape()
-#             self.dtype = self._infer_type()
-#         return self
-
-#     def _infer_type(self):
-#         assert all([self.args[0].dtype == a.dtype \
-#                 for a in self.args])
-#         return self.args[0].dtype
-
-#     def _infer_shape(self) -> ShapeT:
-#         raise NotImplementedError("")
-
-# @dataclass(repr=False)
-# class FirstLikeInferType(InferType):
-#     def _infer_shape(self) -> ShapeT:
-#         return self.args[0].shape
 def _new_op(op_name, *args, extra_attrs=None, **attrs) -> Symbol:
     return Symbol.from_dict({},
             name=N.n(), op_name=op_name,

@@ -3,7 +3,7 @@ import numpy as np
 
 from .symbol import *
 from .opns import *
-from .sym_expr import *
+from .frontend.expr import symbol2expr
 from .transform import WithParameters
 from . import op, runtime, types
 

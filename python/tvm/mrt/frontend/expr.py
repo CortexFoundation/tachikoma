@@ -10,10 +10,10 @@ from tvm import relay, ir, tir
 from tvm.ir.expr import *
 from tvm.relay.expr import *
 
-from .opns import *
-from .symbol import *
-from .types import *
-from . import op
+from ..opns import *
+from ..symbol import *
+from ..types import *
+from .. import op
 
 __ALL__ = [ "expr2symbol", "symbol2expr", ]
 

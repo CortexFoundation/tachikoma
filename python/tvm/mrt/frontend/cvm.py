@@ -1,5 +1,5 @@
 import typing
-from .symbol import *
+from ..symbol import *
 
 import cvm
 

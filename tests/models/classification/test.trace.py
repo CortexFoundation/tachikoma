@@ -1,5 +1,5 @@
-import os
 import sys
+import os
 
 ROOT = os.getcwd()
 sys.path.insert(0, os.path.join(ROOT, "python"))
@@ -73,11 +73,24 @@ tr.bind_dataset(ds, stats.ClassificationOutput).log()
 
 # tr.validate_accuracy(max_iter_num=1, **config)
 dis_tr = tr.discrete(force=True)
+
 sim_tr = dis_tr.export("sim").log()
 sim_clip_tr = dis_tr.export("sim-clip").log()
 sim_round_tr = dis_tr.export("sim-round").log()
 sim_quant_tr = dis_tr.export("sim-clip-round").log()
+
 circom_tr = dis_tr.export("circom").log()
+
+if model_name != "mobilenet_v2":
+    tr.validate_accuracy(
+            sim_tr,
+            sim_clip_tr,
+            sim_round_tr,
+            sim_quant_tr,
+            max_iter_num=1,
+            **config)
+    print("ValidateAccuracy Done!!!")
+#sys.exit()
 
 circom_tr.print()
 
